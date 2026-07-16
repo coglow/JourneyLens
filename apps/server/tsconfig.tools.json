@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "dist-tools",
+    "types": ["node"],
+    "noEmit": false,
+    "sourceMap": true
+  },
+  "include": ["tools/**/*.ts"],
+  "exclude": ["tools/**/*.test.ts"]
+}

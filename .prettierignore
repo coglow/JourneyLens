@@ -1,0 +1,14 @@
+
+node_modules/
+.git/
+.pnpm-store/
+.vite/
+
+dist/
+dist-tools/
+coverage/
+
+
+pnpm-lock.yaml
+*.snap
+

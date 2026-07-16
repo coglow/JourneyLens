@@ -1,0 +1,43 @@
+{
+  "name": "journeylens",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.13.1",
+  "engines": {
+    "node": ">=24.18.0 <25"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @journeylens/shared run build && pnpm --parallel --filter @journeylens/server --filter @journeylens/web run dev",
+    "dev:server": "pnpm --filter @journeylens/server run dev",
+    "dev:web": "pnpm --filter @journeylens/shared run build && pnpm --filter @journeylens/web run dev",
+    "db:up": "docker compose up -d --wait postgres",
+    "db:rebuild": "node --env-file-if-exists=.env scripts/db-rebuild.mjs",
+    "db:migrate": "pnpm --filter @journeylens/server run db:migrate",
+    "db:generate": "pnpm --filter @journeylens/server run db:generate",
+    "operator:create": "node scripts/operator-create.mjs",
+    "typecheck": "pnpm --filter @journeylens/shared run build && pnpm --parallel --filter @journeylens/server --filter @journeylens/web run typecheck",
+    "test": "pnpm --filter @journeylens/shared run build && pnpm --parallel --filter @journeylens/server --filter @journeylens/web run test",
+    "build": "pnpm --filter @journeylens/shared run build && pnpm --parallel --filter @journeylens/server --filter @journeylens/web run build",
+    "lint": "eslint scripts eslint.config.js && pnpm -r run lint",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "*.{cjs,css,html,js,json,jsonc,md,mjs,scss,ts,tsx,yaml,yml}": "prettier --write",
+    "*.{ts,tsx}": "eslint --fix"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "21.2.1",
+    "@commitlint/config-conventional": "21.2.0",
+    "@eslint/js": "9.39.5",
+    "eslint": "9.39.5",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "globals": "17.7.0",
+    "husky": "9.1.7",
+    "lint-staged": "17.0.8",
+    "prettier": "3.9.5",
+    "typescript-eslint": "8.64.0"
+  }
+}

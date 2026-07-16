@@ -1,0 +1,32 @@
+{
+  "name": "@journeylens/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@journeylens/shared": "workspace:*",
+    "antd": "6.5.1",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "react-router": "8.2.0"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "10.4.1",
+    "@testing-library/react": "16.3.2",
+    "@types/node": "24.13.3",
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "6.0.3",
+    "jsdom": "26.1.0",
+    "typescript": "5.9.3",
+    "vite": "8.1.4",
+    "vitest": "4.1.10"
+  }
+}

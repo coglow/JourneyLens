@@ -1,0 +1,41 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AccountStatus {
+  active
+  disabled
+}
+
+model OperatorAccount {
+  id              String        @id @db.Uuid
+  email           String        @db.VarChar(320)
+  emailNormalized String        @unique @map("email_normalized") @db.VarChar(320)
+  passwordHash    String        @map("password_hash")
+  displayName     String        @map("display_name") @db.VarChar(120)
+  status          AccountStatus @default(active)
+  lastLoginAt     DateTime?     @map("last_login_at") @db.Timestamptz(6)
+  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  sessions        Session[]
+
+  @@map("operator_accounts")
+}
+
+model Session {
+  id         String           @id @db.Uuid
+  account    OperatorAccount  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  accountId  String           @map("account_id") @db.Uuid
+  tokenHash  String           @unique @map("token_hash") @db.Char(64)
+  expiresAt  DateTime         @map("expires_at") @db.Timestamptz(6)
+  revokedAt  DateTime?        @map("revoked_at") @db.Timestamptz(6)
+  createdAt  DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([accountId, expiresAt])
+  @@map("sessions")
+}
