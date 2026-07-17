@@ -21,3 +21,7 @@ Object.defineProperty(window, 'ResizeObserver', {
     disconnect(): void {}
   },
 });
+
+// jsdom does not implement pseudo-element styles queried by antd Table.
+const originalComputedStyle = window.getComputedStyle.bind(window);
+window.getComputedStyle = (element) => originalComputedStyle(element);

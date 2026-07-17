@@ -1,4 +1,5 @@
-import { useAuth } from '../auth/auth-provider';
+import { Outlet } from 'react-router';
+import { useAuth } from '@/features/auth/auth-provider';
 import { WorkbenchLayout } from './WorkbenchLayout';
 
 export function WorkbenchPage() {
@@ -11,6 +12,8 @@ export function WorkbenchPage() {
       loggingOut={loggingOut}
       logoutError={logoutError}
       onLogout={() => void signOut()}
-    />
+    >
+      <Outlet />
+    </WorkbenchLayout>
   );
 }

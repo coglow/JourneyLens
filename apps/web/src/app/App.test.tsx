@@ -1,25 +1,37 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { useQueryClient, type QueryClient } from '@tanstack/react-query';
+import MockAdapter from 'axios-mock-adapter';
+import { ConfigProvider } from 'antd';
+import zhCN from 'antd/locale/zh_CN';
 import { createMemoryRouter, RouterProvider } from 'react-router';
-import { AuthProvider } from '../features/auth/auth-provider';
+import { AuthProvider } from '@/features/auth/auth-provider';
+import { apiClient } from '@/services/api';
 import { appRoutes } from './router';
+import { QueryProvider } from './QueryProvider';
 
-const fetchMock = vi.fn<typeof fetch>();
+let mock: MockAdapter;
+let queryClient: QueryClient | undefined;
+
 const account = {
   id: 'd15a0f12-9f6c-4d63-98e4-d5dbe50c9120',
   email: 'operator@example.com',
   displayName: 'JourneyLens 管理员',
 };
 
-function jsonResponse(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'content-type': 'application/json' },
-  });
+function campaignsBody() {
+  return {
+    data: [],
+    page: {
+      page: 1,
+      pageSize: 10,
+      total: 0,
+    },
+  };
 }
 
-function unauthorizedResponse(): Response {
-  return jsonResponse({ error: { code: 'AUTH_REQUIRED', message: '需要登录' } }, 401);
+function unauthorizedBody() {
+  return { error: { code: 'AUTH_REQUIRED', message: '需要登录', requestId: 'test-request-id' } };
 }
 
 function submitCredentials(): void {
@@ -36,27 +48,38 @@ function submitCredentials(): void {
 
 function renderApp(initialPath = '/') {
   const router = createMemoryRouter(appRoutes, { initialEntries: [initialPath] });
+
+  function CaptureQueryClient() {
+    queryClient = useQueryClient();
+    return <RouterProvider router={router} />;
+  }
+
   render(
-    <AuthProvider>
-      <RouterProvider router={router} />
-    </AuthProvider>,
+    <ConfigProvider locale={zhCN}>
+      <AuthProvider>
+        <QueryProvider>
+          <CaptureQueryClient />
+        </QueryProvider>
+      </AuthProvider>
+    </ConfigProvider>,
   );
   return router;
 }
 
 beforeEach(() => {
-  vi.stubGlobal('fetch', fetchMock);
+  mock = new MockAdapter(apiClient);
 });
 
 afterEach(() => {
   cleanup();
-  vi.unstubAllGlobals();
-  fetchMock.mockReset();
+  queryClient?.clear();
+  queryClient = undefined;
+  mock.restore();
 });
 
 describe('登录与会话路由', () => {
   it('未登录访问受保护页面跳转到 /login，显示空白登录表单，不预填凭据', async () => {
-    fetchMock.mockResolvedValueOnce(unauthorizedResponse());
+    mock.onGet('/userinfo').replyOnce(401, unauthorizedBody());
     const router = renderApp('/');
 
     expect(await screen.findByRole('heading', { name: '登录 JourneyLens' })).toBeTruthy();
@@ -64,28 +87,31 @@ describe('登录与会话路由', () => {
     expect((screen.getByLabelText('邮箱') as HTMLInputElement).value).toBe('');
     expect((screen.getByLabelText('密码') as HTMLInputElement).value).toBe('');
     expect(screen.queryByRole('button', { name: /演示账号|填入/ })).toBeNull();
-    expect(fetchMock).toHaveBeenCalledWith('/api/userinfo', { credentials: 'same-origin' });
+    expect(mock.history.get[0]?.url).toBe('/userinfo');
+    expect(mock.history.get[0]?.baseURL).toBe('/api');
+    expect(mock.history.get[0]?.withCredentials).toBeFalsy();
   });
 
   it('登录后进入工作台，退出成功后回到登录页', async () => {
-    fetchMock
-      .mockResolvedValueOnce(unauthorizedResponse())
-      .mockResolvedValueOnce(jsonResponse({ data: account }))
-      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    mock.onGet('/userinfo').replyOnce(401, unauthorizedBody());
+    mock.onPost('/auth/login').replyOnce(200, { data: account });
+    mock.onGet('/campaigns').replyOnce(200, campaignsBody());
+    mock.onPost('/auth/logout').replyOnce(204);
     const router = renderApp('/');
 
     await screen.findByRole('heading', { name: '登录 JourneyLens' });
     submitCredentials();
     expect(await screen.findByText('JourneyLens 管理员')).toBeTruthy();
-    expect(router.state.location.pathname).toBe('/');
+    expect(router.state.location.pathname).toBe('/campaigns');
     expect(screen.getByText('operator@example.com')).toBeTruthy();
     expect(screen.getByRole('banner').textContent).toContain('JourneyLens');
     expect(screen.getByRole('menuitem', { name: '活动' })).toBeTruthy();
     expect(screen.getAllByRole('menuitem')).toHaveLength(1);
-    expect(screen.getByRole('main', { name: '活动工作区' }).textContent).toBe('');
-    expect(fetchMock.mock.calls.map(([url]) => url)).not.toContain('/api/campaigns');
-    expect(fetchMock.mock.calls[1]?.[0]).toBe('/api/auth/login');
-    expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toEqual({
+    expect(await screen.findByText('暂无活动')).toBeTruthy();
+    expect(mock.history.get.map((request) => request.url)).toContain('/campaigns');
+    expect(mock.history.post[0]?.url).toBe('/auth/login');
+    expect(mock.history.post[0]?.baseURL).toBe('/api');
+    expect(JSON.parse(String(mock.history.post[0]?.data))).toEqual({
       email: 'operator@example.com',
       password: 'correct-password',
     });
@@ -93,23 +119,27 @@ describe('登录与会话路由', () => {
     fireEvent.click(screen.getByRole('button', { name: '退出登录' }));
     expect(await screen.findByRole('heading', { name: '登录 JourneyLens' })).toBeTruthy();
     expect(router.state.location.pathname).toBe('/login');
-    expect(fetchMock.mock.calls[2]?.[0]).toBe('/api/auth/logout');
+    expect(mock.history.post[1]?.url).toBe('/auth/logout');
   });
 
   it('已登录访问 /login 会回到工作台', async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse({ data: account }));
+    mock.onGet('/userinfo').replyOnce(200, { data: account });
+    mock.onGet('/campaigns').replyOnce(200, campaignsBody());
     const router = renderApp('/login');
 
     expect(await screen.findByText('JourneyLens 管理员')).toBeTruthy();
-    expect(router.state.location.pathname).toBe('/');
+    expect(router.state.location.pathname).toBe('/campaigns');
   });
 
   it('错误密码展示服务端的实际错误', async () => {
-    fetchMock
-      .mockResolvedValueOnce(unauthorizedResponse())
-      .mockResolvedValueOnce(
-        jsonResponse({ error: { code: 'INVALID_CREDENTIALS', message: '邮箱或密码不正确' } }, 401),
-      );
+    mock.onGet('/userinfo').replyOnce(401, unauthorizedBody());
+    mock.onPost('/auth/login').replyOnce(401, {
+      error: {
+        code: 'INVALID_CREDENTIALS',
+        message: '邮箱或密码不正确',
+        requestId: 'test-request-id',
+      },
+    });
     renderApp('/');
 
     await screen.findByRole('heading', { name: '登录 JourneyLens' });
@@ -118,24 +148,23 @@ describe('登录与会话路由', () => {
     expect(screen.getByRole('heading', { name: '登录 JourneyLens' })).toBeTruthy();
   });
 
-  it('API 不可达时显示重试，不当作未登录；重试收到 401 后才进入登录页', async () => {
-    fetchMock
-      .mockRejectedValueOnce(new TypeError('network unavailable'))
-      .mockResolvedValueOnce(unauthorizedResponse());
+  it('服务不可达时显示重试，不当作未登录；重试收到 401 后才进入登录页', async () => {
+    mock.onGet('/userinfo').networkErrorOnce();
+    mock.onGet('/userinfo').replyOnce(401, unauthorizedBody());
     const router = renderApp('/');
 
     expect(await screen.findByText('暂时无法连接服务')).toBeTruthy();
     expect(screen.queryByRole('heading', { name: '登录 JourneyLens' })).toBeNull();
-    expect(router.state.location.pathname).toBe('/');
+    expect(router.state.location.pathname).toBe('/campaigns');
     fireEvent.click(screen.getByRole('button', { name: /重\s*试/ }));
     expect(await screen.findByRole('heading', { name: '登录 JourneyLens' })).toBeTruthy();
     expect(router.state.location.pathname).toBe('/login');
   });
 
   it('退出请求失败时显示错误并保留已登录账号', async () => {
-    fetchMock
-      .mockResolvedValueOnce(jsonResponse({ data: account }))
-      .mockRejectedValueOnce(new TypeError('network unavailable'));
+    mock.onGet('/userinfo').replyOnce(200, { data: account });
+    mock.onGet('/campaigns').replyOnce(200, campaignsBody());
+    mock.onPost('/auth/logout').networkErrorOnce();
     const router = renderApp('/');
 
     expect(await screen.findByText('JourneyLens 管理员')).toBeTruthy();
@@ -143,6 +172,6 @@ describe('登录与会话路由', () => {
     expect((await screen.findByRole('alert')).textContent).toContain('无法连接服务器');
     expect(screen.getByText('JourneyLens 管理员')).toBeTruthy();
     expect(screen.getByRole('button', { name: '退出登录' })).toBeTruthy();
-    expect(router.state.location.pathname).toBe('/');
+    expect(router.state.location.pathname).toBe('/campaigns');
   });
 });

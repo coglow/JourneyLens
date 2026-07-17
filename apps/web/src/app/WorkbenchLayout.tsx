@@ -1,5 +1,7 @@
 import { Alert, Button, Divider, Flex, Layout, Menu, theme, Typography } from 'antd';
 import type { CurrentAccount } from '@journeylens/shared';
+import type { ReactNode } from 'react';
+import { useNavigate } from 'react-router';
 
 const { Sider, Content } = Layout;
 
@@ -8,6 +10,7 @@ type WorkbenchLayoutProps = {
   loggingOut: boolean;
   logoutError: string | undefined;
   onLogout: () => void;
+  children: ReactNode;
 };
 
 export function WorkbenchLayout({
@@ -15,8 +18,10 @@ export function WorkbenchLayout({
   loggingOut,
   logoutError,
   onLogout,
+  children,
 }: WorkbenchLayoutProps) {
   const { token } = theme.useToken();
+  const navigate = useNavigate();
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
@@ -66,14 +71,13 @@ export function WorkbenchLayout({
               mode="inline"
               selectedKeys={['campaigns']}
               items={[{ key: 'campaigns', label: '活动' }]}
+              onClick={() => navigate('/campaigns')}
             />
           </nav>
         </Sider>
-        <Content
-          role="main"
-          aria-label="活动工作区"
-          style={{ minWidth: 0, padding: 24, background: token.colorBgContainer }}
-        />
+        <Content role="main" aria-label="活动工作区" style={{ minWidth: 0, padding: 24 }}>
+          {children}
+        </Content>
       </Layout>
     </Layout>
   );

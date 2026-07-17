@@ -61,9 +61,9 @@ describe('请求客户端', () => {
     expect(getApiErrorMessage(error)).toBe('服务暂时不可用，请稍后重试');
   });
 
-  it('服务端错误保留实际状态、错误码与文案', async () => {
+  it('服务端错误保留实际状态、错误码、文案与请求 ID', async () => {
     mock.onGet('/campaigns/1').reply(404, {
-      error: { code: 'NOT_FOUND', message: '活动不存在' },
+      error: { code: 'NOT_FOUND', message: '活动不存在', requestId: 'req-404' },
     });
 
     const error = await captureError(
@@ -71,13 +71,35 @@ describe('请求客户端', () => {
     );
 
     expect(error).toBeInstanceOf(ApiError);
-    expect(error).toMatchObject({ status: 404, code: 'NOT_FOUND', message: '活动不存在' });
+    expect(error).toMatchObject({
+      status: 404,
+      code: 'NOT_FOUND',
+      message: '活动不存在',
+      requestId: 'req-404',
+    });
     expect(isSessionExpired(error)).toBe(false);
+  });
+
+  it('错误响应缺少请求标识时使用公开兜底文案', async () => {
+    mock.onGet('/campaigns/1').reply(500, {
+      error: { code: 'INTERNAL_ERROR', message: '服务暂时不可用' },
+    });
+
+    const error = await captureError(
+      request({ url: '/campaigns/1', method: 'GET' }, passthroughSchema),
+    );
+
+    expect(error).toMatchObject({
+      status: 500,
+      code: 'REQUEST_FAILED',
+      message: '服务暂时不可用，请稍后重试',
+      requestId: undefined,
+    });
   });
 
   it('登录失效保留 401，供认证接入识别', async () => {
     mock.onGet('/userinfo').reply(401, {
-      error: { code: 'AUTH_REQUIRED', message: '登录已失效' },
+      error: { code: 'AUTH_REQUIRED', message: '登录已失效', requestId: 'req-401' },
     });
 
     const error = await captureError(
@@ -105,7 +127,11 @@ describe('请求客户端', () => {
       request({ url: '/campaigns', method: 'GET' }, passthroughSchema),
     );
 
-    expect(error).toMatchObject({ status: undefined, code: 'NETWORK_ERROR' });
+    expect(error).toMatchObject({
+      status: undefined,
+      code: 'NETWORK_ERROR',
+      requestId: undefined,
+    });
     expect(getApiErrorMessage(error)).toBe('无法连接服务器，请稍后重试');
   });
 

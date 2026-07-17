@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Alert, Button, Card, Layout, Typography } from 'antd';
-import { Navigate } from 'react-router';
+import { Navigate, Outlet } from 'react-router';
 import { useAuth, type AuthContextValue } from './auth-provider';
 import { LoginPage } from './LoginPage';
 
@@ -42,12 +42,12 @@ function sessionFallbackNode(
 }
 
 /** 受保护路由：未登录时跳转到 /login。 */
-export function RequireAuth({ children }: { children: ReactNode }) {
+export function RequireAuth() {
   const auth = useAuth();
   const fallback = sessionFallbackNode(auth);
   if (fallback !== null) return fallback;
   if (auth.status === 'unauthenticated') return <Navigate to="/login" replace />;
-  return children;
+  return <Outlet />;
 }
 
 /** 登录页路由：已登录时回到工作台。 */
@@ -55,7 +55,7 @@ export function LoginRoute() {
   const auth = useAuth();
   const fallback = sessionFallbackNode(auth);
   if (fallback !== null) return fallback;
-  if (auth.status === 'authenticated') return <Navigate to="/" replace />;
+  if (auth.status === 'authenticated') return <Navigate to="/campaigns" replace />;
   return (
     <CenteredPage>
       <LoginPage />
