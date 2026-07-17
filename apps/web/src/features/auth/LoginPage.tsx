@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Alert, Button, Card, Form, Input, Typography } from 'antd';
 import type { LoginRequest } from '@journeylens/shared';
-import { getApiErrorMessage, login } from './auth-api';
+import { getApiErrorMessage } from '@/services/api';
+import { login } from '@/services/auth';
 import { useAuth } from './auth-provider';
 
 export function LoginPage() {

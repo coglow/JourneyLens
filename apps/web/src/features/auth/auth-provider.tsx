@@ -1,6 +1,7 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import type { CurrentAccount } from '@journeylens/shared';
-import { ApiError, getApiErrorMessage, getCurrentAccount, logout } from './auth-api';
+import { ApiError, getApiErrorMessage } from '@/services/api';
+import { getCurrentAccount, logout } from '@/services/auth';
 
 type SessionState =
   | { status: 'loading' }
@@ -16,6 +17,7 @@ export interface AuthContextValue {
   logoutError: string | undefined;
   signIn: (account: CurrentAccount) => void;
   signOut: () => Promise<void>;
+  expireSession: () => void;
   retry: () => void;
 }
 
@@ -25,6 +27,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<SessionState>({ status: 'loading' });
   const [loggingOut, setLoggingOut] = useState(false);
   const [logoutError, setLogoutError] = useState<string>();
+  const expireSession = useCallback(() => setSession({ status: 'unauthenticated' }), []);
 
   async function restoreSession(): Promise<void> {
     setSession({ status: 'loading' });
@@ -67,6 +70,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         logoutError,
         signIn: (account) => setSession({ status: 'authenticated', account }),
         signOut,
+        expireSession,
         retry: () => void restoreSession(),
       }}
     >

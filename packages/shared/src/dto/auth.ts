@@ -17,11 +17,5 @@ export const currentAccountSchema = z
 
 export const currentAccountResponseSchema = z.object({ data: currentAccountSchema }).strict();
 
-export const apiErrorResponseSchema = z
-  .object({
-    error: z.object({ code: z.string(), message: z.string() }).strict(),
-  })
-  .strict();
-
 export type LoginRequest = z.infer<typeof loginRequestSchema>;
 export type CurrentAccount = z.infer<typeof currentAccountSchema>;
