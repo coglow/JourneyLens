@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { parseArgs } from 'node:util';
-import { hashPassword } from '../../src/auth/password.js';
+import { hashPassword } from '../../src/modules/auth/password.js';
 import { createPrismaClient } from '../../src/db/client.js';
 
 function readPassword(): Promise<string> {

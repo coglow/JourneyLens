@@ -1,4 +1,4 @@
-import { ApiError } from '../errors.js';
+import { ApiError } from '../../errors.js';
 
 const MAX_ATTEMPTS = 5;
 const WINDOW_MS = 15 * 60 * 1000;

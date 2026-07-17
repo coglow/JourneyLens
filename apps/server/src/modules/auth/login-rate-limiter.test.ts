@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ApiError } from '../errors.js';
+import { ApiError } from '../../errors.js';
 import { LoginRateLimiter } from './login-rate-limiter.js';
 
 describe('登录尝试限流', () => {

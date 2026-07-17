@@ -3,15 +3,22 @@ import { apiErrorResponseSchema } from '@journeylens/shared';
 
 const DEFAULT_TIMEOUT_MS = 15_000;
 
+interface ApiErrorOptions extends ErrorOptions {
+  requestId?: string;
+}
+
 export class ApiError extends Error {
+  readonly requestId: string | undefined;
+
   constructor(
     readonly status: number | undefined,
     readonly code: string,
     message: string,
-    options?: ErrorOptions,
+    options?: ApiErrorOptions,
   ) {
     super(message, options);
     this.name = 'ApiError';
+    this.requestId = options?.requestId;
   }
 }
 
@@ -44,6 +51,7 @@ function toApiError(error: unknown): ApiError {
           error.response.status,
           parsed.data.error.code,
           parsed.data.error.message,
+          { requestId: parsed.data.error.requestId },
         );
       }
       return new ApiError(

@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { currentAccountResponseSchema, loginRequestSchema } from '@journeylens/shared';
-import { ApiError } from '../errors.js';
+import { ApiError } from '../../errors.js';
 import type { AuthService } from './auth-service.js';
 import { DEFAULT_SESSION_TTL_SECONDS, SESSION_COOKIE_NAME } from './auth-service.js';
 import { hashSessionToken } from './session-token.js';

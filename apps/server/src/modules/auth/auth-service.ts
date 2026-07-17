@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { PrismaClient } from '@prisma/client';
 import type { CurrentAccount } from '@journeylens/shared';
-import { ApiError } from '../errors.js';
+import { ApiError } from '../../errors.js';
 import { LoginRateLimiter } from './login-rate-limiter.js';
 import { DUMMY_PASSWORD_HASH, verifyPassword } from './password.js';
 import type { PasswordVerifier } from './password.js';

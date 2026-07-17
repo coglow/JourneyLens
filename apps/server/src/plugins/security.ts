@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { ApiError } from './errors.js';
+import { ApiError } from '../errors.js';
 
 export function registerRequestSecurity(app: FastifyInstance): void {
   app.addHook('onRequest', async (request) => {

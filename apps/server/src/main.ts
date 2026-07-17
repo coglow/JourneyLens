@@ -9,7 +9,7 @@ async function start(): Promise<void> {
 
   const app = buildApp();
   const address = await app.listen({ port, host: '0.0.0.0' });
-  console.info(`JourneyLens API 已启动：${address}`);
+  app.log.info({ address }, 'JourneyLens API 已启动');
 }
 
 start().catch((error: unknown) => {
