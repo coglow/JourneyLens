@@ -33,7 +33,7 @@ export function registerCampaignRoutes(app: FastifyInstance, prisma: PrismaClien
 
   app.get('/api/campaigns/:id', async (request) => {
     const params = campaignIdParamsSchema.safeParse(request.params);
-    if (!params.success) throw new ApiError(400, 'BAD_REQUEST', '活动标识无效');
+    if (!params.success) throw new ApiError(400, 'BAD_REQUEST', '活动链接无效');
 
     const campaign = await service.get(params.data.id);
     if (campaign === null) throw new ApiError(404, 'NOT_FOUND', '活动不存在');
@@ -42,7 +42,7 @@ export function registerCampaignRoutes(app: FastifyInstance, prisma: PrismaClien
 
   app.patch('/api/campaigns/:id', async (request) => {
     const params = campaignIdParamsSchema.safeParse(request.params);
-    if (!params.success) throw new ApiError(400, 'BAD_REQUEST', '活动标识无效');
+    if (!params.success) throw new ApiError(400, 'BAD_REQUEST', '活动链接无效');
 
     const input = campaignUpdateSchema.safeParse(request.body);
     if (!input.success) {
@@ -56,7 +56,7 @@ export function registerCampaignRoutes(app: FastifyInstance, prisma: PrismaClien
 
   app.delete('/api/campaigns/:id', async (request, reply) => {
     const params = campaignIdParamsSchema.safeParse(request.params);
-    if (!params.success) throw new ApiError(400, 'BAD_REQUEST', '活动标识无效');
+    if (!params.success) throw new ApiError(400, 'BAD_REQUEST', '活动链接无效');
 
     const deleted = await service.deleteDraft(params.data.id);
     if (!deleted) throw new ApiError(404, 'NOT_FOUND', '活动不存在或已无法删除');

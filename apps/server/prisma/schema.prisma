@@ -32,18 +32,20 @@ model OperatorAccount {
   updatedAt       DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   sessions        Session[]
   campaigns       Campaign[]
+  segmentsCreated Segment[]     @relation("SegmentCreatedBy")
+  segmentsUpdated Segment[]     @relation("SegmentUpdatedBy")
 
   @@map("operator_accounts")
 }
 
 model Session {
-  id         String           @id @db.Uuid
-  account    OperatorAccount  @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  accountId  String           @map("account_id") @db.Uuid
-  tokenHash  String           @unique @map("token_hash") @db.Char(64)
-  expiresAt  DateTime         @map("expires_at") @db.Timestamptz(6)
-  revokedAt  DateTime?        @map("revoked_at") @db.Timestamptz(6)
-  createdAt  DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  id        String          @id @db.Uuid
+  account   OperatorAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  accountId String          @map("account_id") @db.Uuid
+  tokenHash String          @unique @map("token_hash") @db.Char(64)
+  expiresAt DateTime        @map("expires_at") @db.Timestamptz(6)
+  revokedAt DateTime?       @map("revoked_at") @db.Timestamptz(6)
+  createdAt DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
 
   @@index([accountId, expiresAt])
   @@map("sessions")
@@ -62,4 +64,47 @@ model Campaign {
 
   @@index([createdAt(sort: Desc), id(sort: Desc)])
   @@map("campaigns")
+}
+
+model AudienceUser {
+  id          String   @id @db.Uuid
+  externalId  String   @unique @map("external_id") @db.VarChar(160)
+  displayName String   @map("display_name") @db.VarChar(120)
+  email       String?  @db.VarChar(320)
+  attributes  Json     @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("audience_users")
+}
+
+/// 运营分群：rules 保存校验后的规则树；revision 每次成功修改递增，用于并发冲突检测。
+model Segment {
+  id          String          @id @default(uuid()) @db.Uuid
+  name        String          @unique @db.VarChar(160)
+  description String?         @db.Text
+  rules       Json
+  /// 修改时同时作为更新条件，避免两个页面互相静默覆盖。
+  revision    Int             @default(1)
+  createdBy   OperatorAccount @relation("SegmentCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdById String          @map("created_by") @db.Uuid
+  updatedBy   OperatorAccount @relation("SegmentUpdatedBy", fields: [updatedById], references: [id], onDelete: Restrict)
+  updatedById String          @map("updated_by") @db.Uuid
+  createdAt   DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  previewSnapshot SegmentPreviewSnapshot?
+
+  @@map("segments")
+}
+
+/// 分群最近一次人数结果：每个分群最多一行；revision 记录计算时的分群修订号。
+model SegmentPreviewSnapshot {
+  segmentId    String   @id @map("segment_id") @db.Uuid
+  segment      Segment  @relation(fields: [segmentId], references: [id], onDelete: Cascade)
+  revision     Int
+  total        Int
+  matched      Int
+  calculatedAt DateTime @map("calculated_at") @db.Timestamptz(6)
+
+  @@map("segment_preview_snapshots")
 }

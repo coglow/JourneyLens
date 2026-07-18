@@ -28,7 +28,10 @@ pnpm db:migrate
 # 5. 创建运营账号（输入邮箱、显示名与密码）
 pnpm operator:create
 
-# 6. 启动 API 与前端开发服务
+# 6. 初始化 2,000 名演示受众（固定种子生成，重复执行结果一致）
+pnpm seed:audience
+
+# 7. 启动 API 与前端开发服务
 pnpm dev
 ```
 

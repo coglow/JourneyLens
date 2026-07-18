@@ -1,6 +1,11 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { hashSessionToken } from '../modules/auth/session-token.js';
-import { accountId, now, type TestSession } from '../test-support/fake-prisma.js';
+import {
+  startTestDatabase,
+  testAccountId,
+  testNow,
+  type TestDatabase,
+} from '../test-support/test-database.js';
 import {
   cookieFrom,
   jsonHeaders,
@@ -12,14 +17,30 @@ import {
 
 const campaignId = '00000000-0000-4000-8000-000000000001';
 
+let db: TestDatabase;
+
+beforeAll(async () => {
+  db = await startTestDatabase();
+});
+
+beforeEach(async () => {
+  await db.reset();
+});
+
+afterAll(async () => {
+  await db.close();
+});
+
 afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function sessionOf(sessions: Map<string, TestSession>, cookie: string): TestSession {
+async function sessionOf(cookie: string) {
   const token = cookie.slice(cookie.indexOf('=') + 1);
-  const session = sessions.get(hashSessionToken(token));
-  if (session === undefined) throw new Error('测试库中找不到当前会话');
+  const session = await db.prisma.session.findUnique({
+    where: { tokenHash: hashSessionToken(token) },
+  });
+  if (session === null) throw new Error('测试库中找不到当前会话');
   return session;
 }
 
@@ -49,12 +70,12 @@ async function expectAllProtectedRequestsRejected(app: TestApp, cookie: string):
 
 describe('认证 API', () => {
   it('登录成功返回脱敏账号，并下发只存 token 哈希的 HttpOnly Cookie', async () => {
-    const { app, sessions } = makeApp();
+    const { app } = makeApp(db);
     try {
       const response = await login(app, 'Operator@Example.com');
       expect(response.statusCode).toBe(200);
       expect(response.json()).toEqual({
-        data: { id: accountId, email: 'Operator@Example.com', displayName: '测试运营账号' },
+        data: { id: testAccountId, email: 'Operator@Example.com', displayName: '测试运营账号' },
       });
 
       const setCookie = String(response.headers['set-cookie']);
@@ -67,15 +88,18 @@ describe('认证 API', () => {
       const cookie = cookieFrom(response);
       const token = cookie.slice(cookie.indexOf('=') + 1);
       expect(token.length).toBeGreaterThan(20);
-      expect([...sessions.keys()]).toEqual([hashSessionToken(token)]);
-      expect(sessions.has(token)).toBe(false);
+
+      const sessions = await db.prisma.session.findMany();
+      expect(sessions).toHaveLength(1);
+      expect(sessions[0]?.tokenHash).toBe(hashSessionToken(token));
+      expect(sessions[0]?.tokenHash).not.toBe(token);
     } finally {
       await app.close();
     }
   });
 
   it('携带登录 Cookie 访问 /api/userinfo 返回同一账号', async () => {
-    const { app } = makeApp();
+    const { app } = makeApp(db);
     try {
       const cookie = await signedInCookie(app);
       const current = await app.inject({
@@ -85,7 +109,7 @@ describe('认证 API', () => {
       });
       expect(current.statusCode).toBe(200);
       expect(current.json()).toEqual({
-        data: { id: accountId, email: 'Operator@Example.com', displayName: '测试运营账号' },
+        data: { id: testAccountId, email: 'Operator@Example.com', displayName: '测试运营账号' },
       });
     } finally {
       await app.close();
@@ -93,12 +117,17 @@ describe('认证 API', () => {
   });
 
   it('错误密码、未知邮箱和禁用账号返回相同认证失败且不创建 Session', async () => {
-    const active = makeApp();
-    const disabled = makeApp('disabled');
+    const { app, verifyPassword } = makeApp(db);
     try {
-      const wrong = await login(active.app, 'operator@example.com', 'wrong-password');
-      const unknown = await login(active.app, 'nobody@example.com');
-      const disabledResponse = await login(disabled.app);
+      const wrong = await login(app, 'operator@example.com', 'wrong-password');
+      const unknown = await login(app, 'nobody@example.com');
+
+      await db.prisma.operatorAccount.update({
+        where: { id: testAccountId },
+        data: { status: 'disabled' },
+      });
+      const disabledResponse = await login(app);
+
       expect(wrong.statusCode).toBe(401);
       expect(unknown.statusCode).toBe(401);
       expect(disabledResponse.statusCode).toBe(401);
@@ -111,23 +140,25 @@ describe('认证 API', () => {
       expect(disabledResponse.json()).toMatchObject({
         error: { code: 'INVALID_CREDENTIALS', message: '邮箱或密码不正确' },
       });
-      expect(active.sessions.size).toBe(0);
-      expect(disabled.sessions.size).toBe(0);
-      expect(active.verifyPassword).toHaveBeenCalledWith(
+      expect(await db.prisma.session.count()).toBe(0);
+      expect(verifyPassword).toHaveBeenCalledWith(
         expect.stringMatching(/^\$argon2id\$/),
         'correct-password',
       );
     } finally {
-      await active.app.close();
-      await disabled.app.close();
+      await app.close();
     }
   });
 
   it('会话过期后所有受保护接口返回 401', async () => {
-    const { app, sessions } = makeApp();
+    const { app } = makeApp(db);
     try {
       const cookie = await signedInCookie(app);
-      sessionOf(sessions, cookie).expiresAt = new Date(now.getTime() - 1);
+      const session = await sessionOf(cookie);
+      await db.prisma.session.update({
+        where: { id: session.id },
+        data: { expiresAt: new Date(testNow.getTime() - 1) },
+      });
       await expectAllProtectedRequestsRejected(app, cookie);
     } finally {
       await app.close();
@@ -135,10 +166,14 @@ describe('认证 API', () => {
   });
 
   it('会话撤销后所有受保护接口返回 401', async () => {
-    const { app, sessions } = makeApp();
+    const { app } = makeApp(db);
     try {
       const cookie = await signedInCookie(app);
-      sessionOf(sessions, cookie).revokedAt = now;
+      const session = await sessionOf(cookie);
+      await db.prisma.session.update({
+        where: { id: session.id },
+        data: { revokedAt: testNow },
+      });
       await expectAllProtectedRequestsRejected(app, cookie);
     } finally {
       await app.close();
@@ -146,10 +181,13 @@ describe('认证 API', () => {
   });
 
   it('账号被禁用后所有受保护接口返回 401', async () => {
-    const { app, setStatus } = makeApp();
+    const { app } = makeApp(db);
     try {
       const cookie = await signedInCookie(app);
-      setStatus('disabled');
+      await db.prisma.operatorAccount.update({
+        where: { id: testAccountId },
+        data: { status: 'disabled' },
+      });
       await expectAllProtectedRequestsRejected(app, cookie);
     } finally {
       await app.close();
@@ -157,7 +195,7 @@ describe('认证 API', () => {
   });
 
   it('退出撤销旧 Session 并清 Cookie，重复退出仍成功', async () => {
-    const { app, sessions } = makeApp();
+    const { app } = makeApp(db);
     try {
       const cookie = await signedInCookie(app);
       const token = cookie.slice(cookie.indexOf('=') + 1);
@@ -169,7 +207,11 @@ describe('认证 API', () => {
       });
       expect(signedOut.statusCode).toBe(204);
       expect(String(signedOut.headers['set-cookie'])).toContain('Max-Age=0');
-      expect(sessions.get(hashSessionToken(token))?.revokedAt).toEqual(now);
+
+      const session = await db.prisma.session.findUnique({
+        where: { tokenHash: hashSessionToken(token) },
+      });
+      expect(session?.revokedAt).toEqual(testNow);
 
       const oldSession = await app.inject({
         method: 'GET',
@@ -190,7 +232,7 @@ describe('认证 API', () => {
   });
 
   it('六次失败尝试后准确返回 429 和剩余等待秒数', async () => {
-    const { app } = makeApp();
+    const { app } = makeApp(db);
     try {
       for (let attempt = 0; attempt < 5; attempt += 1) {
         expect((await login(app, 'operator@example.com', 'wrong-password')).statusCode).toBe(401);
@@ -205,7 +247,7 @@ describe('认证 API', () => {
   });
 
   it('拒绝错误 Origin 和非 JSON 登录', async () => {
-    const { app } = makeApp();
+    const { app } = makeApp(db);
     try {
       const badOrigin = await app.inject({
         method: 'POST',
@@ -243,7 +285,7 @@ describe('认证 API', () => {
   });
 
   it('活跃检查公开，其他 /api 路由默认受保护', async () => {
-    const { app } = makeApp();
+    const { app } = makeApp(db);
     try {
       expect((await app.inject({ method: 'GET', url: '/health/live' })).statusCode).toBe(200);
       expect(

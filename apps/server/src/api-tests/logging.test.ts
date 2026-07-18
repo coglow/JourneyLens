@@ -1,5 +1,24 @@
-import { describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { startTestDatabase, type TestDatabase } from '../test-support/test-database.js';
 import { login, makeApp, signedInCookie } from '../test-support/harness.js';
+
+let db: TestDatabase;
+
+beforeAll(async () => {
+  db = await startTestDatabase();
+});
+
+beforeEach(async () => {
+  await db.reset();
+});
+
+afterAll(async () => {
+  await db.close();
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 function collectLogs() {
   const lines: string[] = [];
@@ -20,7 +39,7 @@ function terminalRecords(lines: string[]): Array<Record<string, unknown>> {
 describe('请求日志', () => {
   it('成功请求输出一条终态记录，沿用合法请求 ID 且不记录查询参数', async () => {
     const logs = collectLogs();
-    const { app } = makeApp('active', logs.logger);
+    const { app } = makeApp(db, logs.logger);
     try {
       const response = await app.inject({
         method: 'GET',
@@ -49,7 +68,7 @@ describe('请求日志', () => {
 
   it('无效请求 ID 被替换为 UUID', async () => {
     const logs = collectLogs();
-    const { app } = makeApp('active', logs.logger);
+    const { app } = makeApp(db, logs.logger);
     try {
       const response = await app.inject({
         method: 'GET',
@@ -70,7 +89,7 @@ describe('请求日志', () => {
 
   it('4xx 输出 warn 级别，且不写入密码、邮箱或 Cookie', async () => {
     const logs = collectLogs();
-    const { app } = makeApp('active', logs.logger);
+    const { app } = makeApp(db, logs.logger);
     try {
       const response = await login(app, 'operator@example.com', 'wrong-password');
       expect(response.statusCode).toBe(401);
@@ -101,7 +120,7 @@ describe('请求日志', () => {
 
   it('非业务 4xx 也带请求 ID，并记录安全的错误类型', async () => {
     const logs = collectLogs();
-    const { app } = makeApp('active', logs.logger);
+    const { app } = makeApp(db, logs.logger);
     try {
       const response = await app.inject({
         method: 'POST',
@@ -136,7 +155,7 @@ describe('请求日志', () => {
 
   it('未登录未知接口返回 401，登录后返回统一 404，且不记录查询参数和 Cookie', async () => {
     const logs = collectLogs();
-    const { app } = makeApp('active', logs.logger);
+    const { app } = makeApp(db, logs.logger);
     try {
       const anonymous = await app.inject({
         method: 'GET',
@@ -183,11 +202,13 @@ describe('请求日志', () => {
 
   it('5xx 输出 error 级别，且不写入异常正文', async () => {
     const logs = collectLogs();
-    const { app, campaignModel } = makeApp('active', logs.logger);
+    const { app } = makeApp(db, logs.logger);
     try {
       const cookie = await signedInCookie(app);
       logs.lines.length = 0;
-      campaignModel.findMany.mockRejectedValueOnce(new Error('database secret detail'));
+      vi.spyOn(db.prisma.campaign, 'count').mockRejectedValueOnce(
+        new Error('database secret detail'),
+      );
 
       const response = await app.inject({
         method: 'GET',
