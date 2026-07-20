@@ -1,0 +1,121 @@
+.group,
+.condition {
+  min-width: 0;
+}
+
+.rootGroup {
+  background: var(--ant-color-bg-container, #fff);
+}
+
+.rootTitle {
+  color: var(--ant-color-primary, #1677ff);
+}
+
+/* 嵌套层按深度交替底色，让相邻层级的边界更清楚。 */
+.nestedGroup {
+  padding: 10px 12px;
+  border: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+}
+
+.nestedTinted {
+  background: var(--ant-color-fill-quaternary, #f5f8fa);
+}
+
+.nestedPlain {
+  background: var(--ant-color-bg-container, #fff);
+}
+
+.groupHeader {
+  margin-bottom: 12px;
+}
+
+.children {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 8px 0 8px 24px;
+  border-inline-start: 2px solid var(--ant-color-border-secondary, #d9d9d9);
+}
+
+.childEntry {
+  position: relative;
+  min-width: 0;
+}
+
+.operatorConnector {
+  position: absolute;
+  font-weight: 600;
+  z-index: 1;
+  top: -25px;
+  left: -38px;
+  display: flex;
+  width: 34px;
+  height: 34px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--ant-color-border, #d9d9d9);
+  border-radius: 50%;
+  background: var(--ant-color-bg-container, #fff);
+  color: var(--ant-color-text-secondary, #8c8c8c);
+}
+
+.connectorAnd {
+  color: var(--ant-color-primary, #1677ff);
+}
+
+.connectorOr {
+  color: var(--ant-color-success, #52c41a);
+}
+
+.operatorConnector::before {
+  position: absolute;
+  left: -10px;
+  width: 10px;
+  border-top: 1px solid var(--ant-color-border, #d9d9d9);
+  content: '';
+}
+
+.groupActions {
+  margin-top: 12px;
+}
+
+.condition {
+  border-radius: 6px;
+  padding: 6px;
+}
+
+.conflictIcon {
+  flex: none;
+  color: var(--ant-color-text-secondary, #8c8c8c);
+  font-size: 18px;
+}
+
+.exclusion {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px;
+  border-inline-start: 4px solid var(--ant-color-warning, #faad14);
+  background: var(--ant-color-warning-bg, #fffbe6);
+}
+
+.exclusionTitle {
+  color: #e2780e;
+}
+
+.exclusionContents {
+  min-width: 0;
+  padding-inline-start: 16px;
+  border-inline-start: 2px solid var(--ant-color-warning, #faad14);
+}
+
+.emptyHint {
+  display: block;
+  padding: 12px 0;
+}
+
+.conflicted {
+  outline: 1px solid var(--ant-color-error, #ff4d4f);
+  background: var(--ant-color-error-bg, #fff2f0);
+}

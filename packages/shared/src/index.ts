@@ -1,5 +1,6 @@
 export * from './audience/audience-catalog.js';
 export * from './segments/segment-rule.js';
+export * from './segments/segment-comparison.js';
 export * from './segments/segment-rule-satisfiability.js';
 export * from './dto/api-error.js';
 export * from './dto/auth.js';

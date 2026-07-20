@@ -4,6 +4,7 @@ import {
   AUDIENCE_FIELDS,
   COMPARISON_OPERATORS,
   audienceField,
+  audienceValueLabel,
   type AudienceFieldKey,
 } from './audience-catalog.js';
 
@@ -71,6 +72,18 @@ describe('用户属性目录', () => {
   it('只通过字段键读取目录，未知键返回 undefined', () => {
     expect(audienceField('vipLevel')?.label).toBe('会员等级');
     expect(audienceField('unknown')).toBeUndefined();
+  });
+
+  it('把比较值转成展示文案', () => {
+    const gender = audienceField('gender');
+    const vipLevel = audienceField('vipLevel');
+
+    expect(audienceValueLabel(gender, 'female')).toBe('女');
+    expect(audienceValueLabel(vipLevel, 'gold')).toBe('黄金');
+    expect(audienceValueLabel(gender, true)).toBe('是');
+    expect(audienceValueLabel(gender, false)).toBe('否');
+    expect(audienceValueLabel(undefined, 'unknown')).toBe('unknown');
+    expect(audienceValueLabel(gender, null)).toBe('未填写');
   });
 
   it('所有字段都用 exists 判断已填写，不再声明按字段区分的未填写写法', () => {

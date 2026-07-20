@@ -1,0 +1,93 @@
+.header {
+  display: flex;
+  flex-direction: column;
+  border-bottom: 1px solid;
+}
+
+.headerRow {
+  display: flex;
+}
+
+.brand {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 20px;
+  overflow: hidden;
+  padding-left: 20px;
+  border-right: 1px solid;
+  transition:
+    width 0.2s ease,
+    padding 0.2s ease;
+}
+
+.brand[data-collapsed='true'] {
+  justify-content: center;
+  padding-inline: 8px;
+}
+
+.logo {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  place-items: center;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.logo[data-collapsed='true'] {
+  width: 48px;
+  height: 48px;
+  flex-basis: 48px;
+}
+
+.brandName {
+  overflow: visible;
+  font-size: 22px;
+  white-space: nowrap;
+}
+
+.headerMain {
+  min-width: 0;
+  flex: 1;
+  padding: 16px 32px;
+}
+
+.collapseButton {
+  width: 48px;
+  height: 48px;
+  flex: 0 0 48px;
+  border-radius: 12px;
+  background: var(--ant-color-fill-quaternary, #f5f8fa);
+  font-size: 18px;
+}
+
+.pageLocation :global(.ant-typography) {
+  font-size: 18px;
+  line-height: 1.4;
+}
+
+.account {
+  margin-inline-start: auto;
+}
+
+.accountInfo {
+  min-width: 0;
+  max-width: 240px;
+}
+
+.logoutAlert {
+  margin: 0 24px 12px;
+}
+
+.nav {
+  padding: 12px 8px 0;
+}
+
+.nav :global(.ant-menu-title-content) {
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.55);
+}

@@ -1,9 +1,10 @@
 import {
-  COMPARISON_OPERATOR_LABELS,
   audienceField,
+  audienceValueLabel,
   type AudienceField,
   type ComparisonOperator,
 } from '../audience/audience-catalog.js';
+import { getSegmentComparisonLabels } from './segment-comparison.js';
 import type { JsonScalar, SegmentRule } from './segment-rule.js';
 
 /**
@@ -549,44 +550,63 @@ function pathKey(path: SegmentRulePath): string {
 }
 
 function conflictMessage(entries: readonly ConstraintEntry[]): string {
-  if (entries.length === 0) return '这些条件互相矛盾，不可能命中任何用户';
+  if (entries.length === 0) return '这些条件互相矛盾，无法筛选出用户。请检查并修改条件。';
+
+  // 对“选中后又排除”的冲突直接说明操作含义，取值名称仍由属性目录提供。
+  if (entries.length === 2) {
+    const selected = entries.find(
+      (entry) => entry.constraint.form === 'values' && entry.constraint.allowed,
+    );
+    const excluded = entries.find(
+      (entry) => entry.constraint.form === 'values' && !entry.constraint.allowed,
+    );
+    if (selected !== undefined && excluded?.constraint.form === 'values') {
+      const values = excluded.constraint.values
+        .map((value) => audienceValueLabel(excluded.field, value))
+        .join('、');
+      const users =
+        excluded.field.key === 'cityTier'
+          ? `${values}用户`
+          : `${excluded.field.label}为${values}的用户`;
+      return `你选择了“${selected.text}”，同时又排除了${users}。这两项条件无法同时满足，请修改其中一项。`;
+    }
+  }
+
   const texts = entries.map((entry) => `「${entry.text}」`);
-  if (texts.length === 1) return `${texts[0] ?? ''}不可能成立`;
+  if (texts.length === 1)
+    return `${texts[0] ?? ''}无法满足，因此这组条件筛选不到用户。请修改该条件。`;
   const head = texts.slice(0, 2).join('与');
   return texts.length === 2
-    ? `${head}不能同时成立`
-    : `${head}等 ${texts.length} 条条件不能同时成立`;
+    ? `${head}不能同时成立，因此这组条件筛选不到用户。请修改其中一项。`
+    : `${head}等 ${texts.length} 项要求不能同时成立，因此这组条件筛选不到用户。请检查并修改这些条件。`;
 }
 
 function alwaysTrueMessage(entries: readonly ConstraintEntry[]): string {
-  if (entries.length === 0) return '这些条件在任何情况下都会成立';
+  if (entries.length === 0) return '这些条件会让所有用户通过，无法缩小筛选范围。请检查条件设置。';
   const head = entries
     .slice(0, 2)
     .map((entry) => `「${entry.text}」`)
     .join('与');
-  return `${head}互相矛盾，规则在任何情况下都会成立`;
+  return `${head}不能同时成立，所以排除满足这些条件的用户不会排除任何人。请检查排除条件。`;
 }
 
 function describeCompare(node: CompareRule, negated: boolean): string {
-  const field = audienceField(node.left.path);
-  const label = field?.label ?? node.left.path;
+  const { fieldLabel, operatorLabel, valueText } = getSegmentComparisonLabels(node);
 
   if (node.operator === 'exists') {
-    return negated ? `${label} 未填写` : `${label} 已填写`;
+    return negated ? `${fieldLabel} 未填写` : `${fieldLabel} ${operatorLabel}`;
   }
 
-  const text = `${label} ${COMPARISON_OPERATOR_LABELS[node.operator]} ${formatRight(node)}`;
-  return negated ? `不满足：${text}` : text;
-}
-
-function formatRight(node: CompareRule): string {
-  if (node.right === undefined) return '';
-  if (Array.isArray(node.right)) return node.right.map(formatScalar).join('、');
-  return formatScalar(node.right);
-}
-
-function formatScalar(value: JsonScalar): string {
-  if (value === null) return '空值';
-  if (typeof value === 'boolean') return value ? '是' : '否';
-  return String(value);
+  const multiple = Array.isArray(node.right) && node.right.length > 1;
+  let text: string;
+  if (node.operator === 'in') {
+    text = `${fieldLabel}为${valueText}${multiple ? '中的一种' : ''}`;
+  } else if (node.operator === 'not_in') {
+    text = multiple
+      ? `${fieldLabel}不属于${valueText}中的任何一种`
+      : `${fieldLabel}不为${valueText}`;
+  } else {
+    text = `${fieldLabel} ${operatorLabel} ${valueText}`;
+  }
+  return negated ? `排除${text}的用户` : text;
 }

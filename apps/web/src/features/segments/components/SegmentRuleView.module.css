@@ -1,0 +1,65 @@
+.tree {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.group {
+  min-width: 0;
+}
+
+.groupHeading {
+  display: block;
+  font-size: 16px;
+}
+
+.children {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 12px;
+  margin: 10px 0 0 8px;
+  padding-inline-start: 22px;
+  border-inline-start: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+}
+
+.condition {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(120px, 1fr) minmax(90px, 0.65fr) minmax(120px, 1fr);
+  gap: 12px;
+  align-items: start;
+  padding: 2px 0;
+}
+
+.condition > :last-child {
+  overflow-wrap: anywhere;
+}
+
+.exclusion {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 10px;
+  padding-inline-start: 14px;
+  border-inline-start: 2px solid var(--ant-color-warning, #faad14);
+}
+
+.exclusionHeading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: baseline;
+}
+
+.exclusionLabel {
+  color: var(--ant-color-error, #ff4d4f);
+}
+
+@media (max-width: 640px) {
+  .condition {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+}

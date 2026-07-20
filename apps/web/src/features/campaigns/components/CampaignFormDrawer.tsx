@@ -96,6 +96,8 @@ export function CampaignFormDrawer({
       content: '已填写的内容不会保存。',
       okText: editing ? '放弃修改' : '放弃填写',
       cancelText: '继续填写',
+      okButtonProps: { danger: true },
+      focusable: { autoFocusButton: 'cancel' },
       onOk: () => {
         discardConfirmed = true;
         close();
@@ -123,7 +125,6 @@ export function CampaignFormDrawer({
       open={open}
       size="large"
       closable={{ disabled: submitting, 'aria-label': '关闭' }}
-      mask={{ closable: !submitting }}
       keyboard={!submitting}
       focusable={{ focusTriggerAfterClose: false }}
       onClose={requestClose}

@@ -4,5 +4,11 @@ import type { ThemeConfig } from 'antd';
 export const theme: ThemeConfig = {
   components: {
     Badge: { statusSize: 7 },
+    Menu: {
+      fontSize: 16,
+      iconSize: 20,
+      iconMarginInlineEnd: 12,
+      collapsedIconSize: 20,
+    },
   },
 };

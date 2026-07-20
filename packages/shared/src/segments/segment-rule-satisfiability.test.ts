@@ -90,6 +90,32 @@ describe('分群规则矛盾分析：能够确定的不可能命中', () => {
     );
     expect(result.rootUnsatisfiable).toBe(true);
     expect(result.findings[0]?.message).toContain('城市层级');
+    expect(result.findings[0]?.message).toContain('一线城市、二线城市');
+    expect(result.findings[0]?.message).not.toMatch(/tier[12]/);
+  });
+
+  it.each([
+    ['排除组', not(all(compare('cityTier', 'in', ['tier2'])))],
+    ['不属于', compare('cityTier', 'not_in', ['tier2'])],
+  ] as const)('%s用运营能理解的完整句子说明选中后又排除的冲突', (_source, exclusion) => {
+    const result = analyzeSegmentRuleSatisfiability(
+      all(compare('cityTier', 'in', ['tier2']), exclusion),
+    );
+
+    expect(result.rootUnsatisfiable).toBe(true);
+    expect(result.findings[0]?.message).toBe(
+      '你选择了“城市层级为二线城市”，同时又排除了二线城市用户。这两项条件无法同时满足，请修改其中一项。',
+    );
+  });
+
+  it('会员等级的冲突使用中文选项名称，不输出内部编码', () => {
+    const result = analyzeSegmentRuleSatisfiability(
+      all(compare('vipLevel', 'in', ['gold']), not(compare('vipLevel', 'in', ['gold']))),
+    );
+
+    expect(result.findings[0]?.message).toBe(
+      '你选择了“会员等级为黄金”，同时又排除了会员等级为黄金的用户。这两项条件无法同时满足，请修改其中一项。',
+    );
   });
 
   it('布尔条件互斥', () => {
@@ -159,7 +185,7 @@ describe('分群规则矛盾分析：能够确定的不可能命中', () => {
     expect(result.rootUnsatisfiable).toBe(false);
     expect(result.rootAlwaysTrue).toBe(true);
     expect(result.findings[0]?.kind).toBe('always-true');
-    expect(result.findings[0]?.message).toContain('在任何情况下都会成立');
+    expect(result.findings[0]?.message).toContain('不会排除任何人');
   });
 
   it('所有子组恒真时只提示整个且组，保留各子组参与条件的位置', () => {
@@ -183,7 +209,8 @@ describe('分群规则矛盾分析：能够确定的不可能命中', () => {
             ['children', 1, 'child', 'children', 0],
             ['children', 1, 'child', 'children', 1],
           ],
-          message: '「年龄 大于 100」与「年龄 小于 10」互相矛盾，规则在任何情况下都会成立',
+          message:
+            '「年龄 大于 100」与「年龄 小于 10」不能同时成立，所以排除满足这些条件的用户不会排除任何人。请检查排除条件。',
         },
       ],
     });
@@ -209,7 +236,8 @@ describe('分群规则矛盾分析：能够确定的不可能命中', () => {
             ['children', 1, 'child', 'children', 0],
             ['children', 1, 'child', 'children', 1],
           ],
-          message: '「短信订阅 等于 是」与「短信订阅 等于 否」互相矛盾，规则在任何情况下都会成立',
+          message:
+            '「短信订阅 等于 是」与「短信订阅 等于 否」不能同时成立，所以排除满足这些条件的用户不会排除任何人。请检查排除条件。',
         },
       ],
     });

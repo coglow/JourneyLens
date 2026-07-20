@@ -15,6 +15,20 @@ const compare = {
 } as const;
 
 describe('分群请求响应契约', () => {
+  it.each([
+    ['创建', (rules: unknown) => segmentCreateSchema.safeParse({ name: '六层条件', rules })],
+    ['修改', (rules: unknown) => segmentUpdateSchema.safeParse({ revision: 1, rules })],
+    ['预估', (rules: unknown) => segmentPreviewRequestSchema.safeParse({ rules })],
+  ] as const)('%s接受六层规则并拒绝七层规则', (_action, parse) => {
+    let rules: unknown = compare;
+    for (let level = 1; level < 6; level += 1) {
+      rules = { kind: 'all', children: [rules] };
+    }
+
+    expect(parse(rules).success).toBe(true);
+    expect(parse({ kind: 'all', children: [rules] }).success).toBe(false);
+  });
+
   it('创建时规范化名称和说明并拒绝多余字段', () => {
     const parsed = segmentCreateSchema.parse({
       name: '  高价值会员  ',

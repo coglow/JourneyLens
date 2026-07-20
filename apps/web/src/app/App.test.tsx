@@ -103,10 +103,10 @@ describe('登录与会话路由', () => {
     submitCredentials();
     expect(await screen.findByText('JourneyLens 管理员')).toBeTruthy();
     expect(router.state.location.pathname).toBe('/campaigns');
-    expect(screen.getByText('operator@example.com')).toBeTruthy();
     expect(screen.getByRole('banner').textContent).toContain('JourneyLens');
     expect(screen.getByRole('menuitem', { name: '活动' })).toBeTruthy();
-    expect(screen.getAllByRole('menuitem')).toHaveLength(1);
+    expect(screen.getByRole('menuitem', { name: '分群' })).toBeTruthy();
+    expect(screen.getAllByRole('menuitem')).toHaveLength(2);
     expect(await screen.findByText('暂无活动')).toBeTruthy();
     expect(mock.history.get.map((request) => request.url)).toContain('/campaigns');
     expect(mock.history.post[0]?.url).toBe('/auth/login');
@@ -129,6 +129,24 @@ describe('登录与会话路由', () => {
 
     expect(await screen.findByText('JourneyLens 管理员')).toBeTruthy();
     expect(router.state.location.pathname).toBe('/campaigns');
+  });
+
+  it('工作台顶部显示当前菜单路径并可折叠侧栏', async () => {
+    mock.onGet('/userinfo').replyOnce(200, { data: account });
+    mock.onGet('/segments').replyOnce(200, {
+      data: [],
+      page: { page: 1, pageSize: 10, total: 0 },
+    });
+    renderApp('/segments');
+
+    const breadcrumb = await screen.findByRole('navigation', { name: '当前位置' });
+    expect(breadcrumb.textContent).toContain('运营工作台');
+    expect(breadcrumb.textContent).toContain('分群');
+
+    fireEvent.click(screen.getByRole('button', { name: '折叠侧栏' }));
+    expect(screen.getByRole('button', { name: '展开侧栏' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '展开侧栏' }));
+    expect(screen.getByRole('button', { name: '折叠侧栏' })).toBeTruthy();
   });
 
   it('错误密码展示服务端的实际错误', async () => {

@@ -9,7 +9,7 @@ import {
 } from '../audience/audience-catalog.js';
 
 export const SEGMENT_CHILDREN_LIMIT = 20;
-export const SEGMENT_MAX_DEPTH = 8;
+export const SEGMENT_MAX_DEPTH = 6;
 export const SEGMENT_MAX_NODES = 100;
 
 export const comparisonOperatorSchema = z.enum(COMPARISON_OPERATORS);

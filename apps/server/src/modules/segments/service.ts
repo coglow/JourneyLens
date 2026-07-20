@@ -131,7 +131,7 @@ function assertRulesSatisfiable(rules: SegmentRule): void {
   throw new ApiError(
     400,
     'SEGMENT_RULE_UNSATISFIABLE',
-    (reason ?? '分群规则中的条件互相矛盾，不可能命中任何用户').slice(0, 400),
+    (reason ?? '分群条件互相矛盾，无法筛选出用户。请修改冲突的条件。').slice(0, 400),
   );
 }
 

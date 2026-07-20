@@ -15,7 +15,7 @@ export function PageHeader({ title, back, actions }: PageHeaderProps) {
       <Flex vertical gap={12}>
         {back !== undefined && (
           <div>
-            <ArrowLeftOutlined style={{ color: '#1677FF' }} /> {back}
+            <ArrowLeftOutlined style={{ color: 'var(--ant-color-primary, #1677ff)' }} /> {back}
           </div>
         )}
         <Flex justify="space-between" align="flex-start" gap={16} wrap>

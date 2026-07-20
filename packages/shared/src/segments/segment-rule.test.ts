@@ -26,7 +26,7 @@ function wideRule(compareCountPerGroup: number): unknown {
   };
 }
 
-// 远超 8 层限制：修复前这些字段会在联合分支中被递归解析并导致栈溢出。
+// 远超层数限制：修复前这些字段会在联合分支中被递归解析并导致栈溢出。
 const UNBOUNDED_DEPTH = 20_000;
 
 function deepNotChain(levels: number): unknown {
@@ -103,10 +103,10 @@ describe('分群规则契约', () => {
     }
   });
 
-  it('根节点计为第 1 层，第 8 层允许、第 9 层拒绝', () => {
-    expect(segmentRuleSchema.safeParse(nested(SEGMENT_MAX_DEPTH)).success).toBe(true);
+  it('根节点计为第 1 层，第 6 层允许、第 7 层拒绝', () => {
+    expect(segmentRuleSchema.safeParse(nested(6)).success).toBe(true);
 
-    const tooDeep = segmentRuleSchema.safeParse(nested(SEGMENT_MAX_DEPTH + 1));
+    const tooDeep = segmentRuleSchema.safeParse(nested(7));
     expect(tooDeep.success).toBe(false);
     expect(tooDeep.error?.issues[0]?.message).toBe(`分群规则最多嵌套 ${SEGMENT_MAX_DEPTH} 层`);
   });

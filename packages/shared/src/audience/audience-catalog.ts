@@ -347,6 +347,16 @@ export function audienceField(key: string): AudienceField | undefined {
   return AUDIENCE_FIELD_BY_KEY.get(key);
 }
 
+/** 把规则比较值转成展示文案：布尔用“是／否”，枚举取目录中的文案。 */
+export function audienceValueLabel(
+  field: AudienceField | undefined,
+  value: string | number | boolean | null,
+): string {
+  if (value === null) return '未填写';
+  if (typeof value === 'boolean') return value ? '是' : '否';
+  return field?.values?.find((option) => option.value === value)?.label ?? String(value);
+}
+
 export type AudienceAttributeValue = string | number | boolean | string[];
 
 export type AudienceAttributes = Partial<Record<AudienceAttributeKey, AudienceAttributeValue>>;
