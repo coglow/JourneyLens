@@ -36,6 +36,18 @@ export const paginationQuerySchema = z
   .object({ page: pageQuerySchema, pageSize: pageSizeQuerySchema })
   .strict();
 
+/** 前后端共用分页字段的提示；搜索词和筛选条件的错误由各调用方补充。 */
+export function getPaginationErrorMessages(issues: readonly { path: PropertyKey[] }[]): string[] {
+  const messages: string[] = [];
+  if (issues.some((issue) => issue.path[0] === 'page')) {
+    messages.push('页码必须是正整数');
+  }
+  if (issues.some((issue) => issue.path[0] === 'pageSize')) {
+    messages.push('每页条数只能选择 10、20 或 50 条');
+  }
+  return messages;
+}
+
 export const pageMetadataSchema = z
   .object({
     page: z.number().int().min(1),
@@ -50,3 +62,5 @@ export function paginatedListSchema<TItem extends z.ZodType>(itemSchema: TItem) 
 
 export type PageMetadata = z.infer<typeof pageMetadataSchema>;
 export type PaginatedList<TItem> = { data: TItem[]; page: PageMetadata };
+export type PaginationQuery = z.infer<typeof paginationQuerySchema>;
+export type PaginationQueryInput = z.input<typeof paginationQuerySchema>;

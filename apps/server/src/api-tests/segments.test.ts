@@ -19,7 +19,7 @@ beforeEach(async () => {
 });
 
 afterAll(async () => {
-  await db.close();
+  await db?.close();
 });
 
 afterEach(() => {
@@ -533,6 +533,130 @@ describe('分群 API', () => {
     }
   });
 
+  it('引用列表返回旅程和所属活动，分群不存在时返回不存在', async () => {
+    const campaignId = '00000000-0000-4000-8200-000000000501';
+    await db.prisma.campaign.create({
+      data: {
+        id: campaignId,
+        name: '引用活动',
+        status: 'scheduled',
+        createdById: testAccountId,
+      },
+    });
+    await seedSegments(1);
+    const segmentId = '00000000-0000-4000-8001-000000000001';
+    await db.prisma.journey.createMany({
+      data: [
+        {
+          id: '00000000-0000-4000-8202-000000000501',
+          campaignId,
+          segmentId,
+          name: '引用旅程一',
+          createdById: testAccountId,
+          updatedById: testAccountId,
+          createdAt: testNow,
+          updatedAt: new Date(testNow.getTime() + 1000),
+        },
+        {
+          id: '00000000-0000-4000-8202-000000000502',
+          campaignId,
+          segmentId,
+          name: '引用旅程二',
+          createdById: testAccountId,
+          updatedById: testAccountId,
+          createdAt: testNow,
+          updatedAt: new Date(testNow.getTime() + 2000),
+        },
+      ],
+    });
+
+    const { app } = makeApp(db);
+    try {
+      const cookie = await signedInCookie(app);
+      const usages = await app.inject({
+        method: 'GET',
+        url: `/api/segments/${segmentId}/usages`,
+        headers: { cookie },
+      });
+      expect(usages.statusCode).toBe(200);
+      expect(usages.json().page).toEqual({ page: 1, pageSize: 10, total: 2 });
+      expect(usages.json().data).toEqual([
+        {
+          journey: { id: '00000000-0000-4000-8202-000000000502', name: '引用旅程二' },
+          campaign: { id: campaignId, name: '引用活动', status: 'scheduled' },
+          updatedAt: new Date(testNow.getTime() + 2000).toISOString(),
+        },
+        {
+          journey: { id: '00000000-0000-4000-8202-000000000501', name: '引用旅程一' },
+          campaign: { id: campaignId, name: '引用活动', status: 'scheduled' },
+          updatedAt: new Date(testNow.getTime() + 1000).toISOString(),
+        },
+      ]);
+
+      // 详情和列表都要给出引用数量，页面才能在确认删除前禁用按钮。
+      const detail = await app.inject({
+        method: 'GET',
+        url: `/api/segments/${segmentId}`,
+        headers: { cookie },
+      });
+      expect(detail.json().data.journeyCount).toBe(2);
+
+      const listed = await app.inject({
+        method: 'GET',
+        url: '/api/segments',
+        headers: { cookie },
+      });
+      expect(listed.json().data[0].journeyCount).toBe(2);
+
+      const empty = await app.inject({
+        method: 'GET',
+        url: '/api/segments/00000000-0000-4000-8001-000000000099/usages',
+        headers: { cookie },
+      });
+      expect(empty.statusCode).toBe(404);
+      expect(empty.json().error.message).toBe('分群不存在');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('被旅程引用时不能删除分群，解除引用后可以删除', async () => {
+    await seedSegments(1);
+    const segmentId = '00000000-0000-4000-8001-000000000001';
+    const campaignId = '00000000-0000-4000-8200-000000000502';
+    await db.prisma.campaign.create({
+      data: { id: campaignId, name: '引用保护活动', createdById: testAccountId },
+    });
+    const journey = await db.prisma.journey.create({
+      data: {
+        campaignId,
+        segmentId,
+        name: '引用旅程',
+        createdById: testAccountId,
+        updatedById: testAccountId,
+      },
+    });
+
+    const { app } = makeApp(db);
+    try {
+      const cookie = await signedInCookie(app);
+      const blocked = await deleteSegment(app, cookie, segmentId);
+      expect(blocked.statusCode).toBe(409);
+      expect(blocked.json().error).toMatchObject({
+        code: 'SEGMENT_IN_USE',
+        message: '分群正在被旅程使用，请先更换或解除关联',
+      });
+      expect(await db.prisma.segment.count({ where: { id: segmentId } })).toBe(1);
+      expect(await db.prisma.journey.count({ where: { id: journey.id } })).toBe(1);
+
+      await db.prisma.journey.update({ where: { id: journey.id }, data: { segmentId: null } });
+      expect((await deleteSegment(app, cookie, segmentId)).statusCode).toBe(204);
+      expect(await db.prisma.segment.count({ where: { id: segmentId } })).toBe(0);
+    } finally {
+      await app.close();
+    }
+  });
+
   it('手动计算人数返回总数、命中数和计算时间，不写入业务数据也不泄露受众资料', async () => {
     await seedAudience([
       {
@@ -956,7 +1080,9 @@ describe('分群 API', () => {
       expect(listed.json().data[0].audienceEstimate).toBeNull();
       expect(Object.keys(listed.json().data[0]).sort()).toEqual([
         'audienceEstimate',
+        'description',
         'id',
+        'journeyCount',
         'name',
         'rules',
         'updatedAt',

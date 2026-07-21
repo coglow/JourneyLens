@@ -5,6 +5,7 @@ import {
   segmentListQuerySchema,
   segmentPreviewRequestSchema,
   segmentUpdateSchema,
+  segmentUsageListResponseSchema,
 } from './segment.js';
 
 const compare = {
@@ -120,5 +121,38 @@ describe('分群请求响应契约', () => {
     expect(segmentAudienceEstimateSchema.safeParse({ ...estimate, extra: true }).success).toBe(
       false,
     );
+  });
+
+  it('分群引用列表返回旅程、所属活动和分页信息', () => {
+    const usage = {
+      journey: {
+        id: '00000000-0000-4000-8000-000000000011',
+        name: '新客欢迎旅程',
+      },
+      campaign: {
+        id: '00000000-0000-4000-8000-000000000012',
+        name: '春季活动',
+        status: 'draft',
+      },
+      updatedAt: '2026-07-19T08:00:00.000Z',
+    };
+    const response = {
+      data: [usage],
+      page: { page: 1, pageSize: 10, total: 1 },
+    };
+
+    expect(segmentUsageListResponseSchema.safeParse(response).success).toBe(true);
+    expect(
+      segmentUsageListResponseSchema.safeParse({
+        ...response,
+        data: [{ ...usage, rules: compare }],
+      }).success,
+    ).toBe(false);
+    expect(
+      segmentUsageListResponseSchema.safeParse({
+        ...response,
+        data: [{ ...usage, campaign: { ...usage.campaign, status: '未知' } }],
+      }).success,
+    ).toBe(false);
   });
 });

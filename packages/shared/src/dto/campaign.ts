@@ -63,30 +63,46 @@ export const campaignListQuerySchema = z
   })
   .strict();
 
-export const campaignSummarySchema = z
+const campaignDescriptionSchema = z.string().min(1).max(4000).nullable();
+
+const campaignAccountRefSchema = z
+  .object({
+    id: z.uuid(),
+    displayName: z.string().min(1).max(120),
+  })
+  .strict();
+
+// 旅程详情和分群引用列表共用的活动引用，统一由活动模块定义。
+export const campaignRefSchema = z
   .object({
     id: z.uuid(),
     name: z.string().min(1).max(180),
     status: campaignStatusSchema,
-    updatedAt: z.iso.datetime(),
   })
   .strict();
 
-export const campaignDetailSchema = campaignSummarySchema
+const campaignBaseSchema = campaignRefSchema.extend({ updatedAt: z.iso.datetime() }).strict();
+
+// 列表直接带说明、预算和创建人，页面按列展示时无需为每行再读详情。
+const campaignListItemSchema = campaignBaseSchema
   .extend({
-    description: z.string().min(1).max(4000).nullable(),
+    description: campaignDescriptionSchema,
+    budget: campaignBudgetSchema.nullable(),
+    createdBy: campaignAccountRefSchema,
+    journeyCount: z.number().int().nonnegative(),
+  })
+  .strict();
+
+export const campaignDetailSchema = campaignBaseSchema
+  .extend({
+    description: campaignDescriptionSchema,
     budget: campaignBudgetSchema.nullable(),
     createdAt: z.iso.datetime(),
-    createdBy: z
-      .object({
-        id: z.uuid(),
-        displayName: z.string().min(1).max(120),
-      })
-      .strict(),
+    createdBy: campaignAccountRefSchema,
   })
   .strict();
 
-export const campaignListResponseSchema = paginatedListSchema(campaignSummarySchema);
+export const campaignListResponseSchema = paginatedListSchema(campaignListItemSchema);
 
 export const campaignDetailResponseSchema = z.object({ data: campaignDetailSchema }).strict();
 
@@ -98,5 +114,5 @@ export type CampaignUpdate = z.output<typeof campaignUpdateSchema>;
 export type CampaignUpdateInput = z.input<typeof campaignUpdateSchema>;
 export type CampaignListQuery = z.output<typeof campaignListQuerySchema>;
 export type CampaignListQueryInput = z.input<typeof campaignListQuerySchema>;
-export type CampaignSummary = z.infer<typeof campaignSummarySchema>;
+export type CampaignListItem = z.infer<typeof campaignListItemSchema>;
 export type CampaignDetail = z.infer<typeof campaignDetailSchema>;

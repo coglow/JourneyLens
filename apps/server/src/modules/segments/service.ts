@@ -7,6 +7,7 @@ import {
   type SegmentDetail,
   type SegmentListItem,
   type SegmentListQuery,
+  type PaginationQuery,
   type SegmentPreview,
   type SegmentRefreshPreview,
   type SegmentRule,
@@ -33,15 +34,18 @@ const segmentDetailSelect = {
   createdBy: { select: { id: true, displayName: true } },
   updatedBy: { select: { id: true, displayName: true } },
   previewSnapshot: { select: estimateSelect },
+  _count: { select: { journeys: true } },
 } as const;
 
 const segmentListItemSelect = {
   id: true,
   name: true,
+  description: true,
   rules: true,
   revision: true,
   updatedAt: true,
   previewSnapshot: { select: estimateSelect },
+  _count: { select: { journeys: true } },
 } as const;
 
 type SegmentDetailRecord = Prisma.SegmentGetPayload<{ select: typeof segmentDetailSelect }>;
@@ -74,9 +78,10 @@ function serializeEstimate(
 }
 
 function serializeDetail(record: SegmentDetailRecord): SegmentDetail {
-  const { previewSnapshot, ...detail } = record;
+  const { previewSnapshot, _count, ...detail } = record;
   return {
     ...detail,
+    journeyCount: _count.journeys,
     rules: rulesFromJson(record.rules),
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),
@@ -85,9 +90,10 @@ function serializeDetail(record: SegmentDetailRecord): SegmentDetail {
 }
 
 function serializeListItem(record: SegmentListItemRecord): SegmentListItem {
-  const { previewSnapshot, revision, ...item } = record;
+  const { previewSnapshot, revision, _count, ...item } = record;
   return {
     ...item,
+    journeyCount: _count.journeys,
     rules: rulesFromJson(record.rules),
     updatedAt: record.updatedAt.toISOString(),
     audienceEstimate: serializeEstimate(previewSnapshot, revision),
@@ -235,8 +241,53 @@ export class SegmentService {
   }
 
   async delete(id: string): Promise<boolean> {
-    const result = await this.prisma.segment.deleteMany({ where: { id } });
-    return result.count > 0;
+    try {
+      const result = await this.prisma.segment.deleteMany({ where: { id } });
+      return result.count > 0;
+    } catch (error) {
+      // journeys.segment_id 使用 RESTRICT：仍有旅程引用时由数据库阻止删除，这里转换成明确提示。
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003') {
+        throw new ApiError(409, 'SEGMENT_IN_USE', '分群正在被旅程使用，请先更换或解除关联');
+      }
+      throw error;
+    }
+  }
+
+  /** 分群引用列表：展示引用该分群的旅程，供删除前确认影响范围。 */
+  async usages(segmentId: string, input: PaginationQuery) {
+    // 分群不存在时明确反馈，不返回看似正常的空列表。
+    const segment = await this.prisma.segment.findUnique({
+      where: { id: segmentId },
+      select: { id: true },
+    });
+    if (segment === null) throw new ApiError(404, 'NOT_FOUND', '分群不存在');
+
+    const where: Prisma.JourneyWhereInput = { segmentId };
+    const total = await this.prisma.journey.count({ where });
+    // 删除或筛选后页码可能越界，直接落到最后一个有效页；空数据时回到第 1 页。
+    const lastPage = Math.max(1, Math.ceil(total / input.pageSize));
+    const page = Math.min(input.page, lastPage);
+    const records = await this.prisma.journey.findMany({
+      where,
+      skip: (page - 1) * input.pageSize,
+      take: input.pageSize,
+      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+      select: {
+        id: true,
+        name: true,
+        updatedAt: true,
+        campaign: { select: { id: true, name: true, status: true } },
+      },
+    });
+
+    return {
+      data: records.map((record) => ({
+        journey: { id: record.id, name: record.name },
+        campaign: record.campaign,
+        updatedAt: record.updatedAt.toISOString(),
+      })),
+      page: { page, pageSize: input.pageSize, total },
+    };
   }
 
   /** 试算只返回人数，不写库； */

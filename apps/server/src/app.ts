@@ -6,6 +6,7 @@ import { AuthService } from './modules/auth/auth-service.js';
 import { registerAuthRoutes } from './modules/auth/routes.js';
 import { registerSessionGuard } from './modules/auth/session-plugin.js';
 import { registerCampaignRoutes } from './modules/campaigns/routes.js';
+import { registerJourneyRoutes } from './modules/journeys/routes.js';
 import { registerSegmentRoutes } from './modules/segments/routes.js';
 import { createPrismaClient } from './db/client.js';
 import { ApiError } from './errors.js';
@@ -97,6 +98,7 @@ export function buildApp(options: BuildAppOptions = {}) {
   registerAuthRoutes(app, { service, now: options.now });
   registerCampaignRoutes(app, prisma);
   registerSegmentRoutes(app, prisma, options.now);
+  registerJourneyRoutes(app, prisma);
 
   app.get('/health/live', async () => ({ status: 'ok' as const }));
 

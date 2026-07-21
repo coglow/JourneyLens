@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import { segmentRuleSchema } from '../segments/segment-rule.js';
+import { campaignRefSchema } from './campaign.js';
+import { JOURNEY_NAME_MAX_LENGTH } from './journey.js';
 import { paginatedListSchema, paginationQuerySchema } from './pagination.js';
 
 export const SEGMENT_NAME_MAX_LENGTH = 160;
@@ -83,13 +85,16 @@ export const segmentAudienceEstimateSchema = z
   .refine((value) => value.matched <= value.total, '命中人数不能超过受众总数');
 
 // 列表返回完整规则而不是服务端摘要，前端用同一份规则生成摘要和编辑视图。
+// journeyCount 用于在删除前判断是否仍被旅程引用，避免用户确认后才收到删除失败。
 export const segmentListItemSchema = z
   .object({
     id: z.uuid(),
     name: z.string().min(1).max(SEGMENT_NAME_MAX_LENGTH),
+    description: z.string().max(SEGMENT_DESCRIPTION_MAX_LENGTH).nullable(),
     rules: segmentRuleSchema,
     updatedAt: z.iso.datetime(),
     audienceEstimate: segmentAudienceEstimateSchema.nullable(),
+    journeyCount: z.number().int().nonnegative(),
   })
   .strict();
 
@@ -112,11 +117,28 @@ export const segmentDetailSchema = z
     createdBy: segmentAccountRefSchema,
     updatedBy: segmentAccountRefSchema,
     audienceEstimate: segmentAudienceEstimateSchema.nullable(),
+    journeyCount: z.number().int().nonnegative(),
   })
   .strict();
 
 export const segmentListResponseSchema = paginatedListSchema(segmentListItemSchema);
 export const segmentDetailResponseSchema = z.object({ data: segmentDetailSchema }).strict();
+
+// 引用列表用于删除分群前确认影响范围：只显示旅程与所属活动，不复制分群规则。
+export const segmentUsageItemSchema = z
+  .object({
+    journey: z
+      .object({
+        id: z.uuid(),
+        name: z.string().min(1).max(JOURNEY_NAME_MAX_LENGTH),
+      })
+      .strict(),
+    campaign: campaignRefSchema,
+    updatedAt: z.iso.datetime(),
+  })
+  .strict();
+
+export const segmentUsageListResponseSchema = paginatedListSchema(segmentUsageItemSchema);
 
 // 人数计算有两种互斥输入：未保存的规则只试算，已保存分群按当前修订号明确刷新。
 export const segmentRulesPreviewRequestSchema = z.object({ rules: segmentRuleSchema }).strict();
@@ -164,6 +186,7 @@ export type SegmentListQuery = z.output<typeof segmentListQuerySchema>;
 export type SegmentListQueryInput = z.input<typeof segmentListQuerySchema>;
 export type SegmentListItem = z.infer<typeof segmentListItemSchema>;
 export type SegmentDetail = z.infer<typeof segmentDetailSchema>;
+export type SegmentUsageItem = z.infer<typeof segmentUsageItemSchema>;
 export type SegmentAudienceEstimate = z.infer<typeof segmentAudienceEstimateSchema>;
 export type SegmentPreview = z.infer<typeof segmentPreviewSchema>;
 export type SegmentRefreshPreview = z.infer<typeof segmentRefreshPreviewSchema>;

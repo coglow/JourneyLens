@@ -1,6 +1,8 @@
 import type { PrismaClient } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
 import {
+  getPaginationErrorMessages,
+  paginationQuerySchema,
   segmentCreateSchema,
   segmentIdParamsSchema,
   segmentListQuerySchema,
@@ -20,13 +22,7 @@ export function registerSegmentRoutes(
   app.get('/api/segments', async (request) => {
     const query = segmentListQuerySchema.safeParse(request.query);
     if (!query.success) {
-      const messages: string[] = [];
-      if (query.error.issues.some((issue) => issue.path[0] === 'page')) {
-        messages.push('页码必须是正整数');
-      }
-      if (query.error.issues.some((issue) => issue.path[0] === 'pageSize')) {
-        messages.push('每页条数只能选择 10、20 或 50 条');
-      }
+      const messages = getPaginationErrorMessages(query.error.issues);
       if (query.error.issues.some((issue) => issue.path[0] === 'q')) {
         messages.push('搜索词最多 100 个字符');
       }
@@ -37,6 +33,22 @@ export function registerSegmentRoutes(
       );
     }
     return service.list(query.data);
+  });
+
+  app.get('/api/segments/:id/usages', async (request) => {
+    const params = segmentIdParamsSchema.safeParse(request.params);
+    if (!params.success) throw new ApiError(400, 'BAD_REQUEST', '分群链接无效');
+
+    const query = paginationQuerySchema.safeParse(request.query);
+    if (!query.success) {
+      const messages = getPaginationErrorMessages(query.error.issues);
+      throw new ApiError(
+        400,
+        'BAD_REQUEST',
+        messages.length > 0 ? messages.join('；') : '请检查分页条件',
+      );
+    }
+    return service.usages(params.data.id, query.data);
   });
 
   app.post('/api/segments/preview', async (request) => {

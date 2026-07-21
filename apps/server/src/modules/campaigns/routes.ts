@@ -5,6 +5,7 @@ import {
   campaignIdParamsSchema,
   campaignListQuerySchema,
   campaignUpdateSchema,
+  getPaginationErrorMessages,
 } from '@journeylens/shared';
 import { ApiError } from '../../errors.js';
 import { CampaignService } from './service.js';
@@ -15,13 +16,7 @@ export function registerCampaignRoutes(app: FastifyInstance, prisma: PrismaClien
   app.get('/api/campaigns', async (request) => {
     const query = campaignListQuerySchema.safeParse(request.query);
     if (!query.success) {
-      const messages: string[] = [];
-      if (query.error.issues.some((issue) => issue.path[0] === 'page')) {
-        messages.push('页码必须是正整数');
-      }
-      if (query.error.issues.some((issue) => issue.path[0] === 'pageSize')) {
-        messages.push('每页条数只能选择 10、20 或 50 条');
-      }
+      const messages = getPaginationErrorMessages(query.error.issues);
       throw new ApiError(
         400,
         'BAD_REQUEST',

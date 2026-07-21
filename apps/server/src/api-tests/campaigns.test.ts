@@ -18,7 +18,7 @@ beforeEach(async () => {
 });
 
 afterAll(async () => {
-  await db.close();
+  await db?.close();
 });
 
 afterEach(() => {
@@ -107,7 +107,17 @@ describe('活动 API', () => {
       });
       expect(listed.statusCode).toBe(200);
       expect(listed.json()).toMatchObject({
-        data: [{ id, name: '春季活动', status: 'draft' }],
+        data: [
+          {
+            id,
+            name: '春季活动',
+            description: '说明',
+            budget: { amount: '125.30' },
+            status: 'draft',
+            createdBy: { id: testAccountId, displayName: '测试运营账号' },
+            journeyCount: 0,
+          },
+        ],
         page: { page: 1, pageSize: 10, total: 1 },
       });
 
@@ -529,6 +539,49 @@ describe('活动 API', () => {
         data: { status: 'scheduled' },
       });
       expect((await deleteCampaign(app, cookie, scheduledId)).statusCode).toBe(404);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('存在旅程时拒绝删除草稿活动，删除旅程后可以删除', async () => {
+    const { app } = makeApp(db);
+    try {
+      const cookie = await signedInCookie(app);
+      const created = await postCampaign(app, cookie, { name: '含旅程活动' });
+      const campaignId = created.json().data.id as string;
+      const emptyCampaign = await postCampaign(app, cookie, { name: '无旅程活动' });
+      const emptyCampaignId = emptyCampaign.json().data.id as string;
+      const journey = await db.prisma.journey.create({
+        data: {
+          campaignId,
+          name: '关联旅程',
+          createdById: testAccountId,
+          updatedById: testAccountId,
+        },
+      });
+
+      const listed = await app.inject({
+        method: 'GET',
+        url: '/api/campaigns?pageSize=20',
+        headers: { cookie },
+      });
+      const listItems = listed.json().data as Array<{ id: string; journeyCount: number }>;
+      expect(listItems.find((item) => item.id === campaignId)?.journeyCount).toBe(1);
+      expect(listItems.find((item) => item.id === emptyCampaignId)?.journeyCount).toBe(0);
+
+      const blocked = await deleteCampaign(app, cookie, campaignId);
+      expect(blocked.statusCode).toBe(409);
+      expect(blocked.json().error).toMatchObject({
+        code: 'CAMPAIGN_HAS_JOURNEYS',
+        message: '活动中还有旅程，请先删除旅程',
+      });
+      expect(await db.prisma.campaign.count({ where: { id: campaignId } })).toBe(1);
+      expect(await db.prisma.journey.count({ where: { id: journey.id } })).toBe(1);
+
+      await db.prisma.journey.delete({ where: { id: journey.id } });
+      expect((await deleteCampaign(app, cookie, campaignId)).statusCode).toBe(204);
+      expect(await db.prisma.campaign.count({ where: { id: campaignId } })).toBe(0);
     } finally {
       await app.close();
     }

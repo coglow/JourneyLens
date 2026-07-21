@@ -34,6 +34,8 @@ model OperatorAccount {
   campaigns       Campaign[]
   segmentsCreated Segment[]     @relation("SegmentCreatedBy")
   segmentsUpdated Segment[]     @relation("SegmentUpdatedBy")
+  journeysCreated Journey[]     @relation("JourneyCreatedBy")
+  journeysUpdated Journey[]     @relation("JourneyUpdatedBy")
 
   @@map("operator_accounts")
 }
@@ -61,6 +63,7 @@ model Campaign {
   createdById String          @map("created_by") @db.Uuid
   createdAt   DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt   DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  journeys    Journey[]
 
   @@index([createdAt(sort: Desc), id(sort: Desc)])
   @@map("campaigns")
@@ -93,6 +96,7 @@ model Segment {
   createdAt   DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt   DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   previewSnapshot SegmentPreviewSnapshot?
+  journeys        Journey[]
 
   @@map("segments")
 }
@@ -107,4 +111,30 @@ model SegmentPreviewSnapshot {
   calculatedAt DateTime @map("calculated_at") @db.Timestamptz(6)
 
   @@map("segment_preview_snapshots")
+}
+
+/// 旅程基础记录：属于一个活动，可选绑定一个入口分群；revision 用于并发编辑冲突检测。
+model Journey {
+  id          String          @id @default(uuid()) @db.Uuid
+  campaign    Campaign        @relation(fields: [campaignId], references: [id], onDelete: Restrict)
+  campaignId  String          @map("campaign_id") @db.Uuid
+  /// 空值表示不做分群筛选；分群被引用时不能删除，由外键 RESTRICT 保证。
+  segment     Segment?        @relation(fields: [segmentId], references: [id], onDelete: Restrict)
+  segmentId   String?         @map("segment_id") @db.Uuid
+  name        String          @db.VarChar(180)
+  description String?         @db.Text
+  /// 修改时同时作为更新条件，避免两个页面互相静默覆盖。
+  revision    Int             @default(1)
+  createdBy   OperatorAccount @relation("JourneyCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdById String          @map("created_by") @db.Uuid
+  updatedBy   OperatorAccount @relation("JourneyUpdatedBy", fields: [updatedById], references: [id], onDelete: Restrict)
+  updatedById String          @map("updated_by") @db.Uuid
+  createdAt   DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  /// 同一活动内名称唯一；不同活动可以同名。
+  @@unique([campaignId, name])
+  @@index([campaignId, updatedAt(sort: Desc), id(sort: Desc)])
+  @@index([segmentId, updatedAt(sort: Desc), id(sort: Desc)])
+  @@map("journeys")
 }

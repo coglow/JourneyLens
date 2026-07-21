@@ -5,5 +5,6 @@ export * from './segments/segment-rule-satisfiability.js';
 export * from './dto/api-error.js';
 export * from './dto/auth.js';
 export * from './dto/campaign.js';
+export * from './dto/journey.js';
 export * from './dto/pagination.js';
 export * from './dto/segment.js';

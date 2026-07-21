@@ -4,6 +4,7 @@ import {
   type CampaignListQuery,
   type CampaignUpdate,
 } from '@journeylens/shared';
+import { ApiError } from '../../errors.js';
 
 const campaignDetailSelect = {
   id: true,
@@ -59,13 +60,30 @@ export class CampaignService {
     const total = await this.prisma.campaign.count({ where: filters });
     const lastPage = Math.max(1, Math.ceil(total / input.pageSize));
     const page = Math.min(input.page, lastPage);
-    const data = await this.prisma.campaign.findMany({
+    const campaigns = await this.prisma.campaign.findMany({
       where: filters,
       skip: (page - 1) * input.pageSize,
       take: input.pageSize,
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      select: { id: true, name: true, status: true, updatedAt: true },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        budget: true,
+        status: true,
+        updatedAt: true,
+        createdBy: { select: { id: true, displayName: true } },
+        _count: { select: { journeys: true } },
+      },
     });
+
+    // 列表需要展示删除是否可用，因此一并返回阻止删除的旅程数量。
+    // 预算与详情保持同样的结构，金额统一保留两位小数。
+    const data = campaigns.map(({ _count, budget, ...campaign }) => ({
+      ...campaign,
+      budget: budget === null ? null : { amount: budget.toFixed(2) },
+      journeyCount: _count.journeys,
+    }));
 
     return {
       data,
@@ -98,7 +116,15 @@ export class CampaignService {
   }
 
   async deleteDraft(id: string) {
-    const result = await this.prisma.campaign.deleteMany({ where: { id, status: 'draft' } });
-    return result.count > 0;
+    try {
+      const result = await this.prisma.campaign.deleteMany({ where: { id, status: 'draft' } });
+      return result.count > 0;
+    } catch (error) {
+      // journeys.campaign_id 使用 RESTRICT：活动中还有旅程时数据库会阻止删除，这里转换成明确提示。
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003') {
+        throw new ApiError(409, 'CAMPAIGN_HAS_JOURNEYS', '活动中还有旅程，请先删除旅程');
+      }
+      throw error;
+    }
   }
 }
