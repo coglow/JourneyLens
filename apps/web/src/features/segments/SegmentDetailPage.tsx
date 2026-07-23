@@ -1,6 +1,19 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Alert, Button, Card, Descriptions, Flex, Spin, Tag, Typography } from 'antd';
+import {
+  Alert,
+  Button,
+  Card,
+  Col,
+  Divider,
+  Flex,
+  message,
+  Row,
+  Spin,
+  Tag,
+  Tooltip,
+  Typography,
+} from 'antd';
 import { useLocation, useNavigate, useParams } from 'react-router';
 import type { SegmentDetail } from '@journeylens/shared';
 import { PageHeader } from '@/components/PageHeader';
@@ -12,14 +25,28 @@ import {
 } from '@/services/api';
 import { deleteSegment, getSegment, refreshSegmentEstimate } from '@/services/segments';
 import { applySegmentEstimate, segmentQueryKeys } from './segment-queries';
-import { confirmSegmentDeletion } from './segment-delete';
+import { SEGMENT_IN_USE_MESSAGE, confirmSegmentDeletion } from './segment-delete';
 import { SegmentFormDrawer } from '@/features/segments/components/SegmentFormDrawer';
 import { SegmentRuleView } from '@/features/segments/components/SegmentRuleView';
+import { SegmentUsagesSection } from '@/features/segments/components/SegmentUsagesSection';
+import styles from './SegmentDetailPage.module.css';
 
 type RefreshError = { message: string; needsReload: boolean };
 
 function formatDate(value: string): string {
   return new Date(value).toLocaleString('zh-CN');
+}
+
+/** 分群信息下方的单行字段：左侧灰色标签，右侧正文。 */
+function InfoRow({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <Flex gap={16}>
+      <Typography.Text type="secondary" style={{ flex: '0 0 80px' }}>
+        {label}
+      </Typography.Text>
+      <Typography.Text>{value}</Typography.Text>
+    </Flex>
+  );
 }
 
 export function SegmentDetailPage() {
@@ -28,8 +55,9 @@ export function SegmentDetailPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [refreshError, setRefreshError] = useState<RefreshError>();
-  const [deleteError, setDeleteError] = useState<string>();
+  const [deleteError, setDeleteError] = useState<{ message: string; inUse: boolean }>();
   const [editOpen, setEditOpen] = useState(false);
+  const [messageApi, messageContextHolder] = message.useMessage();
   const editButtonRef = useRef<HTMLButtonElement>(null);
   const returnTo =
     typeof location.state === 'object' &&
@@ -67,18 +95,43 @@ export function SegmentDetailPage() {
     refreshError?.message ?? (refreshFailure ? '分群暂时无法刷新' : undefined);
 
   function refreshSavedEstimate(target: SegmentDetail): void {
+    const messageKey = 'segment-estimate';
     setRefreshError(undefined);
-    void refreshMutation.mutateAsync(target).catch((error: unknown) => {
-      if (isSessionExpired(error)) return;
-      if (error instanceof ApiError && error.code === 'SEGMENT_REVISION_CONFLICT') {
-        setRefreshError({
-          message: '分群已被修改，请重新读取最新规则后再预估。',
-          needsReload: true,
-        });
-        return;
-      }
-      setRefreshError({ message: getWriteErrorMessage(error), needsReload: false });
+    void messageApi.open({
+      key: messageKey,
+      type: 'loading',
+      content: '正在计算预估人数…',
+      duration: 0,
     });
+    refreshMutation.mutateAsync(target).then(
+      () => {
+        void messageApi.success({
+          key: messageKey,
+          content: '预估完成，已更新最近预估人数',
+          duration: 2,
+        });
+      },
+      (error: unknown) => {
+        if (isSessionExpired(error)) {
+          void messageApi.destroy(messageKey);
+          return;
+        }
+        if (error instanceof ApiError && error.code === 'SEGMENT_REVISION_CONFLICT') {
+          // 冲突后必须由用户确认重新读取，继续用页面提示承载操作按钮。
+          void messageApi.destroy(messageKey);
+          setRefreshError({
+            message: '分群已被修改，请重新读取最新规则后再预估。',
+            needsReload: true,
+          });
+          return;
+        }
+        void messageApi.error({
+          key: messageKey,
+          content: getWriteErrorMessage(error),
+          duration: 3,
+        });
+      },
+    );
   }
 
   /** 修订冲突后读取最新详情；读取失败时保留“重新读取”入口，避免继续用旧修订号预估。 */
@@ -106,13 +159,19 @@ export function SegmentDetailPage() {
         queryClient.removeQueries({ queryKey: segmentQueryKeys.detail(id) });
         navigate(`/segments${returnTo}`, { state: 'segment-deleted' });
       } catch (error) {
-        if (!isSessionExpired(error)) setDeleteError(getWriteErrorMessage(error));
+        if (!isSessionExpired(error)) {
+          setDeleteError({
+            message: getWriteErrorMessage(error),
+            inUse: error instanceof ApiError && error.code === 'SEGMENT_IN_USE',
+          });
+        }
       }
     });
   }
 
   return (
     <section aria-label="分群详情" style={{ maxWidth: 1080, margin: '0 auto' }}>
+      {messageContextHolder}
       <Flex vertical gap={16}>
         <PageHeader
           back={
@@ -135,107 +194,166 @@ export function SegmentDetailPage() {
                 >
                   编辑分群
                 </Button>
-                <Button
-                  type="primary"
-                  loading={refreshMutation.isPending}
-                  disabled={deleteMutation.isPending}
-                  onClick={() => refreshSavedEstimate(segment)}
-                >
-                  预估人数
-                </Button>
-                <Button
-                  danger
-                  disabled={refreshMutation.isPending}
-                  onClick={() => confirmDelete(segment)}
-                >
-                  删除分群
-                </Button>
+                {segment.journeyCount > 0 ? (
+                  <Tooltip
+                    title={
+                      <span>
+                        {SEGMENT_IN_USE_MESSAGE}{' '}
+                        <a
+                          href="#usages"
+                          style={{
+                            color: 'var(--ant-color-primary, #1677ff)',
+                            textDecoration: 'underline',
+                          }}
+                        >
+                          查看引用旅程
+                        </a>
+                      </span>
+                    }
+                  >
+                    <span>
+                      <Button danger disabled>
+                        删除分群
+                      </Button>
+                    </span>
+                  </Tooltip>
+                ) : (
+                  <Button
+                    danger
+                    disabled={refreshMutation.isPending}
+                    onClick={() => confirmDelete(segment)}
+                  >
+                    删除分群
+                  </Button>
+                )}
               </>
             )
           }
         />
 
-        <Card>
-          {refreshAlertTitle && (
-            <Alert
-              style={{ marginBottom: 16 }}
-              type="warning"
-              showIcon
-              title={refreshAlertTitle}
-              description={refreshError === undefined ? refreshFailure : null}
-              action={
-                <Button
-                  onClick={() => {
-                    if (refreshError?.needsReload) {
-                      void reloadLatest();
-                    } else if (refreshError !== undefined && segment !== undefined) {
-                      refreshSavedEstimate(segment);
-                    } else {
-                      void detailQuery.refetch();
-                    }
-                  }}
-                >
-                  {refreshError?.needsReload ? '重新读取' : '重试'}
-                </Button>
-              }
-            />
-          )}
-          {deleteError && (
-            <Alert style={{ marginBottom: 16 }} type="error" showIcon title={deleteError} />
-          )}
-          {segment === undefined && detailQuery.isPending && (
-            <div
-              role="status"
-              aria-label="正在读取分群"
-              style={{ padding: '48px 0', textAlign: 'center' }}
-            >
-              <Spin />
-            </div>
-          )}
-          {notFound && <Alert type="warning" showIcon title="分群不存在" />}
-          {loadError && (
-            <Alert
-              type="error"
-              showIcon
-              title={loadError}
-              action={<Button onClick={() => void detailQuery.refetch()}>重试</Button>}
-            />
-          )}
-          {segment !== undefined && (
-            <Descriptions bordered column={1}>
-              <Descriptions.Item label="分群名称">{segment.name}</Descriptions.Item>
-              <Descriptions.Item label="说明">{segment.description ?? '-'}</Descriptions.Item>
-              <Descriptions.Item label="最近预估人数">
-                {segment.audienceEstimate === null ? (
-                  <Typography.Text type="secondary">尚未计算</Typography.Text>
-                ) : (
-                  <Flex align="center" gap={8} wrap>
-                    <Typography.Text>
-                      {segment.audienceEstimate.matched.toLocaleString('zh-CN')}
-                    </Typography.Text>
-                    {segment.audienceEstimate.isStale && <Tag color="warning">需要重新计算</Tag>}
-                  </Flex>
-                )}
-              </Descriptions.Item>
-              <Descriptions.Item label="最近预估时间">
-                {segment.audienceEstimate === null
-                  ? '尚未计算'
-                  : formatDate(segment.audienceEstimate.calculatedAt)}
-              </Descriptions.Item>
-              <Descriptions.Item label="创建者">{segment.createdBy.displayName}</Descriptions.Item>
-              <Descriptions.Item label="创建时间">
-                {formatDate(segment.createdAt)}
-              </Descriptions.Item>
-              <Descriptions.Item label="更新时间">
-                {formatDate(segment.updatedAt)}
-              </Descriptions.Item>
-            </Descriptions>
-          )}
-        </Card>
-        {segment !== undefined && (
-          <Card title="分群规则">
-            <SegmentRuleView rules={segment.rules} />
+        {segment === undefined && (
+          <Card>
+            {detailQuery.isPending && (
+              <div
+                role="status"
+                aria-label="正在读取分群"
+                style={{ padding: '48px 0', textAlign: 'center' }}
+              >
+                <Spin />
+              </div>
+            )}
+            {notFound && <Alert type="warning" showIcon title="分群不存在" />}
+            {loadError && (
+              <Alert
+                type="error"
+                showIcon
+                title={loadError}
+                action={<Button onClick={() => void detailQuery.refetch()}>重试</Button>}
+              />
+            )}
           </Card>
+        )}
+        {segment !== undefined && (
+          <>
+            {refreshAlertTitle && (
+              <Alert
+                type="warning"
+                showIcon
+                title={refreshAlertTitle}
+                description={refreshError === undefined ? refreshFailure : null}
+                action={
+                  <Button
+                    onClick={() => {
+                      if (refreshError?.needsReload) {
+                        void reloadLatest();
+                      } else if (refreshError !== undefined) {
+                        refreshSavedEstimate(segment);
+                      } else {
+                        void detailQuery.refetch();
+                      }
+                    }}
+                  >
+                    {refreshError?.needsReload ? '重新读取' : '重试'}
+                  </Button>
+                }
+              />
+            )}
+            {deleteError && (
+              <Alert
+                type="error"
+                showIcon
+                title={deleteError.message}
+                action={
+                  deleteError.inUse ? (
+                    <Button type="link" href="#usages">
+                      查看引用
+                    </Button>
+                  ) : undefined
+                }
+              />
+            )}
+            <Row gutter={[16, 16]} align="stretch">
+              <Col xs={24} lg={14}>
+                <div className={styles.rulesSlot}>
+                  <Card
+                    className={styles.rulesCard ?? ''}
+                    title="分群规则"
+                    styles={{ body: { flex: '1 1 auto', minHeight: 0, overflow: 'auto' } }}
+                  >
+                    <SegmentRuleView rules={segment.rules} />
+                  </Card>
+                </div>
+              </Col>
+              <Col xs={24} lg={10}>
+                <Card title="分群信息">
+                  <Flex vertical gap={8}>
+                    <Typography.Text strong style={{ fontSize: 20 }}>
+                      {segment.name}
+                    </Typography.Text>
+                    <Typography.Text type="secondary">说明</Typography.Text>
+                    <Typography.Text>{segment.description ?? '-'}</Typography.Text>
+                  </Flex>
+                  <Divider />
+                  <Flex vertical gap={8}>
+                    <Typography.Text type="secondary">最近预估人数</Typography.Text>
+                    <Flex justify="space-between" align="center" gap={16} wrap>
+                      <Flex align="center" gap={8} wrap>
+                        <Typography.Text strong style={{ fontSize: 24 }}>
+                          {segment.audienceEstimate === null
+                            ? '尚未预估'
+                            : segment.audienceEstimate.matched.toLocaleString('zh-CN')}
+                        </Typography.Text>
+                        {segment.audienceEstimate?.isStale && (
+                          <Tag color="warning">需要重新计算</Tag>
+                        )}
+                      </Flex>
+                      <Button
+                        type="primary"
+                        loading={refreshMutation.isPending}
+                        disabled={deleteMutation.isPending}
+                        onClick={() => refreshSavedEstimate(segment)}
+                      >
+                        预估人数
+                      </Button>
+                    </Flex>
+                    <Typography.Text type="secondary">
+                      预估时间：
+                      {segment.audienceEstimate === null
+                        ? '尚未预估'
+                        : formatDate(segment.audienceEstimate.calculatedAt)}
+                    </Typography.Text>
+                  </Flex>
+                  <Divider />
+                  <Flex vertical gap={8}>
+                    <InfoRow label="创建者：" value={segment.createdBy.displayName} />
+                    <InfoRow label="创建时间：" value={formatDate(segment.createdAt)} />
+                    <InfoRow label="更新时间：" value={formatDate(segment.updatedAt)} />
+                  </Flex>
+                </Card>
+              </Col>
+            </Row>
+            <SegmentUsagesSection segmentId={segment.id} />
+          </>
         )}
       </Flex>
       <SegmentFormDrawer

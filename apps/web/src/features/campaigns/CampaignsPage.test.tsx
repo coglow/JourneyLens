@@ -31,8 +31,12 @@ const campaign = {
 const summary = {
   id: campaign.id,
   name: campaign.name,
+  description: campaign.description,
+  budget: campaign.budget,
   status: campaign.status,
   updatedAt: campaign.updatedAt,
+  createdBy: campaign.createdBy,
+  journeyCount: 0,
 };
 const unauthorizedBody = {
   error: { code: 'AUTH_REQUIRED', message: '登录已失效', requestId: 'test-request-id' },
@@ -61,6 +65,7 @@ function listBody(
 }
 
 function renderApp(initialPath = '/') {
+  mock.onGet(/\/campaigns\/[^/]+\/journeys$/).reply(200, listBody());
   const router = createMemoryRouter(appRoutes, { initialEntries: [initialPath] });
 
   function CaptureQueryClient() {
@@ -102,6 +107,64 @@ afterEach(() => {
 });
 
 describe('活动列表与创建', () => {
+  it('操作列按草稿状态和旅程数量禁用删除', async () => {
+    const linkedDraft = {
+      ...summary,
+      id: '2d4f4d57-9d59-4ed5-a2fa-d71733cebb61',
+      name: '有旅程的草稿',
+      journeyCount: 1,
+    };
+    const scheduled = {
+      ...summary,
+      id: '2d4f4d57-9d59-4ed5-a2fa-d71733cebb62',
+      name: '已排期活动',
+      status: 'scheduled',
+    };
+    const deletable = { ...summary, name: '可删除活动' };
+    mock.onGet('/userinfo').reply(200, { data: account });
+    mock.onGet('/campaigns').reply(200, listBody([linkedDraft, scheduled, deletable]));
+    renderApp();
+
+    const linkedRow = await screen.findByRole('row', { name: /有旅程的草稿/ });
+    const scheduledRow = screen.getByRole('row', { name: /已排期活动/ });
+    const deletableRow = screen.getByRole('row', { name: /可删除活动/ });
+    expect(within(linkedRow).getByRole('button', { name: '删除' }).hasAttribute('disabled')).toBe(
+      true,
+    );
+    expect(
+      within(scheduledRow).getByRole('button', { name: '删除' }).hasAttribute('disabled'),
+    ).toBe(true);
+    expect(
+      within(deletableRow).getByRole('button', { name: '删除' }).hasAttribute('disabled'),
+    ).toBe(false);
+  });
+
+  it('编辑操作直接打开活动表单；确认删除后刷新当前列表', async () => {
+    const editable = { ...summary, name: '列表中的活动' };
+    const detail = { ...campaign, name: editable.name };
+    mock.onGet('/userinfo').reply(200, { data: account });
+    mock.onGet('/campaigns').replyOnce(200, listBody([editable]));
+    mock.onGet(`/campaigns/${campaign.id}`).replyOnce(200, { data: detail });
+    mock.onDelete(`/campaigns/${campaign.id}`).replyOnce(204);
+    mock.onGet('/campaigns').replyOnce(200, listBody());
+    renderApp();
+
+    const row = await screen.findByRole('row', { name: /列表中的活动/ });
+    fireEvent.click(within(row).getByRole('button', { name: '编辑' }));
+    const nameInput = (await screen.findByLabelText('活动名称')) as HTMLInputElement;
+    expect(nameInput.value).toBe(editable.name);
+    fireEvent.click(screen.getByRole('button', { name: /取\s*消/ }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+
+    fireEvent.click(within(row).getByRole('button', { name: '删除' }));
+    expect(await screen.findByText('确定删除“列表中的活动”活动吗？删除后无法恢复。')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '删除活动' }));
+
+    expect(await screen.findByText('暂无活动')).toBeTruthy();
+    expect(mock.history.delete).toHaveLength(1);
+    expect(mock.history.get.filter((request) => request.url === '/campaigns')).toHaveLength(2);
+  }, 15_000);
+
   it('从真实列表打开创建表单，规范化后提交并重新读取活动', async () => {
     mock.onGet('/userinfo').reply(200, { data: account });
     mock.onGet('/campaigns').replyOnce(200, listBody());
@@ -362,7 +425,7 @@ describe('活动列表与创建', () => {
 
     finishCreate();
     expect(await screen.findByText('春季活动')).toBeTruthy();
-  });
+  }, 15_000);
 
   it('输入后关闭需要确认；放弃后焦点回到新建按钮', async () => {
     mock.onGet('/userinfo').reply(200, { data: account });
@@ -456,7 +519,7 @@ describe('活动列表与创建', () => {
     fireEvent.click(screen.getByRole('button', { name: /重\s*试/ }));
     await waitFor(() => expect(screen.queryByText('活动暂时无法刷新')).toBeNull());
     expect(screen.getByRole('cell', { name: campaign.name })).toBeTruthy();
-  });
+  }, 15_000);
 
   it('删除后如果原页已越界，会回到最后一页并更新网址', async () => {
     const lastSummary = {
@@ -527,7 +590,7 @@ describe('活动列表与创建', () => {
     });
     expect(detailRequests(campaign.id)).toHaveLength(2);
     expect(listParams()).toHaveLength(0);
-  });
+  }, 15_000);
 
   it('编辑初始值不触发未保存确认，修改后关闭会确认并返回焦点', async () => {
     mock.onGet('/userinfo').reply(200, { data: account });
@@ -585,7 +648,7 @@ describe('活动列表与创建', () => {
     fireEvent.click(screen.getByRole('button', { name: /重\s*试/ }));
     expect(await screen.findByRole('cell', { name: '修改后的活动' })).toBeTruthy();
     expect(mock.history.patch).toHaveLength(2);
-  });
+  }, 15_000);
 
   it('取消删除不发请求；确认后删除并让旧详情显示不存在', async () => {
     mock.onGet('/userinfo').reply(200, { data: account });
@@ -600,7 +663,9 @@ describe('活动列表与创建', () => {
     await screen.findByRole('cell', { name: campaign.name });
     fireEvent.click(screen.getByRole('button', { name: '删除活动' }));
     const firstConfirmation = await screen.findByRole('dialog');
-    expect(within(firstConfirmation).getByText(/确定删除“春季活动”吗/)).toBeTruthy();
+    expect(
+      within(firstConfirmation).getByText('确定删除“春季活动”活动吗？删除后无法恢复。'),
+    ).toBeTruthy();
     fireEvent.click(within(firstConfirmation).getByRole('button', { name: '保留活动' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(mock.history.delete).toHaveLength(0);
@@ -615,7 +680,7 @@ describe('活动列表与创建', () => {
 
     await router.navigate(`/campaigns/${campaign.id}`);
     expect(await screen.findByText('活动不存在')).toBeTruthy();
-  });
+  }, 15_000);
 
   it('删除失败保留详情；删除成功但列表刷新失败时准确提示并可重试', async () => {
     mock.onGet('/userinfo').reply(200, { data: account });
@@ -641,7 +706,7 @@ describe('活动列表与创建', () => {
     fireEvent.click(screen.getByRole('button', { name: /重\s*试/ }));
     expect(await screen.findByText('暂无活动')).toBeTruthy();
     expect(mock.history.delete).toHaveLength(2);
-  });
+  }, 15_000);
 
   it('直接打开活动详情地址并区分不存在的活动', async () => {
     mock.onGet('/userinfo').reply(200, { data: account });

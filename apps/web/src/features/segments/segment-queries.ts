@@ -3,12 +3,14 @@ import type {
   SegmentDetail,
   SegmentListQueryInput,
   SegmentRefreshPreview,
+  PaginationQueryInput,
 } from '@journeylens/shared';
 
 export const segmentQueryKeys = {
   lists: ['segments', 'list'] as const,
   list: (input: SegmentListQueryInput) => [...segmentQueryKeys.lists, input] as const,
   detail: (id: string) => ['segments', 'detail', id] as const,
+  usages: (id: string, input: PaginationQueryInput) => ['segments', 'usages', id, input] as const,
 };
 
 /** 预估成功后更新对应详情缓存，并让列表按当前查询重新读取。 */

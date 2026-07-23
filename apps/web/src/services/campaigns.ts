@@ -4,6 +4,7 @@ import {
   campaignListQuerySchema,
   campaignListResponseSchema,
   campaignUpdateSchema,
+  getPaginationErrorMessages,
   type CampaignCreateInput,
   type CampaignListQueryInput,
   type CampaignUpdateInput,
@@ -13,13 +14,7 @@ import { ApiError, request, requestVoid } from './api';
 export async function getCampaigns(input: CampaignListQueryInput = {}, signal?: AbortSignal) {
   const result = campaignListQuerySchema.safeParse(input);
   if (!result.success) {
-    const messages: string[] = [];
-    if (result.error.issues.some((issue) => issue.path[0] === 'page')) {
-      messages.push('页码必须是正整数');
-    }
-    if (result.error.issues.some((issue) => issue.path[0] === 'pageSize')) {
-      messages.push('每页条数只能选择 10、20 或 50 条');
-    }
+    const messages = getPaginationErrorMessages(result.error.issues);
     throw new ApiError(
       undefined,
       'BAD_REQUEST',

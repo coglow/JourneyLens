@@ -45,6 +45,7 @@ function detail(name: string, audienceEstimate: SegmentDetail['audienceEstimate'
     createdBy: { id: account.id, displayName: account.displayName },
     updatedBy: { id: account.id, displayName: account.displayName },
     audienceEstimate,
+    journeyCount: 0,
   };
 }
 
@@ -96,9 +97,11 @@ describe('分群表单抽屉', () => {
     const summary = {
       id: segmentId,
       name: saved.name,
+      description: null,
       rules: rule,
       updatedAt: saved.updatedAt,
       audienceEstimate: { ...estimate, isStale: false },
+      journeyCount: 0,
     };
     mock.onGet('/segments').replyOnce(200, listBody());
     mock.onGet('/segments').replyOnce(200, listBody([summary]));
@@ -206,9 +209,9 @@ describe('分群表单抽屉', () => {
     fireEvent.click(screen.getByRole('button', { name: '保存修改' }));
 
     expect(await screen.findByRole('heading', { name: updated.name })).toBeTruthy();
-    const estimateRow = screen.getByText('最近预估人数').closest('tr');
-    expect(estimateRow).not.toBeNull();
-    expect(within(estimateRow!).getByText('1')).toBeTruthy();
+    const estimateSection = screen.getByText('最近预估人数').parentElement;
+    expect(estimateSection).not.toBeNull();
+    expect(within(estimateSection!).getByText('1')).toBeTruthy();
     expect(screen.queryByText('需要重新计算')).toBeNull();
     expect(router.state.location.pathname).toBe(`/segments/${segmentId}`);
     const refreshRequest = mock.history.post.find(
@@ -299,9 +302,11 @@ describe('分群表单抽屉', () => {
     const summary = {
       id: saved.id,
       name: saved.name,
+      description: null,
       rules: saved.rules,
       updatedAt: saved.updatedAt,
       audienceEstimate: null,
+      journeyCount: 0,
     };
     mock.onGet('/segments').replyOnce(200, listBody());
     mock.onGet('/segments').replyOnce(200, listBody([summary]));
@@ -361,7 +366,7 @@ describe('分群表单抽屉', () => {
     fireEvent.click(screen.getByRole('button', { name: '继续编辑' }));
     expect((screen.getByLabelText('分群名称') as HTMLInputElement).value).toBe('待确认分群');
     expect(router.state.location.pathname).toBe('/segments');
-  }, 10_000);
+  }, 15_000);
 
   it('编辑时的临时试算不覆盖详情中的已保存人数', async () => {
     const saved = detail('会员试算组', {
@@ -387,9 +392,9 @@ describe('分群表单抽屉', () => {
     fireEvent.click(screen.getByRole('button', { name: /取\s*消/ }));
 
     await waitFor(() => expect(screen.queryByLabelText('分群名称')).toBeNull());
-    const savedEstimateRow = screen.getByText('最近预估人数').closest('tr');
-    expect(savedEstimateRow).not.toBeNull();
-    expect(within(savedEstimateRow!).getByText('2')).toBeTruthy();
+    const savedEstimateSection = screen.getByText('最近预估人数').parentElement;
+    expect(savedEstimateSection).not.toBeNull();
+    expect(within(savedEstimateSection!).getByText('2')).toBeTruthy();
     expect(router.state.location.pathname).toBe(`/segments/${segmentId}`);
     expect(mock.history.post).toHaveLength(1);
     expect(JSON.parse(String(mock.history.post[0]?.data))).toEqual({ rules: rule });

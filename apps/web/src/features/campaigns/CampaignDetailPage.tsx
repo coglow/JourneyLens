@@ -14,6 +14,7 @@ import { deleteCampaign, getCampaign } from '@/services/campaigns';
 import { campaignQueryKeys } from './campaign-queries';
 import { campaignStatusBadges, campaignStatusLabels } from './campaign-status';
 import { CampaignFormDrawer } from './components/CampaignFormDrawer';
+import { CampaignJourneysSection } from '@/features/journeys/components/CampaignJourneysSection';
 
 function formatDate(value: string): string {
   return new Date(value).toLocaleString('zh-CN');
@@ -25,7 +26,7 @@ export function CampaignDetailPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [refreshError, setRefreshError] = useState<string>();
-  const [deleteError, setDeleteError] = useState<string>();
+  const [deleteError, setDeleteError] = useState<{ message: string; hasJourneys: boolean }>();
   const [editOpen, setEditOpen] = useState(false);
   const editButtonRef = useRef<HTMLButtonElement>(null);
   const returnTo =
@@ -83,7 +84,7 @@ export function CampaignDetailPage() {
     if (deleteMutation.isPending) return;
     Modal.confirm({
       title: '删除活动？',
-      content: `确定删除“${target.name}”吗？删除后无法恢复。`,
+      content: `确定删除“${target.name}”活动吗？删除后无法恢复。`,
       okText: '删除活动',
       cancelText: '保留活动',
       okButtonProps: { danger: true },
@@ -96,7 +97,12 @@ export function CampaignDetailPage() {
           queryClient.removeQueries({ queryKey: campaignQueryKeys.detail(id) });
           navigate(`/campaigns${returnTo}`, { state: 'campaign-deleted' });
         } catch (error) {
-          if (!isSessionExpired(error)) setDeleteError(getWriteErrorMessage(error));
+          if (!isSessionExpired(error)) {
+            setDeleteError({
+              message: getWriteErrorMessage(error),
+              hasJourneys: error instanceof ApiError && error.code === 'CAMPAIGN_HAS_JOURNEYS',
+            });
+          }
         }
       },
     });
@@ -158,7 +164,19 @@ export function CampaignDetailPage() {
           )}
 
           {deleteError && (
-            <Alert style={{ marginBottom: 16 }} type="error" showIcon title={deleteError} />
+            <Alert
+              style={{ marginBottom: 16 }}
+              type="error"
+              showIcon
+              title={deleteError.message}
+              action={
+                deleteError.hasJourneys ? (
+                  <Button type="link" href="#journeys">
+                    查看旅程
+                  </Button>
+                ) : undefined
+              }
+            />
           )}
 
           {campaign === undefined && campaignQuery.isPending && (
@@ -206,6 +224,10 @@ export function CampaignDetailPage() {
           )}
         </Card>
       </Flex>
+
+      {campaign !== undefined && (
+        <CampaignJourneysSection campaignId={campaign.id} campaignStatus={campaign.status} />
+      )}
 
       {campaign !== undefined && campaign.status === 'draft' && (
         <CampaignFormDrawer

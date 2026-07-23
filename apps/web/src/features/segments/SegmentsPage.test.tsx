@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import MockAdapter from 'axios-mock-adapter';
@@ -21,6 +21,7 @@ const account = {
 const segment = {
   id: '2d4f4d57-9d59-4ed5-a2fa-d71733cebb60',
   name: '高价值会员',
+  description: '用于列表说明',
   rules: {
     kind: 'all',
     children: [
@@ -35,6 +36,7 @@ const segment = {
     calculatedAt: '2026-07-18T00:00:00.000Z',
     isStale: true,
   },
+  journeyCount: 0,
 };
 
 function listBody(page = 1, pageSize = 10) {
@@ -56,6 +58,10 @@ function detailBody() {
 }
 
 function renderApp(initialPath = '/segments') {
+  mock.onGet(/\/segments\/[^/]+\/usages$/).reply(200, {
+    data: [],
+    page: { page: 1, pageSize: 10, total: 0 },
+  });
   const router = createMemoryRouter(appRoutes, { initialEntries: [initialPath] });
 
   function CaptureQueryClient() {
@@ -99,6 +105,8 @@ describe('分群列表', () => {
     ).toBeTruthy();
     expect(screen.getByRole('button', { name: /^编\s*辑$/ })).toBeTruthy();
     expect(screen.getByRole('button', { name: /^删\s*除$/ })).toBeTruthy();
+    expect(screen.getByRole('columnheader', { name: '分群说明' })).toBeTruthy();
+    expect(screen.getByText('用于列表说明')).toBeTruthy();
     expect(screen.getAllByRole('columnheader').at(-1)?.textContent).toBe('操作');
   }, 30_000);
 
@@ -134,10 +142,30 @@ describe('分群列表', () => {
     fireEvent.click(await screen.findByRole('button', { name: /^预\s*估$/ }, { timeout: 5_000 }));
 
     expect(await screen.findByText('1,200 / 2,000')).toBeTruthy();
+    expect(await screen.findByText('预估完成，已更新最近预估人数')).toBeTruthy();
     expect(JSON.parse(String(mock.history.post[0]?.data))).toEqual({
       segmentId: segment.id,
       revision: 1,
     });
+  });
+
+  it('列表预估失败只通过消息提示', async () => {
+    mock.onGet('/userinfo').reply(200, { data: account });
+    mock.onGet('/segments').reply(200, listBody());
+    mock.onGet(`/segments/${segment.id}`).reply(200, { data: detailBody() });
+    mock.onPost('/segments/preview').reply(500, {
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: '计算失败，请稍后重试',
+        requestId: 'test-request-id',
+      },
+    });
+    renderApp();
+
+    fireEvent.click(await screen.findByRole('button', { name: /^预\s*估$/ }, { timeout: 5_000 }));
+
+    expect(await screen.findByText('计算失败，请稍后重试')).toBeTruthy();
+    expect(document.querySelector('.ant-alert')).toBeNull();
   });
 
   it('从列表操作列直接打开编辑抽屉', async () => {
@@ -174,6 +202,45 @@ describe('分群列表', () => {
     expect(await screen.findByText('暂无分群')).toBeTruthy();
   }, 10_000);
 
+  it('分群存在引用旅程时禁用删除并给出查看入口', async () => {
+    mock.onGet('/userinfo').reply(200, { data: account });
+    mock.onGet('/segments').reply(200, {
+      data: [{ ...segment, journeyCount: 2 }],
+      page: { page: 1, pageSize: 10, total: 1 },
+    });
+    renderApp();
+
+    const nameLink = await screen.findByRole('link', { name: '高价值会员' }, { timeout: 5_000 });
+    const row = nameLink.closest('tr')!;
+    expect(within(row).getByText('2')).toBeTruthy();
+    const deleteButton = within(row).getByRole('button', { name: /^删\s*除$/ });
+    expect((deleteButton as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.mouseEnter(deleteButton.parentElement!);
+    const entry = await screen.findByRole('link', { name: '查看引用旅程' });
+    expect(entry.parentElement?.textContent).toContain('该分群正在被旅程使用，请先更换或解除关联');
+    expect(entry.getAttribute('href')).toBe(`/segments/${segment.id}#usages`);
+    expect(mock.history.delete).toHaveLength(0);
+  }, 15_000);
+
+  it('详情页分群存在引用旅程时禁用删除并提供引用入口', async () => {
+    mock.onGet('/userinfo').reply(200, { data: account });
+    mock.onGet(`/segments/${segment.id}`).reply(200, {
+      data: { ...detailBody(), journeyCount: 3 },
+    });
+    mock.onGet('/segments').reply(200, listBody());
+    renderApp(`/segments/${segment.id}`);
+
+    expect(await screen.findByText('用于操作列验证')).toBeTruthy();
+    const deleteButton = screen.getByRole('button', { name: '删除分群' });
+    expect((deleteButton as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.mouseEnter(deleteButton.parentElement!);
+    const entry = await screen.findByRole('link', { name: '查看引用旅程' });
+    expect(entry.parentElement?.textContent).toContain('该分群正在被旅程使用，请先更换或解除关联');
+    expect(entry.getAttribute('href')).toBe('#usages');
+  }, 15_000);
+
   it('详情页确认删除后返回列表', async () => {
     const detail = {
       ...segment,
@@ -196,7 +263,7 @@ describe('分群列表', () => {
       expect(confirmation).toHaveBeenCalledWith(
         expect.objectContaining({
           title: '删除分群？',
-          content: `确定删除“${segment.name}”吗？删除后无法恢复。`,
+          content: `确定删除“${segment.name}”分群吗？删除后无法恢复。`,
           okText: '删除分群',
         }),
       );
@@ -270,6 +337,118 @@ describe('分群列表', () => {
     expect(router.state.location.search).toBe('?q=member');
   });
 
+  it('分群引用列表显示旅程并保留来源网址返回', async () => {
+    const journeyId = '88a0f727-a226-4cb4-9495-74364f8d0e33';
+    const campaignId = '2d4f4d57-9d59-4ed5-a2fa-d71733cebb60';
+    const journey = {
+      id: journeyId,
+      name: '欢迎旅程',
+      description: null,
+      revision: 1,
+      campaign: { id: campaignId, name: '春季活动', status: 'draft' },
+      segment: { id: segment.id, name: segment.name, revision: 1, rules: segment.rules },
+      createdAt: segment.updatedAt,
+      updatedAt: segment.updatedAt,
+      createdBy: { id: account.id, displayName: account.displayName },
+      updatedBy: { id: account.id, displayName: account.displayName },
+    };
+    mock.onGet('/userinfo').reply(200, { data: account });
+    mock.onGet('/segments').reply(200, listBody());
+    mock.onGet(`/segments/${segment.id}`).reply(200, { data: detailBody() });
+    mock.onGet(`/segments/${segment.id}/usages`).reply((config) => {
+      const page = Number(config.params?.page ?? 1);
+      const pageSize = Number(config.params?.pageSize ?? 10);
+      return [
+        200,
+        {
+          data: [
+            {
+              journey: { id: journeyId, name: journey.name },
+              campaign: journey.campaign,
+              updatedAt: journey.updatedAt,
+            },
+          ],
+          page: {
+            page: page === 3 && pageSize === 20 ? 2 : page,
+            pageSize,
+            total: 21,
+          },
+        },
+      ];
+    });
+    mock.onGet(`/journeys/${journeyId}`).reply(200, { data: journey });
+    const router = renderApp('/segments?q=member');
+
+    fireEvent.click(await screen.findByRole('link', { name: '高价值会员' }));
+    expect(await screen.findByText('用于操作列验证')).toBeTruthy();
+    await router.navigate(`/segments/${segment.id}?page=3&pageSize=20`, {
+      state: { returnTo: '?q=member' },
+    });
+    expect(await screen.findByRole('link', { name: '欢迎旅程' })).toBeTruthy();
+    await waitFor(() => expect(router.state.location.search).toBe('?page=2&pageSize=20'));
+    // 等页面按修正后的网址重新渲染，旅程链接携带的返回地址才与当前页码一致。
+    await act(async () => {});
+    expect(router.state.location.state).toEqual({ returnTo: '?q=member' });
+    await waitFor(() =>
+      expect(screen.getByRole('listitem', { name: '2' }).className).toContain(
+        'ant-pagination-item-active',
+      ),
+    );
+    fireEvent.click(screen.getByRole('link', { name: '欢迎旅程' }));
+    expect(router.state.location.state).toEqual({
+      returnTo: `/segments/${segment.id}?page=2&pageSize=20#usages`,
+      returnState: { returnTo: '?q=member' },
+    });
+    expect(await screen.findByText('所属活动')).toBeTruthy();
+    expect(screen.getByRole('link', { name: '春季活动' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '返回列表' }));
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe(`/segments/${segment.id}`);
+      expect(router.state.location.search).toBe('?page=2&pageSize=20');
+      expect(router.state.location.state).toEqual({ returnTo: '?q=member' });
+    });
+    fireEvent.click(screen.getByRole('button', { name: '返回分群列表' }));
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe('/segments');
+      expect(router.state.location.search).toBe('?q=member');
+    });
+  }, 15_000);
+
+  it('从分群列表删除受阻时提供引用入口', async () => {
+    mock.onGet('/userinfo').reply(200, { data: account });
+    mock.onGet('/segments').reply(200, listBody());
+    mock.onGet(`/segments/${segment.id}`).reply(200, { data: detailBody() });
+    mock.onGet(`/segments/${segment.id}/usages`).reply(200, {
+      data: [],
+      page: { page: 1, pageSize: 10, total: 0 },
+    });
+    mock.onDelete(`/segments/${segment.id}`).reply(409, {
+      error: {
+        code: 'SEGMENT_IN_USE',
+        message: '分群正在被旅程使用，请先更换或解除关联',
+        requestId: 'test-request-id',
+      },
+    });
+    const router = renderApp('/segments');
+    const confirmation = vi.spyOn(Modal, 'confirm');
+
+    try {
+      fireEvent.click(await screen.findByRole('button', { name: /^删\s*除$/ }, { timeout: 5_000 }));
+      await act(async () => {
+        await confirmation.mock.calls[0]?.[0].onOk?.();
+      });
+
+      expect(await screen.findByText('分群正在被旅程使用，请先更换或解除关联')).toBeTruthy();
+      fireEvent.click(screen.getByRole('link', { name: '查看引用' }));
+      expect(await screen.findByText('引用旅程')).toBeTruthy();
+      await waitFor(() => expect(router.state.location.pathname).toBe(`/segments/${segment.id}`));
+      expect(router.state.location.hash).toBe('#usages');
+    } finally {
+      confirmation.mockRestore();
+    }
+  }, 15_000);
+
   it('已保存分群明确重新计算后展示最近人数', async () => {
     const detail = {
       ...segment,
@@ -290,10 +469,38 @@ describe('分群列表', () => {
     fireEvent.click(screen.getByRole('button', { name: '预估人数' }));
 
     expect(await screen.findByText('1,240')).toBeTruthy();
+    expect(await screen.findByText('预估完成，已更新最近预估人数')).toBeTruthy();
     expect(JSON.parse(String(mock.history.post[0]?.data))).toEqual({
       segmentId: segment.id,
       revision: 1,
     });
+  });
+
+  it('详情页预估失败只通过消息提示', async () => {
+    const detail = {
+      ...segment,
+      description: '用于核对预估失败',
+      revision: 1,
+      createdAt: segment.updatedAt,
+      createdBy: { id: account.id, displayName: account.displayName },
+      updatedBy: { id: account.id, displayName: account.displayName },
+    };
+    mock.onGet('/userinfo').reply(200, { data: account });
+    mock.onGet(`/segments/${segment.id}`).reply(200, { data: detail });
+    mock.onPost('/segments/preview').reply(500, {
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: '计算失败，请稍后重试',
+        requestId: 'test-request-id',
+      },
+    });
+    renderApp(`/segments/${segment.id}`);
+
+    expect(await screen.findByText('用于核对预估失败')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '预估人数' }));
+
+    expect(await screen.findByText('计算失败，请稍后重试')).toBeTruthy();
+    expect(document.querySelector('.ant-alert')).toBeNull();
   });
 
   it('预估遇到修订冲突后重新读取最新分群，再由用户主动预估', async () => {

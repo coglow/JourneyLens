@@ -8,16 +8,23 @@ import {
   Flex,
   Form,
   Input,
+  message,
   Pagination,
   Table,
   Tag,
+  Tooltip,
   Typography,
 } from 'antd';
 import { PlusOutlined, SearchOutlined } from '@ant-design/icons';
 import type { TableProps } from 'antd';
 import { PAGE_SIZES, type SegmentListQueryInput, type SegmentListItem } from '@journeylens/shared';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router';
-import { getApiErrorMessage, getWriteErrorMessage, isSessionExpired } from '@/services/api';
+import {
+  ApiError,
+  getApiErrorMessage,
+  getWriteErrorMessage,
+  isSessionExpired,
+} from '@/services/api';
 import {
   deleteSegment,
   getSegment,
@@ -27,9 +34,10 @@ import {
 import { ListFilterBar } from '@/components/ListFilterBar';
 import { ListPageLayout } from '@/components/ListPageLayout';
 import { PageHeader } from '@/components/PageHeader';
+import { useListPagination, useSyncListPage } from '@/hooks/use-list-pagination';
 import { summarizeSegmentRule } from './segment-rules';
 import { applySegmentEstimate, segmentQueryKeys } from './segment-queries';
-import { confirmSegmentDeletion } from './segment-delete';
+import { SEGMENT_IN_USE_MESSAGE, confirmSegmentDeletion } from './segment-delete';
 import { SegmentFormDrawer } from '@/features/segments/components/SegmentFormDrawer';
 
 type FilterValues = { q?: string };
@@ -67,9 +75,22 @@ function getSegmentColumns(
       ),
     },
     {
+      title: '分群说明',
+      dataIndex: 'description',
+      key: 'description',
+      width: 240,
+      render: (description: string | null) =>
+        description === null ? (
+          <Typography.Text type="secondary">—</Typography.Text>
+        ) : (
+          <Typography.Text ellipsis={{ tooltip: description }}>{description}</Typography.Text>
+        ),
+    },
+    {
       title: '规则摘要',
       dataIndex: 'rules',
       key: 'rules',
+      width: 300,
       render: (rules: SegmentListItem['rules']) => (
         <Typography.Text ellipsis={{ tooltip: summarizeSegmentRule(rules) }}>
           {summarizeSegmentRule(rules)}
@@ -100,6 +121,13 @@ function getSegmentColumns(
       },
     },
     {
+      title: '引用旅程数',
+      dataIndex: 'journeyCount',
+      key: 'journeyCount',
+      width: 120,
+      render: (count: number) => count.toLocaleString('zh-CN'),
+    },
+    {
       title: '更新时间',
       dataIndex: 'updatedAt',
       key: 'updatedAt',
@@ -111,38 +139,68 @@ function getSegmentColumns(
       key: 'actions',
       className: 'table-operation-cell',
       width: 190,
-      render: (_value: unknown, segment: SegmentListItem) => (
-        <Flex gap={4} wrap={false}>
-          <Button
-            type="link"
-            size="small"
-            loading={actions.estimatingId === segment.id}
-            disabled={actions.busy}
-            onClick={() => actions.onEstimate(segment)}
-          >
-            预估
-          </Button>
-          <Button
-            ref={(button) => actions.setEditButton(segment.id, button)}
-            type="link"
-            size="small"
-            disabled={actions.busy}
-            onClick={() => actions.onEdit(segment)}
-          >
-            编辑
-          </Button>
-          <Button
-            type="link"
-            size="small"
-            danger
-            loading={actions.deletingId === segment.id}
-            disabled={actions.busy}
-            onClick={() => actions.onDelete(segment)}
-          >
-            删除
-          </Button>
-        </Flex>
-      ),
+      fixed: 'end',
+      render: (_value: unknown, segment: SegmentListItem) => {
+        const inUse = segment.journeyCount > 0;
+        return (
+          <Flex gap={4} wrap={false}>
+            <Button
+              type="link"
+              size="small"
+              loading={actions.estimatingId === segment.id}
+              disabled={actions.busy}
+              onClick={() => actions.onEstimate(segment)}
+            >
+              预估
+            </Button>
+            <Button
+              ref={(button) => actions.setEditButton(segment.id, button)}
+              type="link"
+              size="small"
+              disabled={actions.busy}
+              onClick={() => actions.onEdit(segment)}
+            >
+              编辑
+            </Button>
+            {inUse ? (
+              <Tooltip
+                title={
+                  <span>
+                    {SEGMENT_IN_USE_MESSAGE}{' '}
+                    <Link
+                      to={`/segments/${segment.id}#usages`}
+                      state={{ returnTo: search }}
+                      style={{
+                        color: 'var(--ant-color-primary, #1677ff)',
+                        textDecoration: 'underline',
+                      }}
+                    >
+                      查看引用旅程
+                    </Link>
+                  </span>
+                }
+              >
+                <span>
+                  <Button type="link" size="small" danger disabled>
+                    删除
+                  </Button>
+                </span>
+              </Tooltip>
+            ) : (
+              <Button
+                type="link"
+                size="small"
+                danger
+                loading={actions.deletingId === segment.id}
+                disabled={actions.busy}
+                onClick={() => actions.onDelete(segment)}
+              >
+                删除
+              </Button>
+            )}
+          </Flex>
+        );
+      },
     },
   ];
 }
@@ -158,7 +216,7 @@ export function SegmentsPage() {
   const lastEditedSegmentId = useRef<string | undefined>(undefined);
   const [createOpen, setCreateOpen] = useState(false);
   const [editSegmentId, setEditSegmentId] = useState<string>();
-  const [actionError, setActionError] = useState<string>();
+  const [actionError, setActionError] = useState<{ message: string; segmentId?: string }>();
   const [saveEstimateWarning, setSaveEstimateWarning] = useState<string>();
   const [refreshNotice, setRefreshNotice] = useState<RefreshNotice | undefined>(
     location.state === 'segment-deleted'
@@ -168,22 +226,21 @@ export function SegmentsPage() {
         : undefined,
   );
   const [form] = Form.useForm<FilterValues>();
+  const [messageApi, messageContextHolder] = message.useMessage();
   const query = searchParams.get('q') ?? '';
-  const rawPage = searchParams.get('page');
-  const rawPageSize = searchParams.get('pageSize');
-  const page = rawPage === null ? 1 : Number(rawPage);
-  const pageSize = rawPageSize === '20' ? 20 : rawPageSize === '50' ? 50 : 10;
+  const { page, pageSize, pageParam, pageSizeParam, setPagination } = useListPagination();
 
   const queryInput: SegmentListQueryInput = {
     q: query || undefined,
-    page: rawPage ?? undefined,
-    pageSize: rawPageSize ?? undefined,
+    page: pageParam,
+    pageSize: pageSizeParam,
   };
   const listQuery = useQuery({
     queryKey: segmentQueryKeys.list(queryInput),
     queryFn: ({ signal }) => getSegments(queryInput, signal),
   });
   const list = listQuery.data;
+  useSyncListPage(listQuery);
   const estimateMutation = useMutation({
     mutationFn: async (segmentId: string) => {
       const currentSegment = await getSegment(segmentId);
@@ -192,7 +249,6 @@ export function SegmentsPage() {
     },
     onSuccess: ({ currentSegment, estimate }) => {
       applySegmentEstimate(queryClient, currentSegment, estimate);
-      setActionError(undefined);
     },
   });
   const deleteMutation = useMutation({
@@ -213,28 +269,6 @@ export function SegmentsPage() {
     if (location.state !== 'segment-deleted') return;
     navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
   }, [location.pathname, location.search, location.state, navigate]);
-
-  const serverPage = list?.page.page;
-  useEffect(() => {
-    if (serverPage === undefined || listQuery.isFetching || listQuery.isRefetchError) return;
-    if (!listQuery.isFetchedAfterMount || serverPage === page) return;
-    setSearchParams(
-      (current) => {
-        const next = new URLSearchParams(current);
-        if (serverPage === 1) next.delete('page');
-        else next.set('page', String(serverPage));
-        return next;
-      },
-      { replace: true },
-    );
-  }, [
-    listQuery.isFetchedAfterMount,
-    listQuery.isFetching,
-    listQuery.isRefetchError,
-    page,
-    serverPage,
-    setSearchParams,
-  ]);
 
   useEffect(() => {
     if (refreshNotice === undefined) return;
@@ -263,18 +297,6 @@ export function SegmentsPage() {
     });
   }
 
-  function setPagination(nextPage: number, nextPageSize: number): void {
-    setSearchParams((current) => {
-      const next = new URLSearchParams(current);
-      const pageSizeChanged = nextPageSize !== pageSize;
-      if (nextPageSize === 10) next.delete('pageSize');
-      else next.set('pageSize', String(nextPageSize));
-      if (pageSizeChanged || nextPage === 1) next.delete('page');
-      else next.set('page', String(nextPage));
-      return next;
-    });
-  }
-
   function resetFilters(): void {
     form.setFieldsValue({ q: '' });
     setSearchParams((current) => {
@@ -296,11 +318,35 @@ export function SegmentsPage() {
   }
 
   function estimateSavedSegment(segment: SegmentListItem): void {
-    setActionError(undefined);
+    const messageKey = `segment-estimate-${segment.id}`;
     setSaveEstimateWarning(undefined);
-    void estimateMutation.mutateAsync(segment.id).catch((error: unknown) => {
-      if (!isSessionExpired(error)) setActionError(getWriteErrorMessage(error));
+    // 同一分群复用同一条消息：加载中会被结果替换，不会堆叠。
+    void messageApi.open({
+      key: messageKey,
+      type: 'loading',
+      content: '正在计算预估人数…',
+      duration: 0,
     });
+    estimateMutation.mutateAsync(segment.id).then(
+      () => {
+        void messageApi.success({
+          key: messageKey,
+          content: '预估完成，已更新最近预估人数',
+          duration: 2,
+        });
+      },
+      (error: unknown) => {
+        if (isSessionExpired(error)) {
+          void messageApi.destroy(messageKey);
+          return;
+        }
+        void messageApi.error({
+          key: messageKey,
+          content: getWriteErrorMessage(error),
+          duration: 3,
+        });
+      },
+    );
   }
 
   function editSegment(segment: SegmentListItem): void {
@@ -317,7 +363,14 @@ export function SegmentsPage() {
       try {
         await deleteMutation.mutateAsync(segment.id);
       } catch (error) {
-        if (!isSessionExpired(error)) setActionError(getWriteErrorMessage(error));
+        if (!isSessionExpired(error)) {
+          setActionError({
+            message: getWriteErrorMessage(error),
+            ...(error instanceof ApiError && error.code === 'SEGMENT_IN_USE'
+              ? { segmentId: segment.id }
+              : {}),
+          });
+        }
       }
     });
   }
@@ -333,6 +386,7 @@ export function SegmentsPage() {
 
   return (
     <section aria-label="全部分群">
+      {messageContextHolder}
       <Flex vertical gap={16} style={{ maxWidth: 1560, margin: '0 auto' }}>
         <PageHeader
           title="分群"
@@ -358,7 +412,7 @@ export function SegmentsPage() {
           filters={
             <ListFilterBar form={form} onSearch={applyFilters} onReset={resetFilters}>
               <Col {...filterCol}>
-                <Form.Item name="q" label="关键词">
+                <Form.Item name="q" label="关键词" layout="horizontal">
                   <Input
                     allowClear
                     maxLength={100}
@@ -405,7 +459,17 @@ export function SegmentsPage() {
               style={{ marginBottom: 16 }}
               type="error"
               showIcon
-              title={actionError}
+              title={actionError.message}
+              action={
+                actionError.segmentId ? (
+                  <Link
+                    to={`/segments/${actionError.segmentId}#usages`}
+                    state={{ returnTo: location.search }}
+                  >
+                    查看引用
+                  </Link>
+                ) : undefined
+              }
               closable={{ onClose: () => setActionError(undefined) }}
             />
           )}
@@ -437,6 +501,7 @@ export function SegmentsPage() {
               })}
               dataSource={list.data}
               pagination={false}
+              scroll={{ x: 1440 }}
               size="middle"
               tableLayout="fixed"
               loading={listQuery.isFetching}

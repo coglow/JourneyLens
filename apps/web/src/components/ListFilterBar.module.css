@@ -1,6 +1,7 @@
 /* Form.Item 在 inline 布局下自带 16px 右间距，会和 Row 的 gutter 叠加成双倍间距；归零后间距只由 gutter 控制。 */
 .form :global(.ant-form-item) {
   margin-inline-end: 0;
+  margin-bottom: 0;
 }
 
 .form :global(.ant-form-item-label > label) {

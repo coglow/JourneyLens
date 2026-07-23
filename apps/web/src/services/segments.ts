@@ -1,4 +1,5 @@
 import {
+  getPaginationErrorMessages,
   segmentCreateSchema,
   segmentDetailResponseSchema,
   segmentListQuerySchema,
@@ -6,9 +7,12 @@ import {
   segmentPreviewResponseSchema,
   segmentRefreshPreviewResponseSchema,
   segmentUpdateSchema,
+  segmentUsageListResponseSchema,
+  paginationQuerySchema,
   type SegmentCreateInput,
   type SegmentListQueryInput,
   type SegmentRule,
+  type PaginationQueryInput,
   type SegmentUpdateInput,
 } from '@journeylens/shared';
 import { ApiError, request, requestVoid } from './api';
@@ -16,13 +20,7 @@ import { ApiError, request, requestVoid } from './api';
 export async function getSegments(input: SegmentListQueryInput = {}, signal?: AbortSignal) {
   const result = segmentListQuerySchema.safeParse(input);
   if (!result.success) {
-    const messages: string[] = [];
-    if (result.error.issues.some((issue) => issue.path[0] === 'page')) {
-      messages.push('页码必须是正整数');
-    }
-    if (result.error.issues.some((issue) => issue.path[0] === 'pageSize')) {
-      messages.push('每页条数只能选择 10、20 或 50 条');
-    }
+    const messages = getPaginationErrorMessages(result.error.issues);
     if (result.error.issues.some((issue) => issue.path[0] === 'q')) {
       messages.push('搜索词最多 100 个字符');
     }
@@ -42,6 +40,33 @@ export async function getSegments(input: SegmentListQueryInput = {}, signal?: Ab
   return request(
     { url: '/segments', method: 'GET', params, ...(signal ? { signal } : {}) },
     segmentListResponseSchema,
+  );
+}
+
+export async function getSegmentUsages(
+  id: string,
+  input: PaginationQueryInput = {},
+  signal?: AbortSignal,
+) {
+  const result = paginationQuerySchema.safeParse(input);
+  if (!result.success) {
+    const messages = getPaginationErrorMessages(result.error.issues);
+    throw new ApiError(undefined, 'BAD_REQUEST', messages.join('；') || '请检查分页条件');
+  }
+
+  const query = result.data;
+  const params: Record<string, number> = {};
+  if (query.page !== 1) params.page = query.page;
+  if (query.pageSize !== 10) params.pageSize = query.pageSize;
+
+  return request(
+    {
+      url: `/segments/${encodeURIComponent(id)}/usages`,
+      method: 'GET',
+      params,
+      ...(signal ? { signal } : {}),
+    },
+    segmentUsageListResponseSchema,
   );
 }
 

@@ -6,6 +6,7 @@ import {
   createSegment,
   deleteSegment,
   getSegment,
+  getSegmentUsages,
   getSegments,
   previewSegmentRules,
   refreshSegmentEstimate,
@@ -35,6 +36,7 @@ const detail = {
   createdBy: account,
   updatedBy: account,
   audienceEstimate: null,
+  journeyCount: 0,
 };
 
 async function captureError(promise: Promise<unknown>): Promise<unknown> {
@@ -92,6 +94,37 @@ describe('分群请求', () => {
     });
     expect(mock.history.get[0]?.url).toBe(`/segments/${segmentId}`);
     expect(mock.history.delete[0]?.url).toBe(`/segments/${segmentId}`);
+  });
+
+  it('读取旅程引用时验证页码参数并使用分群引用地址', async () => {
+    mock.onGet(`/segments/${segmentId}/usages`).reply(200, {
+      data: [
+        {
+          journey: { id: '88a0f727-a226-4cb4-9495-74364f8d0e33', name: '欢迎旅程' },
+          campaign: {
+            id: '2d4f4d57-9d59-4ed5-a2fa-d71733cebb60',
+            name: '春季活动',
+            status: 'draft',
+          },
+          updatedAt: '2026-07-19T00:00:00.000Z',
+        },
+      ],
+      page: { page: 2, pageSize: 20, total: 21 },
+    });
+
+    await getSegmentUsages(segmentId, { page: '2', pageSize: '20' });
+    expect(mock.history.get[0]?.url).toBe(`/segments/${segmentId}/usages`);
+    expect(mock.history.get[0]?.params).toEqual({ page: 2, pageSize: 20 });
+
+    const error = await getSegmentUsages(segmentId, { pageSize: '17' }).catch(
+      (reason: unknown) => reason,
+    );
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({
+      code: 'BAD_REQUEST',
+      message: '每页条数只能选择 10、20 或 50 条',
+    });
+    expect(mock.history.get).toHaveLength(1);
   });
 
   it('把未保存规则试算与已保存分群人数刷新分成两种输入', async () => {

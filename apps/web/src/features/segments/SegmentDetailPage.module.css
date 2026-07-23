@@ -1,0 +1,14 @@
+/* 桌面端以右侧分群信息的高度为准，规则超出时在卡片内部滚动。 */
+@media (min-width: 992px) {
+  .rulesSlot {
+    position: relative;
+    height: 100%;
+  }
+
+  .rulesCard {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+  }
+}
