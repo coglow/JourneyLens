@@ -2,10 +2,12 @@ import {
   getPaginationErrorMessages,
   journeyCreateSchema,
   journeyDetailResponseSchema,
+  journeyDraftSaveSchema,
   journeyListQuerySchema,
   journeyListResponseSchema,
   journeyUpdateSchema,
   type JourneyCreateInput,
+  type JourneyDraftDefinition,
   type JourneyListQueryInput,
   type JourneyUpdateInput,
 } from '@journeylens/shared';
@@ -63,6 +65,18 @@ export async function updateJourney(id: string, input: JourneyUpdateInput) {
   const payload = journeyUpdateSchema.parse(input);
   const body = await request(
     { url: `/journeys/${encodeURIComponent(id)}`, method: 'PATCH', data: payload },
+    journeyDetailResponseSchema,
+  );
+  return body.data;
+}
+
+export async function saveJourneyDraft(
+  id: string,
+  input: { revision: number; draftDefinition: JourneyDraftDefinition },
+) {
+  const payload = journeyDraftSaveSchema.parse(input);
+  const body = await request(
+    { url: `/journeys/${encodeURIComponent(id)}/draft`, method: 'PUT', data: payload },
     journeyDetailResponseSchema,
   );
   return body.data;

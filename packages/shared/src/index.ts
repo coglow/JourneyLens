@@ -1,4 +1,5 @@
 export * from './audience/audience-catalog.js';
+export * from './journeys/journey-draft.js';
 export * from './segments/segment-rule.js';
 export * from './segments/segment-comparison.js';
 export * from './segments/segment-rule-satisfiability.js';

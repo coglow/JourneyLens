@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { journeyDraftDefinitionSchema } from '../journeys/journey-draft.js';
 import { segmentRuleSchema } from '../segments/segment-rule.js';
 import { campaignRefSchema } from './campaign.js';
 import { paginatedListSchema, paginationQuerySchema } from './pagination.js';
@@ -117,10 +118,20 @@ export const journeyDetailSchema = z
     revision: z.number().int().min(1),
     campaign: campaignRefSchema,
     segment: journeySegmentRefSchema.nullable(),
+    // null 表示还没有保存过编排内容，不是读取失败。
+    draftDefinition: journeyDraftDefinitionSchema.nullable(),
     createdAt: z.iso.datetime(),
     updatedAt: z.iso.datetime(),
     createdBy: journeyAccountRefSchema,
     updatedBy: journeyAccountRefSchema,
+  })
+  .strict();
+
+// 保存时带上读取到的修订号，服务端据此拒绝覆盖别人的修改。
+export const journeyDraftSaveSchema = z
+  .object({
+    revision: z.number().int().min(1, '修订号无效'),
+    draftDefinition: journeyDraftDefinitionSchema,
   })
   .strict();
 
@@ -135,3 +146,5 @@ export type JourneyListQuery = z.output<typeof journeyListQuerySchema>;
 export type JourneyListQueryInput = z.input<typeof journeyListQuerySchema>;
 export type JourneyListItem = z.infer<typeof journeyListItemSchema>;
 export type JourneyDetail = z.infer<typeof journeyDetailSchema>;
+export type JourneyDraftSave = z.output<typeof journeyDraftSaveSchema>;
+export type JourneyDraftSaveInput = z.input<typeof journeyDraftSaveSchema>;

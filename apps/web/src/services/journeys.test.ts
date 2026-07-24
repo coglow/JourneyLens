@@ -1,7 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import MockAdapter from 'axios-mock-adapter';
+import type { JourneyDraftDefinition } from '@journeylens/shared';
 import { ApiError, apiClient } from './api';
-import { createJourney, deleteJourney, getJourney, getJourneys, updateJourney } from './journeys';
+import {
+  createJourney,
+  deleteJourney,
+  getJourney,
+  getJourneys,
+  saveJourneyDraft,
+  updateJourney,
+} from './journeys';
 
 const mock = new MockAdapter(apiClient);
 const campaignId = '2d4f4d57-9d59-4ed5-a2fa-d71733cebb60';
@@ -17,6 +25,7 @@ const journey = {
   revision: 1,
   campaign: { id: campaignId, name: '春季活动', status: 'draft' },
   segment: null,
+  draftDefinition: null,
   createdAt: '2026-07-19T00:00:00.000Z',
   updatedAt: '2026-07-19T00:00:00.000Z',
   createdBy: account,
@@ -78,5 +87,35 @@ describe('旅程请求', () => {
       segmentId: null,
     });
     expect(mock.history.delete[0]?.url).toBe(`/journeys/${journeyId}`);
+  });
+
+  it('保存画布草稿时发送修订号和完整定义，并解析服务端返回', async () => {
+    const draftDefinition: JourneyDraftDefinition = {
+      layoutDirection: 'vertical',
+      nodes: [
+        {
+          id: 'start',
+          type: 'start',
+          name: '开始',
+          position: { x: 0, y: 0 },
+          entryBehavior: 'product_viewed',
+        },
+        { id: 'end', type: 'end', name: '结束', position: { x: 0, y: 160 }, note: null },
+      ],
+      edges: [{ id: 'edge-1', source: 'start', target: 'end' }],
+    };
+    const savedJourney = { ...journey, revision: 2, draftDefinition };
+    mock.onPut(`/journeys/${journeyId}/draft`).reply(200, { data: savedJourney });
+
+    const saved = await saveJourneyDraft(journeyId, {
+      revision: 1,
+      draftDefinition,
+    });
+
+    expect(JSON.parse(String(mock.history.put[0]?.data))).toEqual({
+      revision: 1,
+      draftDefinition: savedJourney.draftDefinition,
+    });
+    expect(saved).toEqual(savedJourney);
   });
 });

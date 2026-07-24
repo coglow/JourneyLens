@@ -347,6 +347,7 @@ describe('分群列表', () => {
       revision: 1,
       campaign: { id: campaignId, name: '春季活动', status: 'draft' },
       segment: { id: segment.id, name: segment.name, revision: 1, rules: segment.rules },
+      draftDefinition: null,
       createdAt: segment.updatedAt,
       updatedAt: segment.updatedAt,
       createdBy: { id: account.id, displayName: account.displayName },

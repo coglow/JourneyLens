@@ -71,6 +71,7 @@ const journey = {
   revision: 1,
   campaign: { id: campaignId, name: campaign.name, status: campaign.status },
   segment: { id: segment.id, name: segment.name, revision: segment.revision, rules },
+  draftDefinition: null,
   createdAt: '2026-07-19T00:00:00.000Z',
   updatedAt: '2026-07-19T00:00:00.000Z',
   createdBy: { id: account.id, displayName: account.displayName },

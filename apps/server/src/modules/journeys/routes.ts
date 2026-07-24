@@ -4,6 +4,7 @@ import {
   campaignJourneyParamsSchema,
   getPaginationErrorMessages,
   journeyCreateSchema,
+  journeyDraftSaveSchema,
   journeyIdParamsSchema,
   journeyListQuerySchema,
   journeyUpdateSchema,
@@ -69,6 +70,19 @@ export function registerJourneyRoutes(app: FastifyInstance, prisma: PrismaClient
     }
 
     const journey = await service.update(params.data.id, input.data, request.currentAccount!.id);
+    return { data: journey };
+  });
+
+  app.put('/api/journeys/:id/draft', async (request) => {
+    const params = journeyIdParamsSchema.safeParse(request.params);
+    if (!params.success) throw new ApiError(400, 'BAD_REQUEST', '旅程链接无效');
+
+    const input = journeyDraftSaveSchema.safeParse(request.body);
+    if (!input.success) {
+      throw new ApiError(400, 'JOURNEY_DRAFT_INVALID', '旅程草稿内容无效，请检查节点设置和连线');
+    }
+
+    const journey = await service.saveDraft(params.data.id, input.data, request.currentAccount!.id);
     return { data: journey };
   });
 

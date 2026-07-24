@@ -35,6 +35,7 @@ import { ListFilterBar } from '@/components/ListFilterBar';
 import { ListPageLayout } from '@/components/ListPageLayout';
 import { PageHeader } from '@/components/PageHeader';
 import { useListPagination, useSyncListPage } from '@/hooks/use-list-pagination';
+import { formatDateTime } from '@/utils/format-date-time';
 import { summarizeSegmentRule } from './segment-rules';
 import { applySegmentEstimate, segmentQueryKeys } from './segment-queries';
 import { SEGMENT_IN_USE_MESSAGE, confirmSegmentDeletion } from './segment-delete';
@@ -114,7 +115,7 @@ function getSegmentColumns(
               {estimate.isStale && <Tag color="warning">需要重新计算</Tag>}
             </Flex>
             <Typography.Text type="secondary">
-              {new Date(estimate.calculatedAt).toLocaleString('zh-CN')}
+              {formatDateTime(estimate.calculatedAt)}
             </Typography.Text>
           </Flex>
         );
@@ -132,7 +133,7 @@ function getSegmentColumns(
       dataIndex: 'updatedAt',
       key: 'updatedAt',
       width: 190,
-      render: (updatedAt: string) => new Date(updatedAt).toLocaleString('zh-CN'),
+      render: formatDateTime,
     },
     {
       title: '操作',

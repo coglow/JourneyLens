@@ -29,13 +29,10 @@ import { SEGMENT_IN_USE_MESSAGE, confirmSegmentDeletion } from './segment-delete
 import { SegmentFormDrawer } from '@/features/segments/components/SegmentFormDrawer';
 import { SegmentRuleView } from '@/features/segments/components/SegmentRuleView';
 import { SegmentUsagesSection } from '@/features/segments/components/SegmentUsagesSection';
+import { formatDateTime } from '@/utils/format-date-time';
 import styles from './SegmentDetailPage.module.css';
 
 type RefreshError = { message: string; needsReload: boolean };
-
-function formatDate(value: string): string {
-  return new Date(value).toLocaleString('zh-CN');
-}
 
 /** 分群信息下方的单行字段：左侧灰色标签，右侧正文。 */
 function InfoRow({ label, value }: { label: string; value: ReactNode }) {
@@ -340,14 +337,14 @@ export function SegmentDetailPage() {
                       预估时间：
                       {segment.audienceEstimate === null
                         ? '尚未预估'
-                        : formatDate(segment.audienceEstimate.calculatedAt)}
+                        : formatDateTime(segment.audienceEstimate.calculatedAt)}
                     </Typography.Text>
                   </Flex>
                   <Divider />
                   <Flex vertical gap={8}>
                     <InfoRow label="创建者：" value={segment.createdBy.displayName} />
-                    <InfoRow label="创建时间：" value={formatDate(segment.createdAt)} />
-                    <InfoRow label="更新时间：" value={formatDate(segment.updatedAt)} />
+                    <InfoRow label="创建时间：" value={formatDateTime(segment.createdAt)} />
+                    <InfoRow label="更新时间：" value={formatDateTime(segment.updatedAt)} />
                   </Flex>
                 </Card>
               </Col>

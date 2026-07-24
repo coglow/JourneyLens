@@ -48,6 +48,57 @@ const ageRule = {
   right: 18,
 };
 
+// 五类节点各出现一次：开始 → 属性分支（满足发邮件、不满足等待后发邮件）→ 结束。
+const draftDefinition = {
+  layoutDirection: 'vertical' as const,
+  nodes: [
+    {
+      id: 'n-start',
+      type: 'start',
+      name: '开始',
+      position: { x: 0, y: 0 },
+      entryBehavior: 'app_session_started',
+    },
+    {
+      id: 'n-condition',
+      type: 'condition',
+      name: '高价值用户',
+      position: { x: 0, y: 120 },
+      rules: vipRule,
+    },
+    {
+      id: 'n-wait',
+      type: 'wait',
+      name: '等待一天',
+      position: { x: -220, y: 240 },
+      waitSeconds: 86_400,
+    },
+    {
+      id: 'n-message',
+      type: 'message',
+      name: '发送欢迎邮件',
+      position: { x: 220, y: 240 },
+      channel: 'email',
+      subject: '欢迎回来',
+      body: '这是一封欢迎邮件',
+    },
+    {
+      id: 'n-end',
+      type: 'end',
+      name: '结束',
+      position: { x: 0, y: 360 },
+      note: '完成触达',
+    },
+  ],
+  edges: [
+    { id: 'e-start', source: 'n-start', target: 'n-condition' },
+    { id: 'e-met', source: 'n-condition', target: 'n-message', branch: 'met' },
+    { id: 'e-unmet', source: 'n-condition', target: 'n-wait', branch: 'unmet' },
+    { id: 'e-wait', source: 'n-wait', target: 'n-message' },
+    { id: 'e-end', source: 'n-message', target: 'n-end' },
+  ],
+};
+
 async function seedCampaign(
   id: string,
   name: string,
@@ -109,6 +160,30 @@ function patchJourney(
   return app.inject({
     method: 'PATCH',
     url: `/api/journeys/${id}`,
+    headers: { ...jsonHeaders(cookie), origin },
+    payload: JSON.stringify(payload),
+  });
+}
+
+function draftWithMessageBody(body: string) {
+  return {
+    ...draftDefinition,
+    nodes: draftDefinition.nodes.map((node) =>
+      node.id === 'n-message' ? { ...node, body } : node,
+    ),
+  };
+}
+
+function putJourneyDraft(
+  app: TestApp,
+  cookie: string,
+  id: string,
+  payload: unknown,
+  origin = 'http://localhost',
+) {
+  return app.inject({
+    method: 'PUT',
+    url: `/api/journeys/${id}/draft`,
     headers: { ...jsonHeaders(cookie), origin },
     payload: JSON.stringify(payload),
   });
@@ -963,6 +1038,348 @@ describe('旅程 API', () => {
         new Error('database write failed'),
       );
       expect((await deleteJourney(app, cookie, id)).statusCode).toBe(500);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('保存草稿后重新读取和数据库都得到同一份内容，修订号递增', async () => {
+    await seedCampaign(campaignAId, '编排活动');
+    const { app } = makeApp(db);
+    try {
+      const cookie = await signedInCookie(app);
+      const created = await createJourney(app, cookie, campaignAId, { name: '编排旅程' });
+      const id = created.json().data.id as string;
+      // 新旅程没有编排内容，详情返回 null 而不是空对象。
+      expect(created.json().data.draftDefinition).toBeNull();
+
+      const saved = await putJourneyDraft(app, cookie, id, { revision: 1, draftDefinition });
+      expect(saved.statusCode).toBe(200);
+      expect(saved.json().data).toMatchObject({
+        id,
+        revision: 2,
+        draftDefinition,
+        updatedBy: { id: testAccountId, displayName: '测试运营账号' },
+      });
+
+      const detail = await app.inject({
+        method: 'GET',
+        url: `/api/journeys/${id}`,
+        headers: { cookie },
+      });
+      expect(detail.statusCode).toBe(200);
+      expect(detail.json().data.draftDefinition).toEqual(draftDefinition);
+      expect(detail.json().data.revision).toBe(2);
+
+      const stored = await db.prisma.journey.findUnique({ where: { id } });
+      expect(stored).toMatchObject({ revision: 2, updatedById: testAccountId });
+      expect(stored?.draftDefinition).toEqual(draftDefinition);
+
+      const listed = await listJourneys(app, cookie, campaignAId);
+      expect(listed.statusCode).toBe(200);
+      expect(listed.json().data[0]).toMatchObject({ name: '编排旅程' });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('过期修订号拒绝覆盖，重新读取后可以继续保存', async () => {
+    await seedCampaign(campaignAId, '顺序保存活动');
+    const { app } = makeApp(db);
+    try {
+      const cookie = await signedInCookie(app);
+      const created = await createJourney(app, cookie, campaignAId, { name: '顺序保存旅程' });
+      const id = created.json().data.id as string;
+
+      const first = await putJourneyDraft(app, cookie, id, { revision: 1, draftDefinition });
+      expect(first.statusCode).toBe(200);
+      expect(first.json().data.revision).toBe(2);
+
+      const stale = await putJourneyDraft(app, cookie, id, {
+        revision: 1,
+        draftDefinition: draftWithMessageBody('过期内容'),
+      });
+      expect(stale.statusCode).toBe(409);
+      expect(stale.json().error).toMatchObject({
+        code: 'JOURNEY_REVISION_CONFLICT',
+        message: '旅程已被修改，请重新读取后再保存',
+      });
+
+      const detail = await app.inject({
+        method: 'GET',
+        url: `/api/journeys/${id}`,
+        headers: { cookie },
+      });
+      expect(detail.json().data).toMatchObject({ revision: 2, draftDefinition });
+
+      const second = await putJourneyDraft(app, cookie, id, {
+        revision: 2,
+        draftDefinition: draftWithMessageBody('更新后的正文'),
+      });
+      expect(second.statusCode).toBe(200);
+      expect(second.json().data.revision).toBe(3);
+      expect(second.json().data.draftDefinition.nodes[3].body).toBe('更新后的正文');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('同一修订号的并发提交只有一个成功，另一个不会覆盖', async () => {
+    await seedCampaign(campaignAId, '并发草稿活动');
+    const { app } = makeApp(db);
+    try {
+      const cookie = await signedInCookie(app);
+      const created = await createJourney(app, cookie, campaignAId, { name: '并发草稿旅程' });
+      const id = created.json().data.id as string;
+      const otherDefinition = draftWithMessageBody('另一个版本');
+
+      const [first, second] = await Promise.all([
+        putJourneyDraft(app, cookie, id, { revision: 1, draftDefinition }),
+        putJourneyDraft(app, cookie, id, { revision: 1, draftDefinition: otherDefinition }),
+      ]);
+      const statuses = [first.statusCode, second.statusCode].sort((left, right) => left - right);
+      expect(statuses).toEqual([200, 409]);
+
+      const failed = first.statusCode === 409 ? first : second;
+      expect(failed.json().error.code).toBe('JOURNEY_REVISION_CONFLICT');
+
+      const winner = first.statusCode === 200 ? draftDefinition : otherDefinition;
+      const stored = await db.prisma.journey.findUnique({ where: { id } });
+      expect(stored?.revision).toBe(2);
+      expect(stored?.draftDefinition).toEqual(winner);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('结构无效的草稿被拒绝，数据库保持未保存状态', async () => {
+    await seedCampaign(campaignAId, '非法草稿活动');
+    const { app } = makeApp(db);
+    try {
+      const cookie = await signedInCookie(app);
+      const created = await createJourney(app, cookie, campaignAId, { name: '非法草稿旅程' });
+      const id = created.json().data.id as string;
+
+      const start = {
+        id: 'n-start',
+        type: 'start',
+        name: '开始',
+        position: { x: 0, y: 0 },
+        entryBehavior: 'product_viewed',
+      };
+      const end = {
+        id: 'n-end',
+        type: 'end',
+        name: '结束',
+        position: { x: 0, y: 200 },
+        note: null,
+      };
+      const invalidPayloads: unknown[] = [
+        { revision: 1, draftDefinition: { nodes: [], edges: [] } },
+        { revision: 1, draftDefinition: { nodes: [start, { ...start }], edges: [] } },
+        {
+          revision: 1,
+          draftDefinition: {
+            nodes: [start, end],
+            edges: [{ id: 'e', source: 'n-start', target: 'n-missing' }],
+          },
+        },
+        {
+          revision: 1,
+          draftDefinition: {
+            nodes: [start, end],
+            edges: [{ id: 'e', source: 'n-start', target: 'n-start' }],
+          },
+        },
+        {
+          revision: 1,
+          draftDefinition: {
+            nodes: [
+              start,
+              {
+                id: 'n-condition',
+                type: 'condition',
+                name: '条件',
+                position: { x: 0, y: 100 },
+                rules: vipRule,
+              },
+              end,
+            ],
+            edges: [
+              { id: 'e1', source: 'n-start', target: 'n-condition' },
+              { id: 'e2', source: 'n-condition', target: 'n-end' },
+            ],
+          },
+        },
+        {
+          // 旅程条件只能是一条比较判断，组合结构不能保存。
+          revision: 1,
+          draftDefinition: {
+            nodes: [
+              start,
+              {
+                id: 'n-condition',
+                type: 'condition',
+                name: '条件',
+                position: { x: 0, y: 100 },
+                rules: { kind: 'all', children: [vipRule] },
+              },
+              end,
+            ],
+            edges: [
+              { id: 'e1', source: 'n-start', target: 'n-condition' },
+              { id: 'e2', source: 'n-condition', target: 'n-end', branch: 'met' },
+            ],
+          },
+        },
+        {
+          revision: 1,
+          draftDefinition: {
+            nodes: [
+              start,
+              {
+                id: 'n-a',
+                type: 'message',
+                name: '消息 A',
+                position: { x: 0, y: 100 },
+                channel: 'sms',
+                subject: null,
+                body: 'A',
+              },
+              {
+                id: 'n-b',
+                type: 'message',
+                name: '消息 B',
+                position: { x: 0, y: 200 },
+                channel: 'sms',
+                subject: null,
+                body: 'B',
+              },
+            ],
+            edges: [
+              { id: 'e1', source: 'n-start', target: 'n-a' },
+              { id: 'e2', source: 'n-a', target: 'n-b' },
+              { id: 'e3', source: 'n-b', target: 'n-a' },
+            ],
+          },
+        },
+        {
+          revision: 1,
+          draftDefinition: {
+            ...draftDefinition,
+            nodes: draftDefinition.nodes.map((node) =>
+              node.id === 'n-message' ? { ...node, subject: null } : node,
+            ),
+          },
+        },
+        { revision: 0, draftDefinition },
+        { draftDefinition },
+      ];
+
+      for (const payload of invalidPayloads) {
+        const response = await putJourneyDraft(app, cookie, id, payload);
+        expect(response.statusCode).toBe(400);
+        expect(response.json().error).toMatchObject({
+          code: 'JOURNEY_DRAFT_INVALID',
+          message: '旅程草稿内容无效，请检查节点设置和连线',
+        });
+      }
+
+      const stored = await db.prisma.journey.findUnique({ where: { id } });
+      expect(stored).toMatchObject({ revision: 1, draftDefinition: null });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('只读活动、旅程不存在和无效链接都不能保存草稿', async () => {
+    await seedCampaign(campaignAId, '已排期编排活动', 'scheduled');
+    const journeyId = '00000000-0000-4000-8202-000000000501';
+    await db.prisma.journey.create({
+      data: {
+        id: journeyId,
+        campaignId: campaignAId,
+        name: '只读编排旅程',
+        createdById: testAccountId,
+        updatedById: testAccountId,
+      },
+    });
+    const { app } = makeApp(db);
+    try {
+      const cookie = await signedInCookie(app);
+
+      const readonly = await putJourneyDraft(app, cookie, journeyId, {
+        revision: 1,
+        draftDefinition,
+      });
+      expect(readonly.statusCode).toBe(409);
+      expect(readonly.json().error).toMatchObject({
+        code: 'CAMPAIGN_NOT_DRAFT',
+        message: '只有草稿活动可以维护旅程',
+      });
+      expect(await db.prisma.journey.findUnique({ where: { id: journeyId } })).toMatchObject({
+        revision: 1,
+        draftDefinition: null,
+      });
+
+      const missing = await putJourneyDraft(app, cookie, missingId, {
+        revision: 1,
+        draftDefinition,
+      });
+      expect(missing.statusCode).toBe(404);
+      expect(missing.json().error.message).toBe('旅程不存在');
+
+      const invalidId = await putJourneyDraft(app, cookie, 'not-a-uuid', {
+        revision: 1,
+        draftDefinition,
+      });
+      expect(invalidId.statusCode).toBe(400);
+      expect(invalidId.json().error.message).toBe('旅程链接无效');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('草稿保存拒绝未登录和跨来源请求，数据库失败不伪装成成功', async () => {
+    await seedCampaign(campaignAId, '草稿安全检查活动');
+    const { app } = makeApp(db);
+    try {
+      const cookie = await signedInCookie(app);
+      const created = await createJourney(app, cookie, campaignAId, { name: '草稿安全检查旅程' });
+      const id = created.json().data.id as string;
+
+      const unauthenticated = await app.inject({
+        method: 'PUT',
+        url: `/api/journeys/${id}/draft`,
+        headers: {
+          host: 'localhost',
+          origin: 'http://localhost',
+          'content-type': 'application/json',
+        },
+        payload: JSON.stringify({ revision: 1, draftDefinition }),
+      });
+      expect(unauthenticated.statusCode).toBe(401);
+
+      const crossOrigin = await putJourneyDraft(
+        app,
+        cookie,
+        id,
+        { revision: 1, draftDefinition },
+        'https://elsewhere.example',
+      );
+      expect(crossOrigin.statusCode).toBe(403);
+
+      vi.spyOn(db.prisma.journey, 'update').mockRejectedValueOnce(
+        new Error('database write failed'),
+      );
+      expect(
+        (await putJourneyDraft(app, cookie, id, { revision: 1, draftDefinition })).statusCode,
+      ).toBe(500);
+
+      expect(await db.prisma.journey.findUnique({ where: { id } })).toMatchObject({
+        revision: 1,
+        draftDefinition: null,
+      });
     } finally {
       await app.close();
     }

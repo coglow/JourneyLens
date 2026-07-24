@@ -7,6 +7,7 @@ import { getSegments, getSegment } from '@/services/segments';
 import { ApiError, getApiErrorMessage, isSessionExpired } from '@/services/api';
 import { segmentQueryKeys } from '@/features/segments/segment-queries';
 import { SegmentRuleView } from '@/features/segments/components/SegmentRuleView';
+import { formatDateTime } from '@/utils/format-date-time';
 
 type Props = {
   value?: string | null;
@@ -64,7 +65,7 @@ export function SegmentPicker({ value, onChange }: Props) {
       dataIndex: 'updatedAt',
       key: 'updatedAt',
       width: 190,
-      render: (updatedAt: string) => new Date(updatedAt).toLocaleString('zh-CN'),
+      render: formatDateTime,
     },
     {
       title: '操作',

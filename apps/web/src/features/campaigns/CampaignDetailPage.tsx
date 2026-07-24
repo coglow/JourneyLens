@@ -11,14 +11,11 @@ import {
   isSessionExpired,
 } from '@/services/api';
 import { deleteCampaign, getCampaign } from '@/services/campaigns';
+import { formatDateTime } from '@/utils/format-date-time';
 import { campaignQueryKeys } from './campaign-queries';
 import { campaignStatusBadges, campaignStatusLabels } from './campaign-status';
 import { CampaignFormDrawer } from './components/CampaignFormDrawer';
 import { CampaignJourneysSection } from '@/features/journeys/components/CampaignJourneysSection';
-
-function formatDate(value: string): string {
-  return new Date(value).toLocaleString('zh-CN');
-}
 
 export function CampaignDetailPage() {
   const { id = '' } = useParams();
@@ -215,10 +212,10 @@ export function CampaignDetailPage() {
               </Descriptions.Item>
               <Descriptions.Item label="创建者">{campaign.createdBy.displayName}</Descriptions.Item>
               <Descriptions.Item label="创建时间">
-                {formatDate(campaign.createdAt)}
+                {formatDateTime(campaign.createdAt)}
               </Descriptions.Item>
               <Descriptions.Item label="更新时间">
-                {formatDate(campaign.updatedAt)}
+                {formatDateTime(campaign.updatedAt)}
               </Descriptions.Item>
             </Descriptions>
           )}

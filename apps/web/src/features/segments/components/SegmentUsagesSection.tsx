@@ -8,12 +8,9 @@ import { ApiError, getApiErrorMessage, isSessionExpired } from '@/services/api';
 import { getSegmentUsages } from '@/services/segments';
 import { campaignStatusBadges, campaignStatusLabels } from '@/features/campaigns/campaign-status';
 import { segmentQueryKeys } from '../segment-queries';
+import { formatDateTime } from '@/utils/format-date-time';
 
 type Props = { segmentId: string };
-
-function formatDate(value: string): string {
-  return new Date(value).toLocaleString('zh-CN');
-}
 
 export function SegmentUsagesSection({ segmentId }: Props) {
   const location = useLocation();
@@ -85,7 +82,7 @@ export function SegmentUsagesSection({ segmentId }: Props) {
       dataIndex: 'updatedAt',
       key: 'updatedAt',
       width: 190,
-      render: formatDate,
+      render: formatDateTime,
     },
   ];
 

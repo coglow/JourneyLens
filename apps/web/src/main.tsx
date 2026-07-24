@@ -1,5 +1,6 @@
 import { createRoot } from 'react-dom/client';
 import 'antd/dist/reset.css';
+import '@xyflow/react/dist/style.css';
 import { App } from '@/app/App';
 import './styles.css';
 

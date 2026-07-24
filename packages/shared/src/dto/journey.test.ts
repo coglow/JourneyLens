@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { journeyCreateSchema, journeyListQuerySchema, journeyUpdateSchema } from './journey.js';
+import {
+  journeyCreateSchema,
+  journeyDetailSchema,
+  journeyDraftSaveSchema,
+  journeyListQuerySchema,
+  journeyUpdateSchema,
+} from './journey.js';
 
 const segmentId = '00000000-0000-4000-8000-000000000001';
 
@@ -62,5 +68,72 @@ describe('旅程请求响应契约', () => {
     expect(journeyListQuerySchema.safeParse({ page: 1, pageSize: 10, extra: true }).success).toBe(
       false,
     );
+  });
+
+  it('旅程详情必须带草稿字段，null 表示还没有保存编排', () => {
+    const detail = {
+      id: segmentId,
+      name: '欢迎旅程',
+      description: null,
+      revision: 1,
+      campaign: { id: segmentId, name: '春季活动', status: 'draft' },
+      segment: null,
+      draftDefinition: null,
+      createdAt: '2026-07-16T08:00:00.000Z',
+      updatedAt: '2026-07-16T08:00:00.000Z',
+      createdBy: { id: segmentId, displayName: '运营账号' },
+      updatedBy: { id: segmentId, displayName: '运营账号' },
+    };
+    expect(journeyDetailSchema.parse(detail).draftDefinition).toBeNull();
+
+    const draftDefinition = {
+      layoutDirection: 'vertical' as const,
+      nodes: [
+        {
+          id: 'n-start',
+          type: 'start',
+          name: '开始',
+          position: { x: 0, y: 0 },
+          entryBehavior: 'product_viewed',
+        },
+      ],
+      edges: [],
+    };
+    expect(
+      journeyDetailSchema.parse({ ...detail, draftDefinition }).draftDefinition?.nodes,
+    ).toHaveLength(1);
+    expect(journeyDetailSchema.safeParse({ ...detail, draftDefinition: undefined }).success).toBe(
+      false,
+    );
+  });
+
+  it('保存草稿必须带读取时的修订号和完整草稿定义', () => {
+    const draftDefinition = {
+      layoutDirection: 'vertical' as const,
+      nodes: [
+        {
+          id: 'n-start',
+          type: 'start',
+          name: '开始',
+          position: { x: 0, y: 0 },
+          entryBehavior: 'product_viewed',
+        },
+      ],
+      edges: [],
+    };
+
+    expect(journeyDraftSaveSchema.parse({ revision: 1, draftDefinition })).toEqual({
+      revision: 1,
+      draftDefinition,
+    });
+    expect(journeyDraftSaveSchema.safeParse({ draftDefinition }).success).toBe(false);
+    expect(journeyDraftSaveSchema.safeParse({ revision: 0, draftDefinition }).success).toBe(false);
+    expect(
+      journeyDraftSaveSchema.safeParse({ revision: 1, draftDefinition, extra: true }).success,
+    ).toBe(false);
+    expect(
+      journeyDraftSaveSchema.safeParse({ revision: 1, draftDefinition: { nodes: [], edges: [] } })
+        .success,
+    ).toBe(false);
   });
 });

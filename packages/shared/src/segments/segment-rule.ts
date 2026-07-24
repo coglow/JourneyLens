@@ -33,7 +33,7 @@ export type SegmentRule =
 
 const compareRuleShape = z
   .object({
-    kind: z.literal('compare'),
+    kind: z.literal('compare', { error: '这里只能设置一条比较条件' }),
     left: z
       .object({
         source: z.literal('user'),
@@ -173,7 +173,8 @@ function validateCompareRule(value: z.infer<typeof compareRuleShape>, ctx: z.Ref
   }
 }
 
-const compareRuleSchema = compareRuleShape.superRefine(validateCompareRule);
+/** 单个比较条件：分群规则树和旅程条件节点共用同一份字段校验。 */
+export const segmentCompareRuleSchema = compareRuleShape.superRefine(validateCompareRule);
 
 const segmentRuleNodeSchema: z.ZodType<SegmentRule> = z.lazy(() => {
   const childrenSchema = z
@@ -185,7 +186,7 @@ const segmentRuleNodeSchema: z.ZodType<SegmentRule> = z.lazy(() => {
     z.object({ kind: z.literal('all'), children: childrenSchema }).strict(),
     z.object({ kind: z.literal('any'), children: childrenSchema }).strict(),
     z.object({ kind: z.literal('not'), child: segmentRuleNodeSchema }).strict(),
-    compareRuleSchema,
+    segmentCompareRuleSchema,
   ]);
 });
 

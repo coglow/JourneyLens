@@ -12,8 +12,10 @@
   },
   "dependencies": {
     "@ant-design/icons": "6.3.2",
+    "@dagrejs/dagre": "3.0.0",
     "@journeylens/shared": "workspace:*",
     "@tanstack/react-query": "5.101.2",
+    "@xyflow/react": "12.11.2",
     "antd": "6.5.1",
     "axios": "1.18.1",
     "react": "19.2.7",

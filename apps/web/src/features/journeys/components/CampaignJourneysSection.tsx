@@ -28,14 +28,11 @@ import { getApiErrorMessage, getWriteErrorMessage, isSessionExpired } from '@/se
 import { deleteJourney, getJourneys } from '@/services/journeys';
 import { journeyQueryKeys } from '../journey-queries';
 import { JourneyFormDrawer } from './JourneyFormDrawer';
+import { formatDateTime } from '@/utils/format-date-time';
 
 type Props = { campaignId: string; campaignStatus: CampaignStatus };
 type FilterValues = { q?: string };
 type DeleteError = { message: string; journeyId: string };
-
-function formatDate(value: string): string {
-  return new Date(value).toLocaleString('zh-CN');
-}
 
 export function CampaignJourneysSection({ campaignId, campaignStatus }: Props) {
   const location = useLocation();
@@ -223,7 +220,7 @@ export function CampaignJourneysSection({ campaignId, campaignStatus }: Props) {
       dataIndex: 'updatedAt',
       key: 'updatedAt',
       width: 190,
-      render: formatDate,
+      render: formatDateTime,
     },
     ...(writable
       ? [

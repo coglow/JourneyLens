@@ -2,6 +2,8 @@ import { Prisma, type PrismaClient } from '@prisma/client';
 import {
   type JourneyCreate,
   type JourneyDetail,
+  type JourneyDraftDefinition,
+  type JourneyDraftSave,
   type JourneyListItem,
   type JourneyListQuery,
   type JourneyUpdate,
@@ -13,6 +15,7 @@ const journeyDetailSelect = {
   id: true,
   name: true,
   description: true,
+  draftDefinition: true,
   revision: true,
   createdAt: true,
   updatedAt: true,
@@ -44,6 +47,7 @@ function serializeDetail(record: JourneyDetailRecord): JourneyDetail {
       record.segment === null
         ? null
         : { ...record.segment, rules: record.segment.rules as unknown as SegmentRule },
+    draftDefinition: record.draftDefinition as JourneyDraftDefinition | null,
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),
     createdBy: record.createdBy,
@@ -208,6 +212,35 @@ export class JourneyService {
         throw new ApiError(409, 'JOURNEY_REVISION_CONFLICT', '旅程已被修改，请重新读取后再保存');
       }
       return rethrowWriteError(error);
+    }
+  }
+
+  async saveDraft(id: string, input: JourneyDraftSave, accountId: string): Promise<JourneyDetail> {
+    try {
+      // 修订号和活动状态同时作为写入条件：任一不满足都不会覆盖别人的内容，
+      // 也不会把草稿写入已排期或运行中的活动。
+      const updated = await this.prisma.journey.update({
+        where: { id, revision: input.revision, campaign: { status: 'draft' } },
+        data: {
+          draftDefinition: input.draftDefinition as Prisma.InputJsonValue,
+          revision: { increment: 1 },
+          updatedById: accountId,
+        },
+        select: journeyDetailSelect,
+      });
+      // 直接返回本次写入的记录，避免独立回读时混入别人的后续修改。
+      return serializeDetail(updated);
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+        const current = await this.prisma.journey.findUnique({
+          where: { id },
+          select: { campaign: { select: { status: true } } },
+        });
+        if (current === null) throw new ApiError(404, 'NOT_FOUND', '旅程不存在');
+        if (current.campaign.status !== 'draft') throw notDraft();
+        throw new ApiError(409, 'JOURNEY_REVISION_CONFLICT', '旅程已被修改，请重新读取后再保存');
+      }
+      throw error;
     }
   }
 

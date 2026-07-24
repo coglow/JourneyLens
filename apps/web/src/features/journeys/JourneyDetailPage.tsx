@@ -6,28 +6,9 @@ import { ApiError, getApiErrorMessage, isSessionExpired } from '@/services/api';
 import { campaignStatusLabels } from '@/features/campaigns/campaign-status';
 import { getJourney } from '@/services/journeys';
 import { SegmentRuleView } from '@/features/segments/components/SegmentRuleView';
+import { formatDateTime } from '@/utils/format-date-time';
+import { readReturnTo } from '@/utils/return-to';
 import { journeyQueryKeys } from './journey-queries';
-
-function formatDate(value: string): string {
-  return new Date(value).toLocaleString('zh-CN');
-}
-
-function readReturnTo(state: unknown): { path: string; state: unknown } | undefined {
-  if (typeof state !== 'object' || state === null || !('returnTo' in state)) return undefined;
-  const returnTo = state.returnTo;
-  // 返回地址仅接受本应用已有的活动或分群页面。
-  if (
-    typeof returnTo === 'string' &&
-    (returnTo.startsWith('/campaigns/') || returnTo.startsWith('/segments/'))
-  ) {
-    return {
-      path: returnTo,
-      // 保留来源页本身的返回地址，详情页来回跳转后筛选条件仍能恢复。
-      state: 'returnState' in state ? state.returnState : undefined,
-    };
-  }
-  return undefined;
-}
 
 export function JourneyDetailPage() {
   const { id = '' } = useParams();
@@ -72,6 +53,18 @@ export function JourneyDetailPage() {
             </Button>
           }
           title={journey?.name ?? '旅程详情'}
+          actions={
+            journey && (
+              <Button
+                type="primary"
+                onClick={() =>
+                  navigate(`/journeys/${journey.id}/editor`, { state: location.state })
+                }
+              >
+                {journey.campaign.status === 'draft' ? '编排旅程' : '查看编排'}
+              </Button>
+            )
+          }
         />
         {journey !== undefined && refreshError && (
           <Alert
@@ -126,10 +119,10 @@ export function JourneyDetailPage() {
                   {journey.createdBy.displayName}
                 </Descriptions.Item>
                 <Descriptions.Item label="创建时间">
-                  {formatDate(journey.createdAt)}
+                  {formatDateTime(journey.createdAt)}
                 </Descriptions.Item>
                 <Descriptions.Item label="更新时间">
-                  {formatDate(journey.updatedAt)}
+                  {formatDateTime(journey.updatedAt)}
                 </Descriptions.Item>
               </Descriptions>
             </Card>

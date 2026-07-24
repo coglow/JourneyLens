@@ -39,6 +39,7 @@ import { ListFilterBar } from '@/components/ListFilterBar';
 import { ListPageLayout } from '@/components/ListPageLayout';
 import { PageHeader } from '@/components/PageHeader';
 import { useListPagination, useSyncListPage } from '@/hooks/use-list-pagination';
+import { formatDateTime } from '@/utils/format-date-time';
 import { campaignQueryKeys } from './campaign-queries';
 import { campaignStatusBadges, campaignStatusLabels } from './campaign-status';
 import { CampaignFormDrawer } from './components/CampaignFormDrawer';
@@ -142,7 +143,7 @@ function getCampaignColumns(
       dataIndex: 'updatedAt',
       key: 'updatedAt',
       width: 190,
-      render: (updatedAt: string) => new Date(updatedAt).toLocaleString('zh-CN'),
+      render: formatDateTime,
     },
     {
       title: '操作',
