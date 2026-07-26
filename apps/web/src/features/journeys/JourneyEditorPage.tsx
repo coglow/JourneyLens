@@ -1,22 +1,23 @@
-import { useEffect, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { ApartmentOutlined, ArrowLeftOutlined } from '@ant-design/icons';
+import { useEffect, useMemo, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { ApartmentOutlined, ArrowLeftOutlined, ExperimentOutlined } from '@ant-design/icons';
 import {
   Alert,
   Button,
-  Card,
   Dropdown,
   Empty,
   Flex,
   Popconfirm,
   Segmented,
   Spin,
+  Tabs,
+  Tooltip,
   Typography,
 } from 'antd';
 import {
-  CONDITION_BRANCH_LABELS,
+  JOURNEY_BRANCH_LABELS,
   JOURNEY_LAYOUT_DIRECTIONS,
   JOURNEY_NODE_LIMIT,
-  type ConditionBranch,
+  type JourneyBranch,
   type JourneyLayoutDirection,
   type JourneyNodeType,
 } from '@journeylens/shared';
@@ -38,9 +39,12 @@ import {
 import { JourneyNodeSettings } from '@/features/journeys/components/JourneyNodeSettings';
 import { JourneyEditorPalette } from '@/features/journeys/components/JourneyEditorPalette';
 import { JourneyFlowCheck } from '@/features/journeys/components/JourneyFlowCheck';
+import { JourneySimulationPanel } from '@/features/journeys/components/JourneySimulationPanel';
+import { journeyBranchFromHandle } from '@/features/journeys/journey-canvas';
 import { journeyNodeOptions } from '@/features/journeys/journey-node-options';
 import { fitViewOptions, useJourneyCanvas } from '@/features/journeys/hooks/useJourneyCanvas';
 import { useJourneyDraftPersistence } from '@/features/journeys/hooks/useJourneyDraftPersistence';
+import { useJourneySimulation } from '@/features/journeys/hooks/useJourneySimulation';
 import styles from '@/features/journeys/components/JourneyDraftEditor.module.css';
 import { readReturnTo } from '@/utils/return-to';
 
@@ -61,13 +65,14 @@ const flowAriaLabels = {
 
 type QuickAddState = {
   sourceId: string;
-  branch?: ConditionBranch;
+  branch?: JourneyBranch;
   clientPosition: { x: number; y: number };
   anchor: { x: number; y: number };
 };
 
 export function JourneyEditorPage() {
-  const { id = '' } = useParams();
+  const { id = '', view = 'editor' } = useParams();
+  const simulationPage = view === 'simulation';
   const location = useLocation();
   const navigate = useNavigate();
   const [quickAdd, setQuickAdd] = useState<QuickAddState | null>(null);
@@ -91,7 +96,9 @@ export function JourneyEditorPage() {
     selectedEdgeIds,
     canUndo,
     canRedo,
+    currentDefinition,
     parsedDefinition,
+    warnings,
     canvasElement,
     flowInstance,
     nodeSettingsHeading,
@@ -120,20 +127,70 @@ export function JourneyEditorPage() {
     loadError,
     readLatestAfterConfirm,
   } = draft;
+  const simulation = useJourneySimulation({
+    journeyId: id,
+    definition: currentDefinition,
+    normalizedDefinition: parsedDefinition.success ? parsedDefinition.data : null,
+    warnings,
+  });
+  // 高亮只存在于展示副本：不改画布状态，也不进入草稿和撤销历史。
+  const simulationResult = simulation.result;
+  const displayNodes = useMemo(() => {
+    if (simulationResult === null) return nodes;
+    const traversed = new Set(simulationResult.steps.map((step) => step.nodeId));
+    return nodes.map((node) =>
+      traversed.has(node.id)
+        ? { ...node, data: { ...node.data, simulationState: 'traversed' as const } }
+        : node,
+    );
+  }, [nodes, simulationResult]);
+  const displayEdges = useMemo(() => {
+    if (simulationResult === null) return edges;
+    const traversed = new Set(simulationResult.traversedEdgeIds);
+    return edges.map((edge) =>
+      traversed.has(edge.id) ? { ...edge, className: styles.simulationEdge ?? '' } : edge,
+    );
+  }, [edges, simulationResult]);
+
   const currentStatus = journey ? campaignStatusLabels[journey.campaign.status] : undefined;
   const hasSelection = selectedNodeIds.length > 0 || selectedEdgeIds.length > 0;
 
   // 等待时长的错误只由共享草稿校验产生；取出当前节点该字段的一条，交给设置面板就地提示。
   const waitSecondsError =
-    selectedNode?.data.draftNode.type === 'wait'
+    selectedNode !== undefined &&
+    (selectedNode.data.draftNode.type === 'wait' ||
+      selectedNode.data.draftNode.type === 'wait_for_event')
       ? canvas.issues.find(
           (issue) => issue.nodeId === selectedNode.id && issue.path.at(-1) === 'waitSeconds',
         )?.message
       : undefined;
+  const startBehavior = canvas.currentDefinition.nodes.find(
+    (node) => node.type === 'start',
+  )?.entryBehavior;
+  const simulationBlockReason = !parsedDefinition.success
+    ? (canvas.issues[0]?.message ?? '旅程设置有问题，请先修正。')
+    : (warnings[0]?.message ?? undefined);
+  const showSimulationPage =
+    simulationPage && (initializedId !== id || simulationBlockReason === undefined);
+
+  useEffect(() => {
+    if (simulationPage && initializedId === id && simulationBlockReason !== undefined) {
+      navigate(`/journeys/${id}/editor`, { replace: true, state: location.state });
+    }
+  }, [id, initializedId, location.state, navigate, simulationBlockReason, simulationPage]);
 
   // 编辑入口统一检查只读状态；只有操作确实生效后才清除上一次保存反馈。
   function edit(action: () => boolean): void {
     if (canEdit && action()) draft.clearSaveError();
+  }
+
+  /** 模拟结果在当前画布定位；编辑页的问题定位仍聚焦对应步骤设置。 */
+  function locateNode(nodeId: string): void {
+    canvas.selectNodeForIssue(nodeId, !showSimulationPage);
+  }
+
+  function openSimulation(): void {
+    navigate(`/journeys/${id}/simulation`, { state: location.state });
   }
 
   /** 优先回到来源页，保留其筛选与页码；直接从链接打开时按旅程归属回到活动。 */
@@ -147,6 +204,7 @@ export function JourneyEditorPage() {
   }
 
   function handleCanvasKeyDown(event: ReactKeyboardEvent<HTMLElement>): void {
+    if (showSimulationPage) return;
     const target = event.target;
     if (
       target instanceof HTMLElement &&
@@ -162,6 +220,7 @@ export function JourneyEditorPage() {
 
   useEffect(() => {
     function handleCanvasShortcut(event: KeyboardEvent): void {
+      if (showSimulationPage) return;
       if (!(event.ctrlKey || event.metaKey)) return;
       const key = event.key.toLowerCase();
       if (!['z', 'y', 'c', 'v'].includes(key)) return;
@@ -197,7 +256,7 @@ export function JourneyEditorPage() {
       if (changed) clearSaveError();
     }
 
-    // 画布快捷键只在编排页存续期间监听窗口按键，与节点焦点无关。
+    // 模拟页只读，关闭编辑快捷键；编排页的快捷键仍与节点焦点无关。
     window.addEventListener('keydown', handleCanvasShortcut);
     return () => window.removeEventListener('keydown', handleCanvasShortcut);
   }, [
@@ -209,13 +268,14 @@ export function JourneyEditorPage() {
     pasteSelection,
     redoCanvas,
     undoCanvas,
+    showSimulationPage,
   ]);
 
   function handleConnectEnd(
     event: Parameters<OnConnectEnd>[0],
     connection: Parameters<OnConnectEnd>[1],
   ): void {
-    if (!canEdit || !connection.fromNode || !connection.fromHandle) return;
+    if (showSimulationPage || !canEdit || !connection.fromNode || !connection.fromHandle) return;
     if (connection.fromHandle.type !== 'source' || connection.toNode || connection.toHandle) return;
 
     const target = event.target;
@@ -246,10 +306,7 @@ export function JourneyEditorPage() {
     const source = nodes.find((node) => node.id === sourceId);
     if (!source || source.data.draftNode.type === 'end') return;
     const handleId = connection.fromHandle.id;
-    const branch =
-      source.data.draftNode.type === 'condition' && (handleId === 'met' || handleId === 'unmet')
-        ? handleId
-        : undefined;
+    const branch = journeyBranchFromHandle(source.data.draftNode.type, handleId);
     if (!canvas.canQuickAddFrom(sourceId, branch)) return;
 
     setQuickAdd({
@@ -270,12 +327,27 @@ export function JourneyEditorPage() {
   }
 
   return (
-    <section className={styles.editorShell} aria-label="旅程编排" onKeyDown={handleCanvasKeyDown}>
+    <section
+      className={styles.editorShell}
+      aria-label={showSimulationPage ? '旅程模拟' : '旅程编排'}
+      onKeyDown={handleCanvasKeyDown}
+    >
       <header className={styles.topbar}>
         <div className={styles.topbarTitle}>
-          <Button type="link" icon={<ArrowLeftOutlined />} onClick={goBack}>
-            返回活动
-          </Button>
+          {showSimulationPage ? (
+            <Button
+              type="link"
+              icon={<ArrowLeftOutlined />}
+              aria-label="返回编排"
+              onClick={() => navigate(`/journeys/${id}/editor`, { state: location.state })}
+            >
+              返回编排
+            </Button>
+          ) : (
+            <Button type="link" icon={<ArrowLeftOutlined />} onClick={goBack}>
+              返回活动
+            </Button>
+          )}
           <div className={styles.journeyHeading}>
             <Typography.Title level={3} className={styles.journeyName ?? ''}>
               {journey?.name ?? '旅程编排'}
@@ -289,6 +361,28 @@ export function JourneyEditorPage() {
           >
             {saveStatus}
           </Typography.Text>
+          {!showSimulationPage && (
+            <Tooltip
+              title={
+                simulationBlockReason ??
+                (!initializedId || initializedId !== id ? '旅程正在读取，请稍后再试。' : undefined)
+              }
+              placement="bottom"
+            >
+              <span className={styles.disabledButtonTrigger ?? ''}>
+                <Button
+                  icon={<ExperimentOutlined />}
+                  aria-label="打开旅程模拟"
+                  disabled={
+                    !initializedId || initializedId !== id || simulationBlockReason !== undefined
+                  }
+                  onClick={openSimulation}
+                >
+                  旅程模拟
+                </Button>
+              </span>
+            </Tooltip>
+          )}
           {journey?.campaign.status === 'draft' && (
             <Button
               type="primary"
@@ -355,55 +449,63 @@ export function JourneyEditorPage() {
         ) : null
       ) : (
         <>
-          <div className={styles.editorWorkspace}>
-            <JourneyEditorPalette
-              canEdit={canEdit}
-              nodeLimitReached={nodes.length >= JOURNEY_NODE_LIMIT}
-              hasStart={nodes.some((node) => node.data.draftNode.type === 'start')}
-              hasSelection={hasSelection}
-              canUndo={canUndo}
-              canRedo={canRedo}
-              onAddNode={(type) => edit(() => canvas.addNode(type))}
-              onUndo={() => edit(canvas.undo)}
-              onRedo={() => edit(canvas.redo)}
-              onCopy={canvas.copySelection}
-              onDelete={() => edit(() => canvas.deleteSelected())}
-            />
+          <div
+            className={`${styles.editorWorkspace ?? ''} ${
+              showSimulationPage ? (styles.simulationWorkspace ?? '') : ''
+            }`}
+          >
+            {!showSimulationPage && (
+              <JourneyEditorPalette
+                canEdit={canEdit}
+                nodeLimitReached={nodes.length >= JOURNEY_NODE_LIMIT}
+                hasStart={nodes.some((node) => node.data.draftNode.type === 'start')}
+                hasSelection={hasSelection}
+                canUndo={canUndo}
+                canRedo={canRedo}
+                onAddNode={(type) => edit(() => canvas.addNode(type))}
+                onUndo={() => edit(canvas.undo)}
+                onRedo={() => edit(canvas.redo)}
+                onCopy={canvas.copySelection}
+                onDelete={() => edit(() => canvas.deleteSelected())}
+              />
+            )}
             <main className={styles.canvasPanel} aria-label="旅程画布">
               <header className={styles.canvasHeader}>
                 <Typography.Title level={4} className={styles.panelTitle ?? ''}>
                   旅程画布
                 </Typography.Title>
-                <Flex align="center" gap={8} wrap>
-                  <Segmented
-                    aria-label="布局方向"
-                    value={layoutDirection}
-                    disabled={!canEdit}
-                    options={JOURNEY_LAYOUT_DIRECTIONS.map((value) => ({
-                      label: value === 'vertical' ? '纵向' : '横向',
-                      value,
-                    }))}
-                    onChange={(value) =>
-                      edit(() => canvas.changeLayoutDirection(value as JourneyLayoutDirection))
-                    }
-                  />
-                  <Popconfirm
-                    title="自动排列会调整所有步骤的位置。"
-                    description="你可以使用撤销恢复原来的位置。"
-                    okText="自动排列"
-                    cancelText="取消"
-                    onConfirm={() => edit(canvas.autoArrange)}
-                  >
-                    <Button icon={<ApartmentOutlined />} disabled={!canEdit || nodes.length < 2}>
-                      自动排列
-                    </Button>
-                  </Popconfirm>
-                </Flex>
+                {!showSimulationPage && (
+                  <Flex align="center" gap={8} wrap>
+                    <Segmented
+                      aria-label="布局方向"
+                      value={layoutDirection}
+                      disabled={!canEdit}
+                      options={JOURNEY_LAYOUT_DIRECTIONS.map((value) => ({
+                        label: value === 'vertical' ? '纵向' : '横向',
+                        value,
+                      }))}
+                      onChange={(value) =>
+                        edit(() => canvas.changeLayoutDirection(value as JourneyLayoutDirection))
+                      }
+                    />
+                    <Popconfirm
+                      title="自动排列会调整所有步骤的位置。"
+                      description="你可以使用撤销恢复原来的位置。"
+                      okText="自动排列"
+                      cancelText="取消"
+                      onConfirm={() => edit(canvas.autoArrange)}
+                    >
+                      <Button icon={<ApartmentOutlined />} disabled={!canEdit || nodes.length < 2}>
+                        自动排列
+                      </Button>
+                    </Popconfirm>
+                  </Flex>
+                )}
               </header>
               <div ref={canvasElement} className={styles.canvas}>
                 <ReactFlow<JourneyCanvasFlowNode, Edge>
-                  nodes={nodes}
-                  edges={edges}
+                  nodes={displayNodes}
+                  edges={displayEdges}
                   nodeTypes={nodeTypes}
                   onNodesChange={onNodesChange}
                   onEdgesChange={onEdgesChange}
@@ -422,11 +524,11 @@ export function JourneyEditorPage() {
                     canvas.finishDrag();
                     draft.clearSaveError();
                   }}
-                  nodesDraggable={canEdit}
-                  nodesConnectable={canEdit}
-                  elementsSelectable
-                  nodesFocusable
-                  edgesFocusable
+                  nodesDraggable={canEdit && !showSimulationPage}
+                  nodesConnectable={canEdit && !showSimulationPage}
+                  elementsSelectable={!showSimulationPage}
+                  nodesFocusable={!showSimulationPage}
+                  edgesFocusable={!showSimulationPage}
                   deleteKeyCode={null}
                   minZoom={0.25}
                   maxZoom={1.75}
@@ -441,11 +543,13 @@ export function JourneyEditorPage() {
                   <Controls position="top-right" showFitView showInteractive={false} />
                   {nodes.length === 0 && (
                     <Panel position="top-center">
-                      <div className={styles.emptyCanvas}>从左侧添加步骤开始编排</div>
+                      <div className={styles.emptyCanvas}>
+                        {showSimulationPage ? '画布中暂无步骤' : '从左侧添加步骤开始编排'}
+                      </div>
                     </Panel>
                   )}
                 </ReactFlow>
-                {quickAdd && (
+                {!showSimulationPage && quickAdd && (
                   <Dropdown
                     open
                     autoFocus
@@ -500,62 +604,94 @@ export function JourneyEditorPage() {
               </div>
             </main>
 
-            <aside className={styles.inspector} aria-label="步骤设置">
-              <Card
-                title={selectedNode ? '步骤设置' : selectedEdge ? '路径设置' : null}
-                className={styles.settingsCard ?? ''}
-              >
-                <div ref={nodeSettingsHeading} tabIndex={-1} className={styles.settingsHeading}>
-                  {selectedNode ? (
-                    <JourneyNodeSettings
-                      node={selectedNode.data.draftNode}
-                      disabled={!canEdit}
-                      waitSecondsError={waitSecondsError}
-                      onChange={(node) => edit(() => canvas.updateNode(node))}
-                    />
-                  ) : selectedEdge ? (
-                    <Flex vertical gap={12}>
-                      <Typography.Text>
-                        {nodes.find((node) => node.id === selectedEdge.source)?.data.draftNode
-                          .name ?? '未知步骤'}
-                        {' → '}
-                        {nodes.find((node) => node.id === selectedEdge.target)?.data.draftNode
-                          .name ?? '未知步骤'}
-                      </Typography.Text>
-                      {selectedEdge.sourceHandle === 'met' ||
-                      selectedEdge.sourceHandle === 'unmet' ? (
-                        <Typography.Text>
-                          路径：{CONDITION_BRANCH_LABELS[selectedEdge.sourceHandle]}
-                        </Typography.Text>
-                      ) : null}
-                      <Button
-                        danger
-                        disabled={!canEdit}
-                        onClick={() => edit(() => canvas.deleteSelected([], [selectedEdge.id]))}
-                      >
-                        删除连线
-                      </Button>
-                    </Flex>
-                  ) : (
-                    <Empty
-                      image={Empty.PRESENTED_IMAGE_SIMPLE}
-                      description="选择一个步骤查看设置。"
-                    />
-                  )}
-                </div>
-                {selectedNode && (
-                  <Button
-                    danger
-                    block
-                    disabled={!canEdit}
-                    className={styles.deleteNodeButton ?? ''}
-                    onClick={() => edit(() => canvas.deleteSelected([selectedNode.id], []))}
-                  >
-                    删除步骤及相关连线
-                  </Button>
-                )}
-              </Card>
-            </aside>
+            {showSimulationPage ? (
+              <aside className={styles.simulationInspector ?? ''} aria-label="旅程模拟">
+                <JourneySimulationPanel
+                  journeyId={id}
+                  definition={canvas.currentDefinition}
+                  segmentRules={journey?.segment?.rules ?? null}
+                  simulation={simulation}
+                  onLocate={locateNode}
+                />
+              </aside>
+            ) : (
+              <aside className={styles.inspector} aria-label="步骤设置">
+                <Tabs
+                  className={styles.inspectorTabs ?? ''}
+                  activeKey="settings"
+                  items={[
+                    {
+                      key: 'settings',
+                      label: '步骤设置',
+                      children: (
+                        <div className={styles.settingsPane}>
+                          <div
+                            ref={nodeSettingsHeading}
+                            tabIndex={-1}
+                            className={styles.settingsHeading}
+                          >
+                            {selectedNode ? (
+                              <JourneyNodeSettings
+                                node={selectedNode.data.draftNode}
+                                disabled={!canEdit}
+                                waitSecondsError={waitSecondsError}
+                                startBehavior={startBehavior}
+                                onChange={(node) => edit(() => canvas.updateNode(node))}
+                              />
+                            ) : selectedEdge ? (
+                              <Flex vertical gap={12}>
+                                <Typography.Text>
+                                  {nodes.find((node) => node.id === selectedEdge.source)?.data
+                                    .draftNode.name ?? '未知步骤'}
+                                  {' → '}
+                                  {nodes.find((node) => node.id === selectedEdge.target)?.data
+                                    .draftNode.name ?? '未知步骤'}
+                                </Typography.Text>
+                                {selectedEdge.sourceHandle === 'met' ||
+                                selectedEdge.sourceHandle === 'unmet' ||
+                                selectedEdge.sourceHandle === 'matched' ||
+                                selectedEdge.sourceHandle === 'timeout' ? (
+                                  <Typography.Text>
+                                    路径：{JOURNEY_BRANCH_LABELS[selectedEdge.sourceHandle]}
+                                  </Typography.Text>
+                                ) : null}
+                                <Button
+                                  danger
+                                  disabled={!canEdit}
+                                  onClick={() =>
+                                    edit(() => canvas.deleteSelected([], [selectedEdge.id]))
+                                  }
+                                >
+                                  删除连线
+                                </Button>
+                              </Flex>
+                            ) : (
+                              <Empty
+                                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                                description="选择一个步骤查看设置。"
+                              />
+                            )}
+                          </div>
+                          {selectedNode && (
+                            <Button
+                              danger
+                              block
+                              disabled={!canEdit}
+                              className={styles.deleteNodeButton ?? ''}
+                              onClick={() =>
+                                edit(() => canvas.deleteSelected([selectedNode.id], []))
+                              }
+                            >
+                              删除步骤及相关连线
+                            </Button>
+                          )}
+                        </div>
+                      ),
+                    },
+                  ]}
+                />
+              </aside>
+            )}
           </div>
 
           <JourneyFlowCheck
@@ -565,7 +701,7 @@ export function JourneyEditorPage() {
             saveError={saveError}
             conflict={conflict}
             onClearErrors={canvas.clearErrors}
-            onSelectNode={canvas.selectNodeForIssue}
+            onSelectNode={locateNode}
             onReadLatest={readLatestAfterConfirm}
           />
         </>

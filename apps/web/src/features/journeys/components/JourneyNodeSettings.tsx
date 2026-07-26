@@ -1,33 +1,28 @@
-import { useState } from 'react';
 import {
   JOURNEY_ENTRY_BEHAVIORS,
+  JOURNEY_EVENT_TYPE_LABELS,
+  JOURNEY_ENTRY_BEHAVIOR_VALUES,
   JOURNEY_MESSAGE_CHANNELS,
   JOURNEY_WAIT_MAX_SECONDS,
+  journeyEventHasProductId,
+  type JourneyEventType,
   type JourneyDraftNode,
 } from '@journeylens/shared';
-import { Divider, Flex, Input, InputNumber, Select, Typography } from 'antd';
-import { RuleCompareFields } from '@/components/RuleCompareFields';
-import {
-  WAIT_UNITS,
-  formatWaitDuration,
-  waitUnitFor,
-  type WaitUnit,
-} from '@/features/journeys/journey-wait';
+import { Checkbox, Divider, Flex, Input, InputNumber, Select, Typography } from 'antd';
+import { JourneyConditionFields, JourneyEventFilterFields } from './JourneyConditionFields';
+import { JourneyDurationInput } from './JourneyDurationInput';
+import { formatWaitDuration } from '@/features/journeys/journey-wait';
 
 type Props = {
   node: JourneyDraftNode;
   disabled: boolean;
   onChange: (node: JourneyDraftNode) => void;
+  startBehavior: JourneyEventType | undefined;
   /** 共享草稿校验给出的等待时长错误；没有错误时为 undefined，调用方总是显式传入。 */
   waitSecondsError: string | undefined;
 };
 
-function NodeFields({ node, disabled, onChange, waitSecondsError }: Props) {
-  const waitSeconds = node.type === 'wait' ? node.waitSeconds : undefined;
-  const [waitUnit, setWaitUnit] = useState<WaitUnit>(() =>
-    waitSeconds === undefined ? 'seconds' : waitUnitFor(waitSeconds).value,
-  );
-
+function NodeFields({ node, disabled, onChange, waitSecondsError, startBehavior }: Props) {
   if (node.type === 'start') {
     return (
       <>
@@ -47,11 +42,10 @@ function NodeFields({ node, disabled, onChange, waitSecondsError }: Props) {
     return (
       <>
         <Typography.Text strong>判断条件</Typography.Text>
-        <RuleCompareFields
+        <JourneyConditionFields
           value={node.rules}
-          label="条件"
-          layout="stacked"
           disabled={disabled}
+          startBehavior={startBehavior}
           onChange={(rules) => onChange({ ...node, rules })}
         />
       </>
@@ -59,44 +53,82 @@ function NodeFields({ node, disabled, onChange, waitSecondsError }: Props) {
   }
 
   if (node.type === 'wait') {
-    const unit = WAIT_UNITS.find((item) => item.value === waitUnit)!;
     return (
       <>
         <Typography.Text strong>等待时长</Typography.Text>
-        <Flex gap={8}>
-          <InputNumber
-            aria-label="等待时长数值"
-            min={1}
-            precision={0}
-            status={waitSecondsError === undefined ? '' : 'error'}
-            value={node.waitSeconds / unit.seconds}
-            disabled={disabled}
-            style={{ flex: 1 }}
-            onChange={(value) => onChange({ ...node, waitSeconds: (value ?? 0) * unit.seconds })}
-          />
-          <Select
-            aria-label="等待时长单位"
-            style={{ width: 80 }}
-            value={waitUnit}
-            disabled={disabled}
-            options={WAIT_UNITS.map(({ label, value }) => ({ label, value }))}
-            onChange={(nextUnit) => {
-              const next = WAIT_UNITS.find((item) => item.value === nextUnit)!;
-              setWaitUnit(nextUnit);
-              // 单位切换保留当前数值；超限由共享校验提示，输入框不能截断输入。
-              onChange({
-                ...node,
-                waitSeconds: (node.waitSeconds / unit.seconds) * next.seconds,
-              });
-            }}
-          />
-        </Flex>
+        <JourneyDurationInput
+          label="等待时长"
+          seconds={node.waitSeconds}
+          min={1}
+          disabled={disabled}
+          hasError={waitSecondsError !== undefined}
+          onChange={(seconds) => onChange({ ...node, waitSeconds: seconds ?? 0 })}
+        />
         {/* 出错时就地提示替换范围说明；输入值保持用户填的内容，不截断成上限。 */}
         {waitSecondsError === undefined ? (
           <Typography.Text type="secondary">
             可设置 1 秒至 {formatWaitDuration(JOURNEY_WAIT_MAX_SECONDS)}。
           </Typography.Text>
         ) : (
+          <Typography.Text type="danger">{waitSecondsError}</Typography.Text>
+        )}
+      </>
+    );
+  }
+
+  if (node.type === 'wait_for_event') {
+    const canUseSameProduct =
+      journeyEventHasProductId(node.eventType) &&
+      (startBehavior === undefined || journeyEventHasProductId(startBehavior));
+    return (
+      <>
+        <Typography.Text strong>等待行为</Typography.Text>
+        <Select
+          aria-label="等待行为类型"
+          value={node.eventType}
+          disabled={disabled}
+          options={JOURNEY_ENTRY_BEHAVIOR_VALUES.map((value) => ({
+            value,
+            label: JOURNEY_EVENT_TYPE_LABELS[value],
+          }))}
+          onChange={(eventType: JourneyEventType) =>
+            onChange({
+              ...node,
+              eventType,
+              filter: undefined,
+              sameProduct: node.sameProduct && journeyEventHasProductId(eventType),
+            })
+          }
+        />
+        <Typography.Text strong>最长等待时间（秒）</Typography.Text>
+        <InputNumber
+          aria-label="最长等待时间（秒）"
+          min={1}
+          max={JOURNEY_WAIT_MAX_SECONDS}
+          precision={0}
+          value={node.waitSeconds}
+          status={waitSecondsError === undefined ? '' : 'error'}
+          disabled={disabled}
+          style={{ width: '100%' }}
+          onChange={(value) => onChange({ ...node, waitSeconds: value ?? 0 })}
+        />
+        <JourneyEventFilterFields
+          eventType={node.eventType}
+          value={node.filter}
+          label="等待行为筛选"
+          disabled={disabled}
+          onChange={(filter) =>
+            onChange({ ...node, ...(filter === undefined ? { filter: undefined } : { filter }) })
+          }
+        />
+        <Checkbox
+          checked={node.sameProduct}
+          disabled={disabled || (!canUseSameProduct && !node.sameProduct)}
+          onChange={(event) => onChange({ ...node, sameProduct: event.target.checked })}
+        >
+          只等待与进入行为同一商品
+        </Checkbox>
+        {waitSecondsError !== undefined && (
           <Typography.Text type="danger">{waitSecondsError}</Typography.Text>
         )}
       </>
@@ -160,7 +192,13 @@ function NodeFields({ node, disabled, onChange, waitSecondsError }: Props) {
   );
 }
 
-export function JourneyNodeSettings({ node, disabled, onChange, waitSecondsError }: Props) {
+export function JourneyNodeSettings({
+  node,
+  disabled,
+  onChange,
+  waitSecondsError,
+  startBehavior,
+}: Props) {
   return (
     <Flex vertical gap={12}>
       <Typography.Text strong>节点名称</Typography.Text>
@@ -179,6 +217,7 @@ export function JourneyNodeSettings({ node, disabled, onChange, waitSecondsError
         disabled={disabled}
         onChange={onChange}
         waitSecondsError={waitSecondsError}
+        startBehavior={startBehavior}
       />
     </Flex>
   );

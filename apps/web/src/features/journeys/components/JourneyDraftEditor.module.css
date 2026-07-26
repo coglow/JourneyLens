@@ -50,6 +50,10 @@
   flex: 0 0 auto;
 }
 
+.disabledButtonTrigger {
+  display: inline-flex;
+}
+
 .saveStatus {
   padding: 7px 12px;
   border-radius: 999px;
@@ -81,6 +85,11 @@
   flex: 1;
   grid-template-columns: minmax(245px, 260px) minmax(0, 1fr) minmax(280px, 330px);
   gap: 12px;
+}
+
+/* 模拟页保留画布和结果并排；右栏单独滚动，避免长证据挤压画布。 */
+.simulationWorkspace {
+  grid-template-columns: minmax(0, 1fr) minmax(380px, min(38vw, 520px));
 }
 
 .palette,
@@ -148,6 +157,10 @@
 
 .tone_wait .paletteIcon {
   color: var(--ant-color-warning, #fa8c16);
+}
+
+.tone_wait_for_event .paletteIcon {
+  color: var(--ant-color-warning, #d48806);
 }
 
 .tone_message .paletteIcon {
@@ -336,18 +349,47 @@
   overflow: hidden;
 }
 
-.settingsCard {
+.simulationInspector {
   display: flex;
-  width: 100%;
-  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  padding: 16px;
   flex-direction: column;
-  border: 0;
+  gap: 12px;
+  border: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+  border-radius: 10px;
+  background: var(--ant-color-bg-container, #fff);
 }
 
-.settingsCard :global(.ant-card-body) {
+.simulationWorkspace .canvasNode {
+  cursor: default;
+}
+
+/* 页签内容区独自滚动，面板展开证据时不会出现第二层滚动条。 */
+.inspectorTabs {
+  display: flex;
+  height: 100%;
+  padding: 4px 16px 0;
+  flex-direction: column;
+}
+
+.inspectorTabs :global(.ant-tabs-nav) {
+  margin-bottom: 12px;
+}
+
+/* antd v6 的页签内容容器是 -body-holder（v5 为 -content-holder），滚动必须挂在这个元素上。 */
+.inspectorTabs :global(.ant-tabs-body-holder) {
   min-height: 0;
   flex: 1;
   overflow: auto;
+}
+
+.settingsPane {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-bottom: 16px;
 }
 
 /* 只在键盘聚焦时显示描边，点击设置区空白不再触发蓝色边框。 */
@@ -387,12 +429,33 @@
   border-inline-start-color: var(--ant-color-info, #1677ff);
 }
 
+.canvasNode[data-node-type='wait_for_event'] {
+  border-inline-start-color: var(--ant-color-warning, #d48806);
+}
+
 .canvasNode[data-node-type='message'] {
   border-inline-start-color: #7856d6;
 }
 
 .canvasNode[data-node-type='end'] {
   border-inline-start-color: var(--ant-color-text-secondary, #666);
+}
+
+/* 模拟路径沿用参考项目的琥珀色；正在定位的节点随后显示选中态。 */
+.canvasNode[data-simulation-state='traversed'] {
+  border-color: var(--ant-color-warning, #faad14);
+  background: color-mix(
+    in srgb,
+    var(--ant-color-warning, #faad14) 10%,
+    var(--ant-color-bg-container, #fff)
+  );
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--ant-color-warning, #faad14) 20%, transparent),
+    0 6px 18px rgb(22 40 60 / 12%);
+}
+
+.canvasNode[data-simulation-state='traversed'] .nodeTypeIcon {
+  color: var(--ant-color-warning-text, #ad6800);
 }
 
 /* 选中节点参照参考项目的画布选中态：主题色边框、浅色底、外圈高亮和主题色图标。 */
@@ -464,9 +527,27 @@
   background: var(--ant-color-error, #ff4d4f);
 }
 
+.matchedHandle {
+  background: var(--ant-color-success, #52c41a);
+}
+
+.timeoutHandle {
+  background: var(--ant-color-warning, #faad14);
+}
+
+/* 连线 class 加在 edge 分组上，实际描边是内部的 path。 */
+.simulationEdge :global(.react-flow__edge-path) {
+  stroke: var(--ant-color-warning, #faad14);
+  stroke-width: 2.25;
+}
+
 @media (max-width: 1250px) {
   .editorWorkspace {
     grid-template-columns: minmax(220px, 260px) minmax(0, 1fr) minmax(260px, 290px);
+  }
+
+  .simulationWorkspace {
+    grid-template-columns: minmax(0, 1fr) minmax(340px, 38vw);
   }
 
   .palette {
@@ -488,13 +569,18 @@
     grid-template-rows: auto minmax(520px, 65vh) auto;
   }
 
+  .simulationWorkspace {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(460px, 60vh) minmax(360px, auto);
+  }
+
+  .simulationInspector {
+    min-height: 360px;
+  }
+
   .paletteList {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .settingsCard {
-    height: auto;
   }
 }
 

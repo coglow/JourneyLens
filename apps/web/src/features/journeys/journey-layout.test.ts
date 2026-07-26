@@ -72,6 +72,47 @@ describe('旅程画布自动排列', () => {
   });
 
   it.each(['vertical', 'horizontal'] as const)(
+    '%s布局按行为等待的“等到行为／超时”分支排列独占路径',
+    (direction) => {
+      const waitNode: JourneyDraftNode = {
+        id: 'event-wait',
+        type: 'wait_for_event',
+        name: '等购买',
+        position: { x: 0, y: 0 },
+        eventType: 'purchase_completed',
+        waitSeconds: 3_600,
+        sameProduct: true,
+      };
+      const matched: JourneyDraftNode = {
+        id: 'matched',
+        type: 'end',
+        name: '等到行为',
+        position: { x: 0, y: 0 },
+        note: null,
+      };
+      const timeout: JourneyDraftNode = {
+        id: 'timeout',
+        type: 'end',
+        name: '超时',
+        position: { x: 0, y: 0 },
+        note: null,
+      };
+      const positions = layoutJourneyNodes(
+        [nodes[0]!, waitNode, matched, timeout],
+        [
+          { id: 'to-wait', source: 'start', target: 'event-wait' },
+          { id: 'matched-edge', source: 'event-wait', target: 'matched', branch: 'matched' },
+          { id: 'timeout-edge', source: 'event-wait', target: 'timeout', branch: 'timeout' },
+        ],
+        direction,
+      );
+      const firstAxis = direction === 'vertical' ? 'x' : 'y';
+      expect(positions.matched![firstAxis]).toBeLessThan(positions['event-wait']![firstAxis]);
+      expect(positions.timeout![firstAxis]).toBeGreaterThan(positions['event-wait']![firstAxis]);
+    },
+  );
+
+  it.each(['vertical', 'horizontal'] as const)(
     '遍历%s分支的后代，保留汇合与孤立节点',
     (direction) => {
       const extendedNodes: JourneyDraftNode[] = [

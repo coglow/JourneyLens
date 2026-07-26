@@ -1,13 +1,13 @@
 import {
   AUDIENCE_FIELDS,
-  CONDITION_BRANCH_LABELS,
+  JOURNEY_BRANCH_LABELS,
   JOURNEY_COORDINATE_LIMIT,
   JOURNEY_EDGE_LIMIT,
   JOURNEY_ENTRY_BEHAVIORS,
   JOURNEY_MESSAGE_CHANNELS,
   JOURNEY_NODE_LIMIT,
   getJourneyDraftGraphIssues,
-  type ConditionBranch,
+  type JourneyBranch,
   type JourneyDraftDefinition,
   type JourneyDraftEdge,
   type JourneyDraftNode,
@@ -63,7 +63,7 @@ export function toFlowEdge(edge: JourneyDraftEdge): Edge {
     type: 'smoothstep',
     ...(edge.branch
       ? {
-          label: CONDITION_BRANCH_LABELS[edge.branch],
+          label: JOURNEY_BRANCH_LABELS[edge.branch],
           labelStyle: { fontSize: 12, fontWeight: 600 },
           labelBgStyle: { fill: '#fff', fillOpacity: 0.98 },
           labelBgPadding: [4, 3],
@@ -79,16 +79,31 @@ export function toDraftEdge(edge: Edge): JourneyDraftEdge {
     id: edge.id,
     source: edge.source,
     target: edge.target,
-    ...(edge.sourceHandle === 'met' || edge.sourceHandle === 'unmet'
+    ...(edge.sourceHandle === 'met' ||
+    edge.sourceHandle === 'unmet' ||
+    edge.sourceHandle === 'matched' ||
+    edge.sourceHandle === 'timeout'
       ? { branch: edge.sourceHandle }
       : {}),
   };
 }
 
+/** 条件和行为等待各自只接受自己的两个分支连接点。 */
+export function journeyBranchFromHandle(
+  nodeType: JourneyDraftNode['type'] | undefined,
+  handle: string | null | undefined,
+): JourneyBranch | undefined {
+  if (nodeType === 'condition' && (handle === 'met' || handle === 'unmet')) return handle;
+  if (nodeType === 'wait_for_event' && (handle === 'matched' || handle === 'timeout')) {
+    return handle;
+  }
+  return undefined;
+}
+
 export function newDraftEdge(
   source: string,
   target: string,
-  branch?: ConditionBranch,
+  branch?: JourneyBranch,
 ): JourneyDraftEdge {
   return {
     id: crypto.randomUUID(),
@@ -222,6 +237,16 @@ export function newDraftNode(type: JourneyNodeType, position: Point): JourneyDra
     }
     case 'wait':
       return { id, type, name: '定时等待', position, waitSeconds: 3_600 };
+    case 'wait_for_event':
+      return {
+        id,
+        type,
+        name: '等待行为',
+        position,
+        eventType: 'purchase_completed',
+        waitSeconds: 24 * 60 * 60,
+        sameProduct: true,
+      };
     case 'message':
       return {
         id,
@@ -308,7 +333,7 @@ export function pasteClipboard(
 export function getNextStepIssue(
   definition: JourneyDraftDefinition,
   sourceId: string,
-  branch?: ConditionBranch,
+  branch?: JourneyBranch,
 ): string | undefined {
   if (definition.nodes.length >= JOURNEY_NODE_LIMIT) {
     return `最多添加 ${JOURNEY_NODE_LIMIT} 个节点。`;

@@ -2,11 +2,13 @@ import type { PrismaClient } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
 import {
   campaignJourneyParamsSchema,
+  getJourneyDraftWarnings,
   getPaginationErrorMessages,
   journeyCreateSchema,
   journeyDraftSaveSchema,
   journeyIdParamsSchema,
   journeyListQuerySchema,
+  journeySimulationRequestSchema,
   journeyUpdateSchema,
 } from '@journeylens/shared';
 import { ApiError } from '../../errors.js';
@@ -84,6 +86,20 @@ export function registerJourneyRoutes(app: FastifyInstance, prisma: PrismaClient
 
     const journey = await service.saveDraft(params.data.id, input.data, request.currentAccount!.id);
     return { data: journey };
+  });
+
+  app.post('/api/journeys/:id/simulate', async (request) => {
+    const params = journeyIdParamsSchema.safeParse(request.params);
+    if (!params.success) throw new ApiError(400, 'BAD_REQUEST', '旅程链接无效');
+
+    const input = journeySimulationRequestSchema.safeParse(request.body);
+    if (!input.success)
+      throw new ApiError(400, 'BAD_REQUEST', '请检查模拟资料、行为内容和步骤设置');
+    if (getJourneyDraftWarnings(input.data.draftDefinition).length > 0) {
+      throw new ApiError(400, 'JOURNEY_DRAFT_INCOMPLETE', '请先补齐流程连接');
+    }
+
+    return { data: await service.simulate(params.data.id, input.data) };
   });
 
   app.delete('/api/journeys/:id', async (request, reply) => {

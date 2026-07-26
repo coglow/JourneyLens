@@ -2,12 +2,13 @@ import { AUDIENCE_COLUMN_KEYS } from '@journeylens/shared';
 import type {
   AudienceColumnKey,
   AudienceFieldKey,
+  ComparisonOperator,
   JsonScalar,
   SegmentRule,
 } from '@journeylens/shared';
 
 export interface SegmentAudienceInput {
-  displayName: string;
+  displayName: string | null;
   email: string | null;
   attributes: unknown;
 }
@@ -16,7 +17,11 @@ function isColumnKey(path: AudienceFieldKey): path is AudienceColumnKey {
   return (AUDIENCE_COLUMN_KEYS as readonly string[]).includes(path);
 }
 
-function readValue(user: SegmentAudienceInput, path: AudienceFieldKey): unknown {
+/**
+ * 读取比较条件左值在受众上的实际属性：基础列直接取列，其余取 JSON 属性。
+ * 缺失返回 undefined，与值为 null 区分开；供分群判断和模拟证据共用。
+ */
+export function readSegmentRuleValue(user: SegmentAudienceInput, path: AudienceFieldKey): unknown {
   if (isColumnKey(path)) return user[path];
 
   const attributes = user.attributes;
@@ -38,30 +43,28 @@ function isScalarArray(value: unknown): value is JsonScalar[] {
   return Array.isArray(value) && value.every(isJsonScalar);
 }
 
-function evaluateCompare(
-  rule: Extract<SegmentRule, { kind: 'compare' }>,
-  user: SegmentAudienceInput,
+/** 只比较已读取的左右值；分群和旅程行为条件共用严格类型语义。 */
+export function compareSegmentValue(
+  left: unknown,
+  operator: ComparisonOperator,
+  right?: JsonScalar | JsonScalar[],
 ): boolean {
-  const left = readValue(user, rule.left.path);
-
-  if (rule.operator === 'exists') {
+  if (operator === 'exists') {
     // null 和缺失都算“未填写”，所以“已填写”只认非空值。
     return left !== null && left !== undefined;
   }
   // 缺失值不参与普通比较；这样“不等于”不会把没有该属性的人算进来。
   if (left === undefined) return false;
-
-  const right = rule.right;
   if (right === undefined) return false;
 
-  switch (rule.operator) {
+  switch (operator) {
     case 'eq':
     case 'neq': {
       // 严格比较：数字 '5' 和 5、布尔 'true' 和 true 都不相等。
       if (!isJsonScalar(left) || !isJsonScalar(right)) return false;
       if (left !== null && right !== null && typeof left !== typeof right) return false;
       const equal = left === right;
-      return rule.operator === 'eq' ? equal : !equal;
+      return operator === 'eq' ? equal : !equal;
     }
     case 'gt':
     case 'gte':
@@ -70,9 +73,9 @@ function evaluateCompare(
       if (typeof left !== 'number' || !Number.isFinite(left) || typeof right !== 'number') {
         return false;
       }
-      if (rule.operator === 'gt') return left > right;
-      if (rule.operator === 'gte') return left >= right;
-      if (rule.operator === 'lt') return left < right;
+      if (operator === 'gt') return left > right;
+      if (operator === 'gte') return left >= right;
+      if (operator === 'lt') return left < right;
       return left <= right;
     }
     case 'in':
@@ -81,7 +84,7 @@ function evaluateCompare(
       // 若想包含缺失值，应写成 not(in ...)，由外层“非”取反。
       if (!isJsonScalar(left) || !Array.isArray(right)) return false;
       const member = right.includes(left);
-      return rule.operator === 'in' ? member : !member;
+      return operator === 'in' ? member : !member;
     }
     case 'contains': {
       // 文本用子串匹配，数组用成员匹配；两种都不做类型转换。
@@ -95,6 +98,13 @@ function evaluateCompare(
       return false;
     }
   }
+}
+
+function evaluateCompare(
+  rule: Extract<SegmentRule, { kind: 'compare' }>,
+  user: SegmentAudienceInput,
+): boolean {
+  return compareSegmentValue(readSegmentRuleValue(user, rule.left.path), rule.operator, rule.right);
 }
 
 /** 递归组合“且／或／非”，条件树的结构和规模已由契约限制。 */

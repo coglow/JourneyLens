@@ -130,7 +130,17 @@ export function useJourneyDraftPersistence({
     initializedId !== id;
   // 保存期间仍允许编辑，只是不允许再发第二个保存请求。
   const canEdit = !readOnly;
-  const blocker = useBlocker(() => (dirty || saving.isPending) && !allowNavigation.current);
+  // 编排页与模拟页共用当前旅程状态；同一旅程内切换页面不能丢失资料或未保存草稿。
+  const blocker = useBlocker(
+    ({ currentLocation, nextLocation }) =>
+      (dirty || saving.isPending) &&
+      !allowNavigation.current &&
+      nextLocation.pathname !== currentLocation.pathname &&
+      !(
+        currentLocation.pathname.startsWith(`/journeys/${id}/`) &&
+        nextLocation.pathname.startsWith(`/journeys/${id}/`)
+      ),
+  );
   useEffect(() => {
     // 保存请求未结束时也不能直接离开，否则离开后无法确认最新内容。
     if (!dirty && !saving.isPending) return;

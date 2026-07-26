@@ -3,6 +3,7 @@ import {
   BranchesOutlined,
   ClockCircleOutlined,
   FlagOutlined,
+  FieldTimeOutlined,
   MessageOutlined,
   ThunderboltOutlined,
 } from '@ant-design/icons';
@@ -27,6 +28,12 @@ export const journeyNodeOptions: Array<{
     value: 'wait',
     description: '延迟一段时间后继续',
     icon: <ClockCircleOutlined />,
+  },
+  {
+    label: '等待行为',
+    value: 'wait_for_event',
+    description: '等到指定行为或超时后继续',
+    icon: <FieldTimeOutlined />,
   },
   {
     label: '消息',

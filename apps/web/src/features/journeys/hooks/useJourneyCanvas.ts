@@ -4,7 +4,7 @@ import {
   getJourneyDraftGraphIssues,
   getJourneyDraftWarnings,
   journeyDraftDefinitionSchema,
-  type ConditionBranch,
+  type JourneyBranch,
   type JourneyDraftDefinition,
   type JourneyDraftNode,
   type JourneyLayoutDirection,
@@ -24,6 +24,7 @@ import {
   findOpenPosition,
   getNextStepIssue,
   isConnectionReady,
+  journeyBranchFromHandle,
   newDraftEdge,
   newDraftNode,
   pasteClipboard,
@@ -362,11 +363,7 @@ export function useJourneyCanvas() {
       }
 
       const source = currentDefinition.nodes.find((node) => node.id === connection.source);
-      const handle = connection.sourceHandle;
-      const branch =
-        source?.type === 'condition' && (handle === 'met' || handle === 'unmet')
-          ? handle
-          : undefined;
+      const branch = journeyBranchFromHandle(source?.type, connection.sourceHandle);
       const candidate = {
         ...currentDefinition,
         edges: [
@@ -387,7 +384,7 @@ export function useJourneyCanvas() {
   );
 
   const canQuickAddFrom = useCallback(
-    (sourceId: string, branch?: ConditionBranch): boolean => {
+    (sourceId: string, branch?: JourneyBranch): boolean => {
       const issue = getNextStepIssue(currentDefinition, sourceId, branch);
       setCanvasErrors(issue === undefined ? [] : [issue]);
       return issue === undefined;
@@ -399,7 +396,7 @@ export function useJourneyCanvas() {
     (
       type: JourneyNodeType,
       sourceId: string,
-      branch: ConditionBranch | undefined,
+      branch: JourneyBranch | undefined,
       center: { x: number; y: number },
     ): boolean => {
       const issue = getNextStepIssue(currentDefinition, sourceId, branch);
@@ -490,7 +487,7 @@ export function useJourneyCanvas() {
   );
 
   const selectNodeForIssue = useCallback(
-    (nodeId: string): void => {
+    (nodeId: string, focusSettings = true): void => {
       window.requestAnimationFrame(() => {
         // 按实际节点边界定位，保留原来的缩放和动画时长，避免重复计算固定尺寸的中心。
         void flowInstance.current?.fitView({
@@ -501,7 +498,7 @@ export function useJourneyCanvas() {
         });
       });
       selectOnly([nodeId], []);
-      focusSettingsAfterSelect.current = true;
+      focusSettingsAfterSelect.current = focusSettings;
     },
     [selectOnly],
   );

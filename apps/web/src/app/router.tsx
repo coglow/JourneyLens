@@ -17,7 +17,7 @@ export const appRoutes: RouteObject[] = [
   {
     element: <RequireAuth />,
     children: [
-      { path: 'journeys/:id/editor', element: <JourneyEditorPage /> },
+      { path: 'journeys/:id/:view', element: <JourneyEditorPage /> },
       {
         element: <WorkbenchPage />,
         children: [

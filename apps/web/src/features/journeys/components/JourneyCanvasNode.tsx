@@ -2,14 +2,17 @@ import { useEffect, type ReactNode } from 'react';
 import { Handle, Position, useUpdateNodeInternals, type Node, type NodeProps } from '@xyflow/react';
 import {
   JOURNEY_ENTRY_BEHAVIORS,
+  JOURNEY_EVENT_TYPE_LABELS,
   JOURNEY_MESSAGE_CHANNELS,
   audienceField,
+  journeyEventField,
   type JourneyLayoutDirection,
   type JourneyDraftNode,
 } from '@journeylens/shared';
 import {
   BranchesOutlined,
   ClockCircleOutlined,
+  FieldTimeOutlined,
   FlagOutlined,
   MessageOutlined,
   ThunderboltOutlined,
@@ -20,7 +23,12 @@ import { NODE_HEIGHT, NODE_WIDTH } from '@/features/journeys/journey-canvas';
 import styles from './JourneyDraftEditor.module.css';
 
 export type JourneyCanvasFlowNode = Node<
-  { draftNode: JourneyDraftNode; layoutDirection: JourneyLayoutDirection },
+  {
+    draftNode: JourneyDraftNode;
+    layoutDirection: JourneyLayoutDirection;
+    /** 仅用于展示本次模拟经过的步骤，不写入草稿。 */
+    simulationState?: 'traversed';
+  },
   'journey'
 >;
 
@@ -29,6 +37,7 @@ const nodeTypeMeta: Record<JourneyDraftNode['type'], { label: string; icon: Reac
   start: { label: '开始', icon: <ThunderboltOutlined /> },
   condition: { label: '条件分支', icon: <BranchesOutlined /> },
   wait: { label: '定时等待', icon: <ClockCircleOutlined /> },
+  wait_for_event: { label: '等待行为', icon: <FieldTimeOutlined /> },
   message: { label: '消息', icon: <MessageOutlined /> },
   end: { label: '结束', icon: <FlagOutlined /> },
 };
@@ -38,11 +47,20 @@ function getNodeSummary(node: JourneyDraftNode): string {
     case 'start':
       return JOURNEY_ENTRY_BEHAVIORS.find((item) => item.value === node.entryBehavior)?.label ?? '';
     case 'condition': {
-      const fieldLabel = audienceField(node.rules.left.path)?.label;
-      return `按${fieldLabel ?? '用户属性'}判断`;
+      if (node.rules.kind === 'event_count') {
+        return `按${JOURNEY_EVENT_TYPE_LABELS[node.rules.eventType]}次数判断`;
+      }
+      const fieldLabel =
+        node.rules.left.source === 'user'
+          ? audienceField(node.rules.left.path)?.label
+          : journeyEventField(node.rules.left.eventType, node.rules.left.path)?.label;
+      const sourceLabel = node.rules.left.source === 'user' ? '用户' : '进入行为';
+      return `按${sourceLabel}${fieldLabel ?? '属性'}判断`;
     }
     case 'wait':
       return `等待设置：${formatWaitDuration(node.waitSeconds)}`;
+    case 'wait_for_event':
+      return `等${JOURNEY_EVENT_TYPE_LABELS[node.eventType]}，最多${formatWaitDuration(node.waitSeconds)}`;
     case 'message': {
       const channelLabel =
         JOURNEY_MESSAGE_CHANNELS.find((item) => item.value === node.channel)?.label ?? '';
@@ -60,6 +78,8 @@ export function JourneyCanvasNode({ id, data, selected }: NodeProps<JourneyCanva
   const node = data.draftNode;
   const meta = nodeTypeMeta[node.type];
   const condition = node.type === 'condition';
+  const eventWait = node.type === 'wait_for_event';
+  const traversed = data.simulationState === 'traversed';
   // 连接点方向随草稿布局方向变化，确保重开时和保存坐标一致。
   const horizontal = data.layoutDirection === 'horizontal';
   const updateNodeInternals = useUpdateNodeInternals();
@@ -74,7 +94,8 @@ export function JourneyCanvasNode({ id, data, selected }: NodeProps<JourneyCanva
       style={{ width: NODE_WIDTH, minHeight: NODE_HEIGHT }}
       data-node-type={node.type}
       data-selected={selected}
-      aria-label={`${meta.label}：${node.name}`}
+      data-simulation-state={traversed ? 'traversed' : undefined}
+      aria-label={`${meta.label}：${node.name}${traversed ? '，本次模拟经过' : ''}`}
     >
       {node.type !== 'start' && (
         <Handle
@@ -96,21 +117,23 @@ export function JourneyCanvasNode({ id, data, selected }: NodeProps<JourneyCanva
       <Typography.Text className={styles.nodeSummary ?? ''} type="secondary" ellipsis>
         {getNodeSummary(node)}
       </Typography.Text>
-      {condition ? (
+      {condition || eventWait ? (
         <>
           <Handle
             type="source"
             position={horizontal ? Position.Top : Position.Left}
-            id="met"
+            id={condition ? 'met' : 'matched'}
+            aria-label={condition ? '满足' : '等到行为'}
             style={horizontal ? { left: '38%' } : { top: '38%' }}
-            className={`${styles.sourceHandle ?? ''} ${styles.metHandle ?? ''}`}
+            className={`${styles.sourceHandle ?? ''} ${condition ? (styles.metHandle ?? '') : (styles.matchedHandle ?? '')}`}
           />
           <Handle
             type="source"
             position={horizontal ? Position.Bottom : Position.Right}
-            id="unmet"
+            id={condition ? 'unmet' : 'timeout'}
+            aria-label={condition ? '不满足' : '超时'}
             style={horizontal ? { left: '72%' } : { top: '72%' }}
-            className={`${styles.sourceHandle ?? ''} ${styles.unmetHandle ?? ''}`}
+            className={`${styles.sourceHandle ?? ''} ${condition ? (styles.unmetHandle ?? '') : (styles.timeoutHandle ?? '')}`}
           />
         </>
       ) : (

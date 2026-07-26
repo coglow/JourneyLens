@@ -20,3 +20,19 @@ export function formatWaitDuration(seconds: number): string {
   const unit = waitUnitFor(seconds);
   return `${seconds / unit.seconds} ${unit.label}`;
 }
+
+/**
+ * 累计等待时长：按天、小时、分钟、秒拆分，省略为零的单位。
+ * 节点设置仍用 formatWaitDuration 显示单个整单位，两处共用同一份单位目录。
+ */
+export function formatElapsedDuration(totalSeconds: number): string {
+  let remaining = Math.max(0, Math.floor(totalSeconds));
+  const parts: string[] = [];
+  for (const unit of [...WAIT_UNITS].reverse()) {
+    const count = Math.floor(remaining / unit.seconds);
+    if (count === 0) continue;
+    parts.push(`${count} ${unit.label}`);
+    remaining -= count * unit.seconds;
+  }
+  return parts.length === 0 ? '0 秒' : parts.join(' ');
+}

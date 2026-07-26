@@ -33,7 +33,7 @@ function shiftNodesToBranchSide(
   }
 }
 
-/** 只计算节点坐标；条件分支的独占后代固定到各自一侧，普通连线保留给 React Flow 绘制。 */
+/** 只计算节点坐标；双分支的独占后代固定到各自一侧，普通连线保留给 React Flow 绘制。 */
 export function layoutJourneyNodes(
   nodes: readonly JourneyDraftNode[],
   edges: readonly JourneyDraftEdge[],
@@ -65,28 +65,30 @@ export function layoutJourneyNodes(
   const rankAxis = direction === 'vertical' ? 'y' : 'x';
   const crossAxisNodeSize = direction === 'vertical' ? NODE_WIDTH : NODE_HEIGHT;
   const conditions = nodes
-    .filter((node) => node.type === 'condition')
+    .filter((node) => node.type === 'condition' || node.type === 'wait_for_event')
     // 先排内层分支，再整体移动外层子树，避免外层调整让内层末端重新重叠。
     .sort((a, b) => positions.get(b.id)![rankAxis] - positions.get(a.id)![rankAxis]);
 
   for (const condition of conditions) {
-    const metTarget = edges.find(
-      (edge) => edge.source === condition.id && edge.branch === 'met',
+    const firstBranch = condition.type === 'condition' ? 'met' : 'matched';
+    const secondBranch = condition.type === 'condition' ? 'unmet' : 'timeout';
+    const firstTarget = edges.find(
+      (edge) => edge.source === condition.id && edge.branch === firstBranch,
     )?.target;
-    const unmetTarget = edges.find(
-      (edge) => edge.source === condition.id && edge.branch === 'unmet',
+    const secondTarget = edges.find(
+      (edge) => edge.source === condition.id && edge.branch === secondBranch,
     )?.target;
-    if (metTarget === undefined || unmetTarget === undefined) continue;
+    if (firstTarget === undefined || secondTarget === undefined) continue;
 
     // 复用当前有向图的遍历，集合包含分支起点；两边共有的后代作为汇合节点保留原位置。
-    const metReachable = new Set(dagre.graphlib.alg.preorder(graph, metTarget));
-    const unmetReachable = new Set(dagre.graphlib.alg.preorder(graph, unmetTarget));
-    const metOnly = new Set([...metReachable].filter((id) => !unmetReachable.has(id)));
-    const unmetOnly = new Set([...unmetReachable].filter((id) => !metReachable.has(id)));
+    const firstReachable = new Set(dagre.graphlib.alg.preorder(graph, firstTarget));
+    const secondReachable = new Set(dagre.graphlib.alg.preorder(graph, secondTarget));
+    const firstOnly = new Set([...firstReachable].filter((id) => !secondReachable.has(id)));
+    const secondOnly = new Set([...secondReachable].filter((id) => !firstReachable.has(id)));
     const conditionPosition = positions.get(condition.id)!;
     // 用整组分支的边缘定位，确保内层节点仍留在外层分支的同一侧。
     shiftNodesToBranchSide(
-      metOnly,
+      firstOnly,
       positions,
       crossAxis,
       conditionPosition[crossAxis],
@@ -94,7 +96,7 @@ export function layoutJourneyNodes(
       'before',
     );
     shiftNodesToBranchSide(
-      unmetOnly,
+      secondOnly,
       positions,
       crossAxis,
       conditionPosition[crossAxis],

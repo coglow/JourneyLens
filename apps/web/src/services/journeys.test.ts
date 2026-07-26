@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import MockAdapter from 'axios-mock-adapter';
-import type { JourneyDraftDefinition } from '@journeylens/shared';
+import type {
+  JourneyDraftDefinition,
+  JourneySimulationResult,
+  JourneySimulationScenario,
+} from '@journeylens/shared';
 import { ApiError, apiClient } from './api';
 import {
   createJourney,
@@ -8,6 +12,7 @@ import {
   getJourney,
   getJourneys,
   saveJourneyDraft,
+  simulateJourney,
   updateJourney,
 } from './journeys';
 
@@ -117,5 +122,117 @@ describe('旅程请求', () => {
       draftDefinition: savedJourney.draftDefinition,
     });
     expect(saved).toEqual(savedJourney);
+  });
+});
+
+describe('旅程模拟请求', () => {
+  const draftDefinition: JourneyDraftDefinition = {
+    layoutDirection: 'vertical',
+    nodes: [
+      {
+        id: 'start',
+        type: 'start',
+        name: '开始',
+        position: { x: 0, y: 0 },
+        entryBehavior: 'app_session_started',
+      },
+      {
+        id: 'message',
+        type: 'message',
+        name: '消息',
+        position: { x: 0, y: 160 },
+        channel: 'sms',
+        subject: null,
+        body: '欢迎',
+      },
+      { id: 'end', type: 'end', name: '结束', position: { x: 0, y: 320 }, note: null },
+    ],
+    edges: [
+      { id: 'edge-1', source: 'start', target: 'message' },
+      { id: 'edge-2', source: 'message', target: 'end' },
+    ],
+  };
+  const result: JourneySimulationResult = {
+    outcome: 'completed',
+    user: { displayName: '张三' },
+    admission: {
+      entryBehavior: {
+        expected: 'app_session_started',
+        actual: 'app_session_started',
+        matched: true,
+      },
+      segment: null,
+    },
+    steps: [
+      {
+        order: 1,
+        nodeId: 'start',
+        nodeName: '开始',
+        nodeType: 'start',
+        elapsedSeconds: 0,
+        entryBehavior: 'app_session_started',
+      },
+      {
+        order: 2,
+        nodeId: 'message',
+        nodeName: '消息',
+        nodeType: 'message',
+        elapsedSeconds: 0,
+        channel: 'sms',
+        subject: null,
+        body: '欢迎',
+      },
+      {
+        order: 3,
+        nodeId: 'end',
+        nodeName: '结束',
+        nodeType: 'end',
+        elapsedSeconds: 0,
+        note: null,
+      },
+    ],
+    traversedEdgeIds: ['edge-1', 'edge-2'],
+    elapsedSeconds: 0,
+  };
+  const scenario: JourneySimulationScenario = {
+    user: { displayName: '张三', email: null, attributes: { age: 25 } },
+    entryEvent: {
+      id: 'entry-1',
+      type: 'app_session_started',
+      offsetSeconds: 0,
+      payload: { sessionId: 'session-1' },
+    },
+    historicalEvents: [],
+    scheduledEvents: [],
+  };
+
+  it('模拟请求提交画布副本并解析结果', async () => {
+    mock.onPost(`/journeys/${journeyId}/simulate`).reply(200, { data: result });
+
+    const simulated = await simulateJourney(journeyId, {
+      draftDefinition,
+      scenario,
+    });
+
+    expect(JSON.parse(String(mock.history.post[0]?.data))).toEqual({
+      draftDefinition,
+      scenario,
+    });
+    expect(simulated).toEqual(result);
+  });
+
+  it('模拟响应不符合契约时返回统一失败提示', async () => {
+    mock.onPost(`/journeys/${journeyId}/simulate`).reply(200, { data: { outcome: 'completed' } });
+
+    const error = await simulateJourney(journeyId, {
+      draftDefinition,
+      scenario,
+    }).catch((reason: unknown) => reason);
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({
+      code: 'INVALID_RESPONSE',
+      message: '服务暂时不可用，请稍后重试',
+    });
   });
 });

@@ -71,8 +71,26 @@ function endNode(id = 'n-end', overrides: Record<string, unknown> = {}) {
   };
 }
 
-function edge(id: string, source: string, target: string, branch?: 'met' | 'unmet') {
+function edge(
+  id: string,
+  source: string,
+  target: string,
+  branch?: 'met' | 'unmet' | 'matched' | 'timeout',
+) {
   return branch === undefined ? { id, source, target } : { id, source, target, branch };
+}
+
+function eventWaitNode(id = 'n-event-wait', overrides: Record<string, unknown> = {}) {
+  return {
+    id,
+    type: 'wait_for_event',
+    name: '等待购买',
+    position: { x: 0, y: 200 },
+    eventType: 'purchase_completed',
+    waitSeconds: 86_400,
+    sameProduct: true,
+    ...overrides,
+  };
 }
 
 function completeDraft() {
@@ -91,6 +109,14 @@ function completeDraft() {
 function firstIssueMessage(payload: unknown): string | undefined {
   const result = journeyDraftDefinitionSchema.safeParse(payload);
   return result.success ? undefined : result.error.issues[0]?.message;
+}
+
+function issueMessagesAt(payload: unknown, field: string): string[] {
+  const result = journeyDraftDefinitionSchema.safeParse(payload);
+  if (result.success) return [];
+  return result.error.issues
+    .filter((issue) => issue.path.at(-1) === field)
+    .map((issue) => issue.message);
 }
 
 describe('旅程草稿契约', () => {
@@ -419,6 +445,137 @@ describe('旅程草稿契约', () => {
         }),
       ]),
     );
+  });
+
+  it('行为等待必须连接“等到行为”和“超时”两条分支', () => {
+    const complete = journeyDraftDefinitionSchema.parse({
+      nodes: [startNode(), eventWaitNode(), endNode('matched'), endNode('timeout')],
+      edges: [
+        edge('start-wait', 'n-start', 'n-event-wait'),
+        edge('wait-matched', 'n-event-wait', 'matched', 'matched'),
+        edge('wait-timeout', 'n-event-wait', 'timeout', 'timeout'),
+      ],
+    });
+    expect(getJourneyDraftWarnings(complete)).toEqual([]);
+
+    const missingTimeout = journeyDraftDefinitionSchema.parse({
+      nodes: [startNode(), eventWaitNode(), endNode('matched')],
+      edges: [
+        edge('start-wait', 'n-start', 'n-event-wait'),
+        edge('wait-matched', 'n-event-wait', 'matched', 'matched'),
+      ],
+    });
+    expect(getJourneyDraftWarnings(missingTimeout)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'missing-branch',
+          message: '「等待购买」的“超时”路径还没有连接。',
+        }),
+      ]),
+    );
+    expect(
+      firstIssueMessage({
+        nodes: [startNode(), eventWaitNode(), endNode()],
+        edges: [
+          edge('start-wait', 'n-start', 'n-event-wait'),
+          edge('wrong-branch', 'n-event-wait', 'n-end', 'met'),
+        ],
+      }),
+    ).toBe('行为等待的连线需要标明“等到行为”或“超时”');
+  });
+
+  it('等待时长和次数条件给出中文提示，同一字段只报一次', () => {
+    const waitDraft = {
+      nodes: [startNode(), eventWaitNode(undefined, { waitSeconds: 0 }), endNode()],
+      edges: [
+        edge('start-wait', 'n-start', 'n-event-wait'),
+        edge('wait-matched', 'n-event-wait', 'n-end', 'matched'),
+        edge('wait-timeout', 'n-event-wait', 'n-end', 'timeout'),
+      ],
+    };
+    expect(issueMessagesAt(waitDraft, 'waitSeconds')).toEqual(['最长等待时间至少 1 秒']);
+
+    const countDraft = {
+      nodes: [
+        startNode(),
+        conditionNode('n-condition', {
+          rules: {
+            kind: 'event_count',
+            eventType: 'purchase_completed',
+            windowSeconds: 0,
+            sameProduct: false,
+            operator: 'gte',
+            right: -1,
+          },
+        }),
+        endNode(),
+      ],
+      edges: [
+        edge('start-condition', 'n-start', 'n-condition'),
+        edge('condition-met', 'n-condition', 'n-end', 'met'),
+        edge('condition-unmet', 'n-condition', 'n-end', 'unmet'),
+      ],
+    };
+    expect(issueMessagesAt(countDraft, 'windowSeconds')).toEqual(['统计时间窗口至少 1 秒']);
+    expect(issueMessagesAt(countDraft, 'right')).toEqual(['比较次数不能小于 0']);
+  });
+
+  it('进入行为属性类型必须与开始步骤一致，同商品只支持有商品编号的行为', () => {
+    expect(
+      firstIssueMessage({
+        nodes: [
+          startNode(),
+          conditionNode('n-condition', {
+            rules: {
+              kind: 'compare',
+              left: { source: 'entry_event', eventType: 'purchase_completed', path: 'productId' },
+              operator: 'exists',
+            },
+          }),
+        ],
+        edges: [],
+      }),
+    ).toBe('进入行为属性条件必须使用与开始步骤相同的行为');
+
+    expect(
+      firstIssueMessage({
+        nodes: [
+          startNode(),
+          conditionNode('n-condition', {
+            rules: {
+              kind: 'event_count',
+              eventType: 'registration_completed',
+              windowSeconds: 86_400,
+              sameProduct: true,
+              operator: 'gte',
+              right: 1,
+            },
+          }),
+        ],
+        edges: [],
+      }),
+    ).toBe('同商品判断要求进入行为和统计行为都支持商品编号');
+  });
+
+  it('缺少开始步骤时给出提示，但仍允许保存', () => {
+    const withoutStart = journeyDraftDefinitionSchema.parse({
+      nodes: [messageNode('n-message'), endNode()],
+      edges: [edge('e1', 'n-message', 'n-end')],
+    });
+    expect(getJourneyDraftWarnings(withoutStart)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'missing-start',
+          nodeIds: [],
+          message: '旅程还没有开始步骤。',
+        }),
+      ]),
+    );
+
+    const complete = journeyDraftDefinitionSchema.parse(completeDraft());
+    expect(
+      getJourneyDraftWarnings(complete).some((warning) => warning.code === 'missing-start'),
+    ).toBe(false);
   });
 
   it('七项进入行为和三种消息渠道来自同一份静态目录', () => {

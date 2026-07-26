@@ -6,10 +6,13 @@ import {
   type JourneyDraftSave,
   type JourneyListItem,
   type JourneyListQuery,
+  type JourneySimulation,
+  type JourneySimulationResult,
   type JourneyUpdate,
   type SegmentRule,
 } from '@journeylens/shared';
 import { ApiError } from '../../errors.js';
+import { simulateJourney } from './simulation.js';
 
 const journeyDetailSelect = {
   id: true,
@@ -257,6 +260,24 @@ export class JourneyService {
     });
     if (existing === null) throw new ApiError(404, 'NOT_FOUND', '旅程不存在');
     throw notDraft();
+  }
+
+  /** 单次模拟只读取旅程与分群规则，使用本次填写的资料，不读取真实受众或写入业务数据。 */
+  async simulate(journeyId: string, input: JourneySimulation): Promise<JourneySimulationResult> {
+    const journey = await this.prisma.journey.findUnique({
+      where: { id: journeyId },
+      select: { id: true, segment: { select: { id: true, name: true, rules: true } } },
+    });
+    if (journey === null) throw new ApiError(404, 'NOT_FOUND', '旅程不存在');
+
+    return simulateJourney({
+      definition: input.draftDefinition,
+      scenario: input.scenario,
+      segment:
+        journey.segment === null
+          ? null
+          : { ...journey.segment, rules: journey.segment.rules as unknown as SegmentRule },
+    });
   }
 
   private async assertSegmentExists(segmentId: string): Promise<void> {

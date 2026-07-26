@@ -18,5 +18,7 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     setupFiles: ['./src/test-setup.ts'],
+    // 编排页和模拟面板要渲染完整的 antd 组件树，单个用例常超过默认的 5 秒。
+    testTimeout: 15_000,
   },
 });

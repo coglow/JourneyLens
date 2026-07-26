@@ -2,17 +2,22 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { ConfigProvider, Modal } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
-import type { JourneyDetail, JourneyDraftDefinition } from '@journeylens/shared';
+import type {
+  JourneyDetail,
+  JourneyDraftDefinition,
+  JourneySimulationResult,
+} from '@journeylens/shared';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { JourneyEditorPage } from './JourneyEditorPage';
-import { getJourney, saveJourneyDraft } from '@/services/journeys';
+import { getJourney, saveJourneyDraft, simulateJourney } from '@/services/journeys';
 import { ApiError } from '@/services/api';
 import { journeyQueryKeys } from './journey-queries';
 
 vi.mock('@/services/journeys', () => ({
   getJourney: vi.fn(),
   saveJourneyDraft: vi.fn(),
+  simulateJourney: vi.fn(),
 }));
 
 const journeyId = '88a0f727-a226-4cb4-9495-74364f8d0e33';
@@ -48,7 +53,7 @@ function renderEditor() {
   queryClient = client;
   const router = createMemoryRouter(
     [
-      { path: '/journeys/:id/editor', element: <JourneyEditorPage /> },
+      { path: '/journeys/:id/:view', element: <JourneyEditorPage /> },
       { path: '/campaigns/:id', element: <div>活动详情</div> },
     ],
     { initialEntries: [`/journeys/${journeyId}/editor`] },
@@ -120,7 +125,7 @@ describe('旅程编排页面', () => {
     renderEditor();
     await screen.findByRole('heading', { name: '欢迎旅程' });
 
-    expect(screen.getByRole('status').textContent).toBe('草稿已保存 · 2026年07月24日 14:30');
+    expect(screen.getByRole('status').textContent).toBe('草稿已保存 · 2026年7月24日 14:30');
   });
 
   it('直接删除节点及关联连线，并可撤销恢复', async () => {
@@ -299,7 +304,8 @@ describe('旅程编排页面', () => {
     await screen.findByRole('heading', { name: '欢迎旅程' });
 
     expect(await screen.findByLabelText('流程检查')).toBeTruthy();
-    const inspector = screen.getByLabelText('步骤设置');
+    // 页签按钮、页签面板和侧栏都带“步骤设置”这个名字，这里只取侧栏本身。
+    const inspector = screen.getByRole('complementary', { name: '步骤设置' });
     const flowCheck = screen.getByLabelText('流程检查');
     expect(
       inspector.compareDocumentPosition(flowCheck) & Node.DOCUMENT_POSITION_FOLLOWING,
@@ -671,11 +677,17 @@ describe('旅程编排页面', () => {
     fireEvent.blur(durationInput);
 
     // 设置面板就地提示，流程检查保留同一条错误做全局兜底。
-    expect(await within(screen.getByLabelText('步骤设置')).findByText('等待时长最多 30 天'));
+    expect(
+      await within(screen.getByRole('tabpanel', { name: '步骤设置' })).findByText(
+        '等待时长最多 30 天',
+      ),
+    );
     expect(durationInput.closest('.ant-input-number')?.className).toContain(
       'ant-input-number-status-error',
     );
-    expect(within(screen.getByLabelText('流程检查')).getByText('等待时长最多 30 天')).toBeTruthy();
+    expect(
+      within(screen.getByRole('region', { name: '流程检查' })).getByText('等待时长最多 30 天'),
+    ).toBeTruthy();
     expect(durationInput.value).toBe('31');
     expect((screen.getByRole('button', { name: '保存编排' }) as HTMLButtonElement).disabled).toBe(
       true,
@@ -791,7 +803,7 @@ describe('旅程编排页面', () => {
     fireEvent.click(screen.getByRole('button', { name: '添加结束旅程' }));
     await waitFor(() => expect(saveJourneyDraft).toHaveBeenCalledTimes(1), { timeout: 3000 });
     await waitFor(() =>
-      expect(screen.getByRole('status').textContent).toBe('已自动保存 · 2026年07月24日 14:30'),
+      expect(screen.getByRole('status').textContent).toBe('已自动保存 · 2026年7月24日 14:30'),
     );
   });
 
@@ -882,7 +894,7 @@ describe('旅程编排页面', () => {
       ]),
     });
     await waitFor(() =>
-      expect(screen.getByRole('status').textContent).toBe('草稿已保存 · 2026年07月24日 14:30'),
+      expect(screen.getByRole('status').textContent).toBe('草稿已保存 · 2026年7月24日 14:30'),
     );
   });
 
@@ -1289,4 +1301,279 @@ describe('旅程编排页面', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(screen.getByRole('status').textContent).toBe('有未保存修改');
   });
+
+  it('在独立模拟页运行当前示例资料，定位结果步骤并留在模拟页', async () => {
+    const draftDefinition: JourneyDraftDefinition = {
+      layoutDirection: 'vertical',
+      nodes: [
+        {
+          id: 'n-start',
+          type: 'start',
+          name: '开始',
+          position: { x: 0, y: 0 },
+          entryBehavior: 'app_session_started',
+        },
+        {
+          id: 'n-message',
+          type: 'message',
+          name: '消息',
+          position: { x: 0, y: 120 },
+          channel: 'sms',
+          subject: null,
+          body: '欢迎',
+        },
+        { id: 'n-end', type: 'end', name: '结束', position: { x: 0, y: 240 }, note: null },
+      ],
+      edges: [
+        { id: 'e1', source: 'n-start', target: 'n-message' },
+        { id: 'e2', source: 'n-message', target: 'n-end' },
+      ],
+    };
+    vi.mocked(getJourney).mockResolvedValue({ ...journey, draftDefinition });
+    const result: JourneySimulationResult = {
+      outcome: 'completed',
+      user: { displayName: '张三' },
+      admission: {
+        entryBehavior: {
+          expected: 'app_session_started',
+          actual: 'app_session_started',
+          matched: true,
+        },
+        segment: null,
+      },
+      steps: [
+        {
+          order: 1,
+          nodeId: 'n-start',
+          nodeName: '开始',
+          nodeType: 'start',
+          elapsedSeconds: 0,
+          entryBehavior: 'app_session_started',
+        },
+        {
+          order: 2,
+          nodeId: 'n-message',
+          nodeName: '消息',
+          nodeType: 'message',
+          elapsedSeconds: 0,
+          channel: 'sms',
+          subject: null,
+          body: '欢迎',
+        },
+        {
+          order: 3,
+          nodeId: 'n-end',
+          nodeName: '结束',
+          nodeType: 'end',
+          elapsedSeconds: 0,
+          note: null,
+        },
+      ],
+      traversedEdgeIds: ['e1', 'e2'],
+      elapsedSeconds: 0,
+    };
+    vi.mocked(simulateJourney).mockResolvedValue(result);
+
+    const { router } = renderEditor();
+    await screen.findByRole('heading', { name: '欢迎旅程' });
+
+    fireEvent.click(screen.getByRole('button', { name: '打开旅程模拟' }));
+    expect(await screen.findByRole('region', { name: '旅程模拟' })).toBeTruthy();
+    expect(screen.getByRole('main', { name: '旅程画布' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '开始模拟' }));
+
+    expect(await screen.findByText('已到达结束步骤')).toBeTruthy();
+    expect(document.querySelectorAll('[data-simulation-state="traversed"]')).toHaveLength(3);
+
+    fireEvent.click(screen.getAllByRole('button', { name: '定位' })[1]!);
+    expect(router.state.location.pathname).toBe(`/journeys/${journeyId}/simulation`);
+    expect(screen.getByRole('button', { name: '返回编排' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '打开旅程模拟' })).toBeNull();
+    expect(
+      screen.getByTestId('rf__node-n-message').querySelector('[data-selected="true"]'),
+    ).not.toBeNull();
+  }, 20_000);
+
+  it('流程不完整时禁用模拟入口并提示原因，直接打开模拟地址会回到编排页', async () => {
+    const { router } = renderEditor();
+    await screen.findByRole('heading', { name: '欢迎旅程' });
+
+    const button = screen.getByRole('button', { name: '打开旅程模拟' });
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.mouseEnter(button.parentElement!);
+    expect((await screen.findByRole('tooltip')).textContent).toContain('节点');
+
+    await act(async () => {
+      await router.navigate(`/journeys/${journeyId}/simulation`);
+    });
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe(`/journeys/${journeyId}/editor`),
+    );
+    expect(screen.getByRole('button', { name: '打开旅程模拟' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '返回编排' })).toBeNull();
+  }, 20_000);
+
+  it('修改节点配置后清除模拟结果和高亮，并提示重新模拟', async () => {
+    const draftDefinition: JourneyDraftDefinition = {
+      layoutDirection: 'vertical',
+      nodes: [
+        {
+          id: 'n-start',
+          type: 'start',
+          name: '开始',
+          position: { x: 0, y: 0 },
+          entryBehavior: 'app_session_started',
+        },
+        {
+          id: 'n-message',
+          type: 'message',
+          name: '消息',
+          position: { x: 0, y: 120 },
+          channel: 'sms',
+          subject: null,
+          body: '欢迎',
+        },
+        { id: 'n-end', type: 'end', name: '结束', position: { x: 0, y: 240 }, note: null },
+      ],
+      edges: [
+        { id: 'e1', source: 'n-start', target: 'n-message' },
+        { id: 'e2', source: 'n-message', target: 'n-end' },
+      ],
+    };
+    vi.mocked(getJourney).mockResolvedValue({ ...journey, draftDefinition });
+    vi.mocked(saveJourneyDraft).mockImplementation(async (_id, input) => ({
+      ...journey,
+      revision: 2,
+      draftDefinition: input.draftDefinition,
+    }));
+    vi.mocked(simulateJourney).mockResolvedValue({
+      outcome: 'completed',
+      user: { displayName: '张三' },
+      admission: {
+        entryBehavior: {
+          expected: 'app_session_started',
+          actual: 'app_session_started',
+          matched: true,
+        },
+        segment: null,
+      },
+      steps: [
+        {
+          order: 1,
+          nodeId: 'n-start',
+          nodeName: '开始',
+          nodeType: 'start',
+          elapsedSeconds: 0,
+          entryBehavior: 'app_session_started',
+        },
+        {
+          order: 2,
+          nodeId: 'n-message',
+          nodeName: '消息',
+          nodeType: 'message',
+          elapsedSeconds: 0,
+          channel: 'sms',
+          subject: null,
+          body: '欢迎',
+        },
+        {
+          order: 3,
+          nodeId: 'n-end',
+          nodeName: '结束',
+          nodeType: 'end',
+          elapsedSeconds: 0,
+          note: null,
+        },
+      ],
+      traversedEdgeIds: ['e1', 'e2'],
+      elapsedSeconds: 0,
+    });
+
+    renderEditor();
+    await screen.findByRole('heading', { name: '欢迎旅程' });
+
+    fireEvent.click(screen.getByRole('button', { name: '打开旅程模拟' }));
+    fireEvent.click(screen.getByRole('button', { name: '开始模拟' }));
+    expect(await screen.findByText('已到达结束步骤')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: '返回编排' }));
+    expect(await screen.findByRole('tab', { name: '步骤设置' })).toBeTruthy();
+    fireEvent.click(screen.getByTestId('rf__node-n-message'));
+    fireEvent.change(await screen.findByLabelText('消息内容'), { target: { value: '新的正文' } });
+
+    fireEvent.click(screen.getByRole('button', { name: '打开旅程模拟' }));
+    expect(await screen.findByText('模拟条件已变化，请重新模拟。')).toBeTruthy();
+    expect(document.querySelectorAll('[data-simulation-state="traversed"]')).toHaveLength(0);
+  }, 20_000);
+
+  it('同一旅程内搜索分页不触发未保存提示，真正离开仍会拦截', async () => {
+    const { router } = renderEditor();
+    await screen.findByRole('heading', { name: '欢迎旅程' });
+
+    // 未完成的消息节点不会自动保存，用它制造持续的未保存状态。
+    fireEvent.click(screen.getByRole('button', { name: '添加消息' }));
+    await screen.findByLabelText('消息：消息');
+    expect(screen.getByRole('status').textContent).toBe('有未保存修改');
+
+    const searchUrl = `/journeys/${journeyId}/editor?q=%E5%BC%A0%E4%B8%89&page=2&pageSize=20`;
+    await act(async () => {
+      await router.navigate(searchUrl);
+    });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(router.state.location.search).toBe('?q=%E5%BC%A0%E4%B8%89&page=2&pageSize=20');
+
+    // 搜索分页之后继续编辑，离开当前旅程仍然拦截。
+    fireEvent.click(screen.getByRole('button', { name: '添加消息' }));
+    await waitFor(() => expect(screen.getAllByLabelText('消息：消息')).toHaveLength(2));
+    await act(async () => {
+      await router.navigate(`/campaigns/${journey.campaign.id}`);
+    });
+
+    expect(await screen.findByRole('dialog', { name: '放弃未保存的修改？' })).toBeTruthy();
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '继续编辑' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(screen.getByRole('status').textContent).toBe('有未保存修改');
+  }, 20_000);
+
+  it('缺少分支连接时模拟入口禁用并提示具体问题', async () => {
+    vi.mocked(getJourney).mockResolvedValue({
+      ...journey,
+      draftDefinition: {
+        layoutDirection: 'vertical',
+        nodes: [
+          {
+            id: 'start',
+            type: 'start',
+            name: '开始',
+            position: { x: 0, y: 0 },
+            entryBehavior: 'product_viewed',
+          },
+          {
+            id: 'condition',
+            type: 'condition',
+            name: '高价值用户',
+            position: { x: 0, y: 160 },
+            rules: {
+              kind: 'compare',
+              left: { source: 'user', path: 'vipLevel' },
+              operator: 'in',
+              right: ['gold', 'platinum'],
+            },
+          },
+          { id: 'end', type: 'end', name: '结束', position: { x: 0, y: 320 }, note: null },
+        ],
+        edges: [
+          { id: 'start-condition', source: 'start', target: 'condition' },
+          { id: 'condition-end', source: 'condition', target: 'end', branch: 'met' },
+        ],
+      },
+    });
+    renderEditor();
+    await screen.findByRole('heading', { name: '欢迎旅程' });
+
+    const button = screen.getByRole('button', { name: '打开旅程模拟' });
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.mouseEnter(button.parentElement!);
+    expect((await screen.findByRole('tooltip')).textContent).toContain('不满足');
+  }, 20_000);
 });

@@ -1,5 +1,18 @@
 import { z } from 'zod';
-import { segmentCompareRuleSchema } from '../segments/segment-rule.js';
+import {
+  JOURNEY_ENTRY_BEHAVIOR_VALUES,
+  type JourneyEventType,
+  journeyEventHasProductId,
+} from './journey-events.js';
+import {
+  journeyConditionRuleSchema,
+  refineWaitForEventConfig,
+  waitForEventConfigShape,
+} from './journey-condition.js';
+import { JOURNEY_WAIT_MAX_SECONDS } from './journey-limits.js';
+
+export { JOURNEY_ENTRY_BEHAVIOR_VALUES, JOURNEY_ENTRY_BEHAVIORS } from './journey-events.js';
+export { JOURNEY_WAIT_MAX_SECONDS } from './journey-limits.js';
 
 export const JOURNEY_NODE_LIMIT = 30;
 export const JOURNEY_EDGE_LIMIT = 60;
@@ -7,30 +20,11 @@ export const JOURNEY_NODE_NAME_MAX_LENGTH = 120;
 export const JOURNEY_END_NOTE_MAX_LENGTH = 500;
 export const JOURNEY_MESSAGE_BODY_MAX_LENGTH = 2_000;
 export const JOURNEY_MESSAGE_SUBJECT_MAX_LENGTH = 200;
-/** 等待时长统一按秒保存，30 天覆盖按天跟进的场景。 */
-export const JOURNEY_WAIT_MAX_SECONDS = 30 * 24 * 60 * 60;
 export const JOURNEY_COORDINATE_LIMIT = 100_000;
 
 const NODE_ID_MAX_LENGTH = 64;
 
-/**
- * 开始节点可选的进入行为：本次只需要静态名称和标识，
- * 不建设行为目录管理，也不接收行为属性。
- */
-export const JOURNEY_ENTRY_BEHAVIORS = [
-  { value: 'product_viewed', label: '浏览商品' },
-  { value: 'purchase_completed', label: '完成购买' },
-  { value: 'reservation_created', label: '创建预约' },
-  { value: 'app_session_started', label: '进入应用' },
-  { value: 'app_exit', label: '退出应用' },
-  { value: 'registration_completed', label: '完成注册' },
-  { value: 'subscription_started', label: '开通订阅' },
-] as const;
-
-export type JourneyEntryBehavior = (typeof JOURNEY_ENTRY_BEHAVIORS)[number]['value'];
-
-export const JOURNEY_ENTRY_BEHAVIOR_VALUES: readonly JourneyEntryBehavior[] =
-  JOURNEY_ENTRY_BEHAVIORS.map((item) => item.value);
+export type JourneyEntryBehavior = JourneyEventType;
 
 /** 消息渠道：只有邮件需要主题，短信和推送不保存主题。 */
 export const JOURNEY_MESSAGE_CHANNELS = [
@@ -44,7 +38,14 @@ export type JourneyMessageChannel = (typeof JOURNEY_MESSAGE_CHANNELS)[number]['v
 export const JOURNEY_MESSAGE_CHANNEL_VALUES: readonly JourneyMessageChannel[] =
   JOURNEY_MESSAGE_CHANNELS.map((item) => item.value);
 
-export const JOURNEY_NODE_TYPES = ['start', 'condition', 'wait', 'message', 'end'] as const;
+export const JOURNEY_NODE_TYPES = [
+  'start',
+  'condition',
+  'wait',
+  'wait_for_event',
+  'message',
+  'end',
+] as const;
 
 export type JourneyNodeType = (typeof JOURNEY_NODE_TYPES)[number];
 
@@ -53,9 +54,19 @@ export const CONDITION_BRANCHES = ['met', 'unmet'] as const;
 
 export type ConditionBranch = (typeof CONDITION_BRANCHES)[number];
 
+export const WAIT_FOR_EVENT_BRANCHES = ['matched', 'timeout'] as const;
+export type WaitForEventBranch = (typeof WAIT_FOR_EVENT_BRANCHES)[number];
+export type JourneyBranch = ConditionBranch | WaitForEventBranch;
+
 export const CONDITION_BRANCH_LABELS: Record<ConditionBranch, string> = {
   met: '满足',
   unmet: '不满足',
+};
+
+export const JOURNEY_BRANCH_LABELS: Record<JourneyBranch, string> = {
+  ...CONDITION_BRANCH_LABELS,
+  matched: '等到行为',
+  timeout: '超时',
 };
 
 const nodeIdSchema = z
@@ -101,7 +112,7 @@ const conditionNodeSchema = z
     position: positionSchema,
     // 旅程条件只保存一条比较判断，复用分群的属性、比较方式和比较值校验；
     // “全部满足／任一满足／排除组”等组合结构只属于分群。
-    rules: segmentCompareRuleSchema,
+    rules: journeyConditionRuleSchema,
   })
   .strict();
 
@@ -118,6 +129,17 @@ const waitNodeSchema = z
       .max(JOURNEY_WAIT_MAX_SECONDS, '等待时长最多 30 天'),
   })
   .strict();
+
+const waitForEventNodeSchema = z
+  .object({
+    id: nodeIdSchema,
+    type: z.literal('wait_for_event'),
+    name: nodeNameSchema,
+    position: positionSchema,
+    ...waitForEventConfigShape,
+  })
+  .strict()
+  .superRefine(refineWaitForEventConfig);
 
 const messageNodeSchema = z
   .object({
@@ -171,6 +193,7 @@ export const journeyDraftNodeSchema = z.discriminatedUnion('type', [
   startNodeSchema,
   conditionNodeSchema,
   waitNodeSchema,
+  waitForEventNodeSchema,
   messageNodeSchema,
   endNodeSchema,
 ]);
@@ -180,7 +203,7 @@ export const journeyDraftEdgeSchema = z
     id: edgeIdSchema,
     source: nodeIdSchema,
     target: nodeIdSchema,
-    branch: z.enum(CONDITION_BRANCHES, { error: '分支标记无效' }).optional(),
+    branch: z.enum(['met', 'unmet', 'matched', 'timeout'], { error: '分支标记无效' }).optional(),
   })
   .strict();
 
@@ -252,7 +275,10 @@ export function getJourneyDraftGraphIssues(
 
   const edgeIds = new Set<string>();
   const connectionKeys = new Set<string>();
-  const outgoingCounts = new Map<string, { total: number; met: number; unmet: number }>();
+  const outgoingCounts = new Map<
+    string,
+    { total: number; branches: Record<JourneyBranch, number> }
+  >();
   const outgoingTargets = new Map<string, string[]>();
 
   edges.forEach((edge, index) => {
@@ -284,12 +310,32 @@ export function getJourneyDraftGraphIssues(
       addIssue('结束节点后面不能再连接其他节点', ['edges', index, 'source']);
       return;
     }
-    if (source.type === 'condition' && edge.branch === undefined) {
+    if (
+      source.type === 'condition' &&
+      (edge.branch === undefined || !CONDITION_BRANCHES.includes(edge.branch as ConditionBranch))
+    ) {
       addIssue('条件分支的连线需要标明“满足”或“不满足”', ['edges', index, 'branch']);
       return;
     }
-    if (source.type !== 'condition' && edge.branch !== undefined) {
-      addIssue('只有条件分支的连线才能标明“满足”或“不满足”', ['edges', index, 'branch']);
+    if (
+      source.type === 'wait_for_event' &&
+      (edge.branch === undefined ||
+        !WAIT_FOR_EVENT_BRANCHES.includes(edge.branch as WaitForEventBranch))
+    ) {
+      addIssue('行为等待的连线需要标明“等到行为”或“超时”', ['edges', index, 'branch']);
+      return;
+    }
+    if (
+      source.type !== 'condition' &&
+      source.type !== 'wait_for_event' &&
+      edge.branch !== undefined
+    ) {
+      addIssue(
+        edge.branch === 'met' || edge.branch === 'unmet'
+          ? '只有条件分支的连线才能标明“满足”或“不满足”'
+          : '只有行为等待的连线才能标明“等到行为”或“超时”',
+        ['edges', index, 'branch'],
+      );
       return;
     }
 
@@ -301,10 +347,12 @@ export function getJourneyDraftGraphIssues(
     }
     connectionKeys.add(connectionKey);
 
-    const counts = outgoingCounts.get(edge.source) ?? { total: 0, met: 0, unmet: 0 };
+    const counts = outgoingCounts.get(edge.source) ?? {
+      total: 0,
+      branches: { met: 0, unmet: 0, matched: 0, timeout: 0 },
+    };
     counts.total += 1;
-    if (edge.branch === 'met') counts.met += 1;
-    if (edge.branch === 'unmet') counts.unmet += 1;
+    if (edge.branch !== undefined) counts.branches[edge.branch] += 1;
     outgoingCounts.set(edge.source, counts);
 
     const targets = outgoingTargets.get(edge.source);
@@ -320,16 +368,20 @@ export function getJourneyDraftGraphIssues(
     const node = nodesById.get(nodeId);
     if (index === undefined || node === undefined) continue;
 
-    if (node.type === 'condition') {
-      if (counts.met > 1) {
-        addIssue('条件分支的“满足”路径只能连接一个下一步', ['nodes', index]);
-      }
-      if (counts.unmet > 1) {
-        addIssue('条件分支的“不满足”路径只能连接一个下一步', ['nodes', index]);
+    if (node.type === 'condition' || node.type === 'wait_for_event') {
+      const branches = node.type === 'condition' ? CONDITION_BRANCHES : WAIT_FOR_EVENT_BRANCHES;
+      for (const branch of branches) {
+        if (counts.branches[branch] > 1) {
+          const label = node.type === 'condition' ? '条件分支' : '行为等待';
+          addIssue(`${label}的“${JOURNEY_BRANCH_LABELS[branch]}”路径只能连接一个下一步`, [
+            'nodes',
+            index,
+          ]);
+        }
       }
       continue;
     }
-    // 结束节点没有出线；其余节点（开始、等待、消息）只允许一个下一步。
+    // 结束节点没有出线；其余普通步骤只允许一个下一步。
     if (counts.total > 1) {
       addIssue('一个节点只能连接一个下一步', ['nodes', index]);
     }
@@ -385,6 +437,52 @@ function validateJourneyDraft(definition: JourneyDraftShape, ctx: z.RefinementCt
   for (const issue of getJourneyDraftGraphIssues(definition.nodes, definition.edges)) {
     addDraftIssue(ctx, issue.message, issue.path);
   }
+
+  const start = definition.nodes.find((node) => node.type === 'start');
+  definition.nodes.forEach((node, index) => {
+    if (node.type === 'condition') {
+      const rule = node.rules;
+      if (
+        start?.type === 'start' &&
+        rule.kind === 'compare' &&
+        rule.left.source === 'entry_event' &&
+        rule.left.eventType !== start.entryBehavior
+      ) {
+        addDraftIssue(ctx, '进入行为属性条件必须使用与开始步骤相同的行为', [
+          'nodes',
+          index,
+          'rules',
+          'left',
+          'eventType',
+        ]);
+      }
+      if (rule.kind === 'event_count' && rule.sameProduct) {
+        if (
+          !journeyEventHasProductId(rule.eventType) ||
+          (start?.type === 'start' && !journeyEventHasProductId(start.entryBehavior))
+        ) {
+          addDraftIssue(ctx, '同商品判断要求进入行为和统计行为都支持商品编号', [
+            'nodes',
+            index,
+            'rules',
+            'sameProduct',
+          ]);
+        }
+      }
+    }
+    if (
+      node.type === 'wait_for_event' &&
+      node.sameProduct &&
+      (!journeyEventHasProductId(node.eventType) ||
+        (start?.type === 'start' && !journeyEventHasProductId(start.entryBehavior)))
+    ) {
+      addDraftIssue(ctx, '同商品判断要求进入行为和等待行为都支持商品编号', [
+        'nodes',
+        index,
+        'sameProduct',
+      ]);
+    }
+  });
 }
 
 export const journeyDraftDefinitionSchema =
@@ -393,11 +491,11 @@ export const journeyDraftDefinitionSchema =
 export type JourneyDraftDefinition = z.infer<typeof journeyDraftDefinitionSchema>;
 
 export type JourneyDraftWarningCode =
-  'missing-end' | 'missing-next' | 'missing-branch' | 'unlinked-node';
+  'missing-start' | 'missing-end' | 'missing-next' | 'missing-branch' | 'unlinked-node';
 
 export interface JourneyDraftWarning {
   code: JourneyDraftWarningCode;
-  /** 出问题的节点，前端据此定位；空数组表示缺少整条旅程的结束节点。 */
+  /** 出问题的节点，前端据此定位；空数组表示旅程级的缺失（缺少开始或结束步骤）。 */
   nodeIds: readonly string[];
   message: string;
 }
@@ -447,17 +545,23 @@ export function getJourneyDraftWarnings(definition: {
       }
     }
 
-    if (node.type === 'condition') {
-      for (const branch of CONDITION_BRANCHES) {
+    if (node.type === 'condition' || node.type === 'wait_for_event') {
+      const branches = node.type === 'condition' ? CONDITION_BRANCHES : WAIT_FOR_EVENT_BRANCHES;
+      for (const branch of branches) {
         if (!edges.some((edge) => edge.branch === branch)) {
           warnings.push({
             code: 'missing-branch',
             nodeIds: [node.id],
-            message: `「${node.name}」的“${CONDITION_BRANCH_LABELS[branch]}”路径还没有连接。`,
+            message: `「${node.name}」的“${JOURNEY_BRANCH_LABELS[branch]}”路径还没有连接。`,
           });
         }
       }
     }
+  }
+
+  // 保存允许没有开始节点，但模拟必须先有入口，否则无从判断准入。
+  if (!definition.nodes.some((node) => node.type === 'start')) {
+    warnings.push({ code: 'missing-start', nodeIds: [], message: '旅程还没有开始步骤。' });
   }
 
   if (!definition.nodes.some((node) => node.type === 'end')) {

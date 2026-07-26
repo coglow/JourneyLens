@@ -1,0 +1,67 @@
+.userFields,
+.eventFields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.eventSettings,
+.eventSettingsSingle {
+  display: grid;
+  gap: 12px;
+}
+
+.eventSettings {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.eventSettingsSingle {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.eventFields {
+  padding-top: 4px;
+}
+
+@media (max-width: 640px) {
+  .userFields,
+  .eventFields,
+  .eventSettings {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.editorTitle {
+  font-size: 20px;
+}
+
+.footerNote {
+  font-size: 12px;
+}
+
+.field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fieldLabel {
+  font-size: 14px;
+}
+
+.controlRow {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.control {
+  min-width: 0;
+  flex: 1;
+}
+
+.control > * {
+  width: 100%;
+}

@@ -25,6 +25,16 @@ const condition = {
   },
 };
 
+const eventWait = {
+  id: 'event-wait',
+  type: 'wait_for_event' as const,
+  name: '等待购买',
+  position: { x: 0, y: 300 },
+  eventType: 'purchase_completed' as const,
+  waitSeconds: 86_400,
+  sameProduct: true,
+};
+
 const message = {
   id: 'message',
   type: 'message' as const,
@@ -276,6 +286,30 @@ describe('旅程画布连接操作', () => {
     ]);
     expect(result.current.canQuickAddFrom('condition', 'met')).toBe(false);
     expect(result.current.canQuickAddFrom('condition', 'unmet')).toBe(false);
+  });
+
+  it('行为等待快捷新增保留等到行为和超时标记', () => {
+    const { result } = renderCanvas();
+    act(() =>
+      result.current.resetDefinition({
+        layoutDirection: 'vertical',
+        nodes: [start, eventWait],
+        edges: [{ id: 'start-wait', source: 'start', target: 'event-wait' }],
+      }),
+    );
+
+    act(() => {
+      result.current.addConnectedNode('end', 'event-wait', 'matched', { x: -100, y: 500 });
+    });
+    act(() => {
+      result.current.addConnectedNode('message', 'event-wait', 'timeout', { x: 200, y: 500 });
+    });
+
+    expect(result.current.edges.map((edge) => [edge.sourceHandle, edge.label])).toEqual([
+      ['next', undefined],
+      ['matched', '等到行为'],
+      ['timeout', '超时'],
+    ]);
   });
 });
 

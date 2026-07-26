@@ -4,7 +4,11 @@ import {
   NODE_HEIGHT,
   NODE_WIDTH,
   findOpenPosition,
+  journeyBranchFromHandle,
+  newDraftNode,
   pasteClipboard,
+  toDraftEdge,
+  toFlowEdge,
   toFlowNode,
 } from './journey-canvas';
 
@@ -156,5 +160,30 @@ describe('旅程画布粘贴', () => {
     const result = pasteClipboard({ ...definition, nodes }, { nodes: [messageNode], edges: [] }, 0);
 
     expect(result.status).toBe('error');
+  });
+});
+
+describe('行为等待分支画布映射', () => {
+  it('只从对应节点类型的连接点读取分支', () => {
+    expect(journeyBranchFromHandle('condition', 'met')).toBe('met');
+    expect(journeyBranchFromHandle('wait_for_event', 'timeout')).toBe('timeout');
+    expect(journeyBranchFromHandle('wait_for_event', 'met')).toBeUndefined();
+    expect(journeyBranchFromHandle('wait', 'matched')).toBeUndefined();
+  });
+
+  it('保存往返保留等到行为和超时标记', () => {
+    for (const branch of ['matched', 'timeout'] as const) {
+      const edge = { id: `edge-${branch}`, source: 'wait', target: 'end', branch };
+      expect(toDraftEdge(toFlowEdge(edge))).toEqual(edge);
+    }
+  });
+
+  it('新增的行为等待步骤带默认购买和商品关联设置', () => {
+    expect(newDraftNode('wait_for_event', { x: 40, y: 80 })).toMatchObject({
+      type: 'wait_for_event',
+      eventType: 'purchase_completed',
+      waitSeconds: 86_400,
+      sameProduct: true,
+    });
   });
 });

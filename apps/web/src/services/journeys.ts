@@ -5,10 +5,13 @@ import {
   journeyDraftSaveSchema,
   journeyListQuerySchema,
   journeyListResponseSchema,
+  journeySimulationRequestSchema,
+  journeySimulationResponseSchema,
   journeyUpdateSchema,
   type JourneyCreateInput,
   type JourneyDraftDefinition,
   type JourneyListQueryInput,
+  type JourneySimulationInput,
   type JourneyUpdateInput,
 } from '@journeylens/shared';
 import { ApiError, request, requestVoid } from './api';
@@ -84,4 +87,18 @@ export async function saveJourneyDraft(
 
 export async function deleteJourney(id: string): Promise<void> {
   await requestVoid({ url: `/journeys/${encodeURIComponent(id)}`, method: 'DELETE' });
+}
+
+/** 单次模拟：提交点击时的画布与资料副本，不保存草稿或用户资料。 */
+export async function simulateJourney(journeyId: string, input: JourneySimulationInput) {
+  const payload = journeySimulationRequestSchema.parse(input);
+  const body = await request(
+    {
+      url: `/journeys/${encodeURIComponent(journeyId)}/simulate`,
+      method: 'POST',
+      data: payload,
+    },
+    journeySimulationResponseSchema,
+  );
+  return body.data;
 }
