@@ -34,6 +34,7 @@ const journeyListItemSelect = {
   description: true,
   updatedAt: true,
   segment: { select: { id: true, name: true } },
+  _count: { select: { versions: true } },
 } as const;
 
 type JourneyDetailRecord = Prisma.JourneyGetPayload<{ select: typeof journeyDetailSelect }>;
@@ -59,8 +60,11 @@ function serializeDetail(record: JourneyDetailRecord): JourneyDetail {
 }
 
 function serializeListItem(record: JourneyListItemRecord): JourneyListItem {
+  const { _count, ...rest } = record;
   return {
-    ...record,
+    ...rest,
+    // 版本数量只用于判断删除是否可用，不把关联查询结构带进响应。
+    versionCount: _count.versions,
     updatedAt: record.updatedAt.toISOString(),
   };
 }
@@ -249,9 +253,18 @@ export class JourneyService {
 
   async delete(id: string): Promise<void> {
     // 活动状态作为删除条件，避免先读状态再删除之间活动状态被改变。
-    const result = await this.prisma.journey.deleteMany({
-      where: { id, campaign: { status: 'draft' } },
-    });
+    let result: { count: number };
+    try {
+      result = await this.prisma.journey.deleteMany({
+        where: { id, campaign: { status: 'draft' } },
+      });
+    } catch (error) {
+      // journey_versions 外键使用 RESTRICT：已有发布版本时由数据库阻止删除。
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003') {
+        throw new ApiError(409, 'JOURNEY_HAS_VERSIONS', '该旅程已有发布版本，不能删除');
+      }
+      throw error;
+    }
     if (result.count > 0) return;
 
     const existing = await this.prisma.journey.findUnique({

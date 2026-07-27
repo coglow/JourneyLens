@@ -98,7 +98,7 @@ export function buildApp(options: BuildAppOptions = {}) {
   registerAuthRoutes(app, { service, now: options.now });
   registerCampaignRoutes(app, prisma);
   registerSegmentRoutes(app, prisma, options.now);
-  registerJourneyRoutes(app, prisma);
+  registerJourneyRoutes(app, prisma, options.now);
 
   app.get('/health/live', async () => ({ status: 'ok' as const }));
 

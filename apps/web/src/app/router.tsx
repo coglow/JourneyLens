@@ -4,6 +4,7 @@ import { CampaignsPage } from '@/features/campaigns/CampaignsPage';
 import { CampaignDetailPage } from '@/features/campaigns/CampaignDetailPage';
 import { JourneyDetailPage } from '@/features/journeys/JourneyDetailPage';
 import { JourneyEditorPage } from '@/features/journeys/JourneyEditorPage';
+import { JourneyVersionPage } from '@/features/journeys/JourneyVersionPage';
 import { SegmentDetailPage } from '@/features/segments/SegmentDetailPage';
 import { SegmentsPage } from '@/features/segments/SegmentsPage';
 import { WorkbenchPage } from './WorkbenchPage';
@@ -18,6 +19,7 @@ export const appRoutes: RouteObject[] = [
     element: <RequireAuth />,
     children: [
       { path: 'journeys/:id/:view', element: <JourneyEditorPage /> },
+      { path: 'journeys/:id/versions/:versionId', element: <JourneyVersionPage /> },
       {
         element: <WorkbenchPage />,
         children: [

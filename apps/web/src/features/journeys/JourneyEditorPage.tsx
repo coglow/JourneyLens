@@ -39,6 +39,7 @@ import {
 import { JourneyNodeSettings } from '@/features/journeys/components/JourneyNodeSettings';
 import { JourneyEditorPalette } from '@/features/journeys/components/JourneyEditorPalette';
 import { JourneyFlowCheck } from '@/features/journeys/components/JourneyFlowCheck';
+import { JourneyPublishDialog } from '@/features/journeys/components/JourneyPublishDialog';
 import { JourneySimulationPanel } from '@/features/journeys/components/JourneySimulationPanel';
 import { journeyBranchFromHandle } from '@/features/journeys/journey-canvas';
 import { journeyNodeOptions } from '@/features/journeys/journey-node-options';
@@ -133,6 +134,19 @@ export function JourneyEditorPage() {
     normalizedDefinition: parsedDefinition.success ? parsedDefinition.data : null,
     warnings,
   });
+
+  // 发布只针对已保存且可写的内容：先看旅程当前状态，再看本地编辑状态，最后看流程检查。
+  function getPublishBlockReason(): string | undefined {
+    if (journey === undefined || initializedId !== id) return '正在读取旅程，请稍后再试';
+    if (journeyMissing) return '旅程已不存在，无法发布';
+    if (serverReadOnly) return '当前活动已不能编辑，无法发布';
+    if (saving) return '正在保存，请稍后再试';
+    if (conflict) return '旅程已在其他页面修改，请先读取最新内容';
+    if (dirty) return '请先保存当前修改';
+    if (journey.draftDefinition === null) return '请先保存编排';
+    if (!parsedDefinition.success || warnings.length > 0) return '请先补齐流程连接并修正步骤设置';
+    return undefined;
+  }
   // 高亮只存在于展示副本：不改画布状态，也不进入草稿和撤销历史。
   const simulationResult = simulation.result;
   const displayNodes = useMemo(() => {
@@ -382,6 +396,22 @@ export function JourneyEditorPage() {
                 </Button>
               </span>
             </Tooltip>
+          )}
+          {!showSimulationPage && (
+            <Button
+              type="link"
+              onClick={() => navigate(`/journeys/${id}`, { state: location.state })}
+            >
+              查看已发布版本
+            </Button>
+          )}
+          {journey !== undefined && journey.campaign.status === 'draft' && (
+            <JourneyPublishDialog
+              journeyId={id}
+              revision={journey.revision}
+              blockReason={getPublishBlockReason()}
+              onReadLatest={readLatestAfterConfirm}
+            />
           )}
           {journey?.campaign.status === 'draft' && (
             <Button

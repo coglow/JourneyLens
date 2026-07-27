@@ -274,6 +274,9 @@ describe('旅程 API', () => {
         '针对高价值会员',
       );
       expect(listItems.find((item) => item.name === '新客欢迎')?.description).toBeNull();
+      // 未发布过的旅程版本数量为 0，删除操作保持可用。
+      const versionCounts = listed.json().data as Array<{ versionCount: number }>;
+      expect(versionCounts.map((item) => item.versionCount)).toEqual([0, 0, 0]);
 
       const detail = await app.inject({
         method: 'GET',

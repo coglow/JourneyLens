@@ -36,6 +36,7 @@ model OperatorAccount {
   segmentsUpdated Segment[]     @relation("SegmentUpdatedBy")
   journeysCreated Journey[]     @relation("JourneyCreatedBy")
   journeysUpdated Journey[]     @relation("JourneyUpdatedBy")
+  journeyVersions JourneyVersion[] @relation("JourneyVersionPublisher")
 
   @@map("operator_accounts")
 }
@@ -134,9 +135,27 @@ model Journey {
   createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
+  versions        JourneyVersion[]
+
   /// 同一活动内名称唯一；不同活动可以同名。
   @@unique([campaignId, name])
   @@index([campaignId, updatedAt(sort: Desc), id(sort: Desc)])
   @@index([segmentId, updatedAt(sort: Desc), id(sort: Desc)])
   @@map("journeys")
+}
+
+model JourneyVersion {
+  id                    String          @id @default(uuid()) @db.Uuid
+  journey               Journey         @relation(fields: [journeyId], references: [id], onDelete: Restrict)
+  journeyId             String          @map("journey_id") @db.Uuid
+  versionNumber         Int             @map("version_number")
+  sourceRevision        Int             @map("source_revision")
+  sourceSegmentRevision Int?            @map("source_segment_revision")
+  snapshot              Json
+  publishedBy           OperatorAccount @relation("JourneyVersionPublisher", fields: [publishedById], references: [id], onDelete: Restrict)
+  publishedById         String          @map("published_by") @db.Uuid
+  publishedAt           DateTime        @map("published_at") @db.Timestamptz(6)
+
+  @@unique([journeyId, versionNumber])
+  @@map("journey_versions")
 }

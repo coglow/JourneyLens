@@ -10,12 +10,21 @@ import {
   journeyListQuerySchema,
   journeySimulationRequestSchema,
   journeyUpdateSchema,
+  journeyVersionListQuerySchema,
+  journeyVersionParamsSchema,
+  journeyVersionPublishSchema,
 } from '@journeylens/shared';
 import { ApiError } from '../../errors.js';
 import { JourneyService } from './service.js';
+import { JourneyVersionService } from './version-service.js';
 
-export function registerJourneyRoutes(app: FastifyInstance, prisma: PrismaClient): void {
+export function registerJourneyRoutes(
+  app: FastifyInstance,
+  prisma: PrismaClient,
+  now?: () => Date,
+): void {
   const service = new JourneyService(prisma);
+  const versionService = new JourneyVersionService(prisma, now);
 
   app.get('/api/campaigns/:campaignId/journeys', async (request) => {
     const params = campaignJourneyParamsSchema.safeParse(request.params);
@@ -100,6 +109,47 @@ export function registerJourneyRoutes(app: FastifyInstance, prisma: PrismaClient
     }
 
     return { data: await service.simulate(params.data.id, input.data) };
+  });
+
+  app.post('/api/journeys/:id/publish', async (request, reply) => {
+    const params = journeyIdParamsSchema.safeParse(request.params);
+    if (!params.success) throw new ApiError(400, 'BAD_REQUEST', '旅程链接无效');
+
+    const input = journeyVersionPublishSchema.safeParse(request.body);
+    if (!input.success) {
+      throw new ApiError(400, 'BAD_REQUEST', '请检查旅程修订号和分群修订号');
+    }
+
+    const result = await versionService.publish(
+      params.data.id,
+      input.data,
+      request.currentAccount!.id,
+    );
+    // 命中已有版本时返回 200，新建版本返回 201；两者对使用者都表示发布成功。
+    return reply.code(result.created ? 201 : 200).send({ data: result.version });
+  });
+
+  app.get('/api/journeys/:id/versions', async (request) => {
+    const params = journeyIdParamsSchema.safeParse(request.params);
+    if (!params.success) throw new ApiError(400, 'BAD_REQUEST', '旅程链接无效');
+
+    const query = journeyVersionListQuerySchema.safeParse(request.query);
+    if (!query.success) {
+      const messages = getPaginationErrorMessages(query.error.issues);
+      throw new ApiError(
+        400,
+        'BAD_REQUEST',
+        messages.length > 0 ? messages.join('；') : '请检查分页条件',
+      );
+    }
+    return versionService.list(params.data.id, query.data);
+  });
+
+  app.get('/api/journeys/:id/versions/:versionId', async (request) => {
+    const params = journeyVersionParamsSchema.safeParse(request.params);
+    if (!params.success) throw new ApiError(400, 'BAD_REQUEST', '版本链接无效');
+
+    return { data: await versionService.get(params.data.id, params.data.versionId) };
   });
 
   app.delete('/api/journeys/:id', async (request, reply) => {

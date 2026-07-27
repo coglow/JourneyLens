@@ -130,15 +130,17 @@ export function useJourneyDraftPersistence({
     initializedId !== id;
   // 保存期间仍允许编辑，只是不允许再发第二个保存请求。
   const canEdit = !readOnly;
-  // 编排页与模拟页共用当前旅程状态；同一旅程内切换页面不能丢失资料或未保存草稿。
+  // 只有编排页与模拟页渲染同一个编辑器实例，两者之间切换不卸载画布状态。
+  // 其它旅程子路径（如已发布版本）是独立页面，离开即卸载编辑器，必须走放弃确认。
+  const sharedEditorPaths = [`/journeys/${id}/editor`, `/journeys/${id}/simulation`];
   const blocker = useBlocker(
     ({ currentLocation, nextLocation }) =>
       (dirty || saving.isPending) &&
       !allowNavigation.current &&
       nextLocation.pathname !== currentLocation.pathname &&
       !(
-        currentLocation.pathname.startsWith(`/journeys/${id}/`) &&
-        nextLocation.pathname.startsWith(`/journeys/${id}/`)
+        sharedEditorPaths.includes(currentLocation.pathname) &&
+        sharedEditorPaths.includes(nextLocation.pathname)
       ),
   );
   useEffect(() => {

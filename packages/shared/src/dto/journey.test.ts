@@ -3,6 +3,7 @@ import {
   journeyCreateSchema,
   journeyDetailSchema,
   journeyDraftSaveSchema,
+  journeyListItemSchema,
   journeyListQuerySchema,
   journeyUpdateSchema,
 } from './journey.js';
@@ -68,6 +69,29 @@ describe('旅程请求响应契约', () => {
     expect(journeyListQuerySchema.safeParse({ page: 1, pageSize: 10, extra: true }).success).toBe(
       false,
     );
+  });
+
+  it('旅程列表必须带非负的已发布版本数量', () => {
+    const item = {
+      id: segmentId,
+      name: '欢迎旅程',
+      description: null,
+      segment: null,
+      versionCount: 2,
+      updatedAt: '2026-07-16T08:00:00.000Z',
+    };
+    expect(journeyListItemSchema.parse(item).versionCount).toBe(2);
+
+    expect(
+      journeyListItemSchema.safeParse({
+        id: segmentId,
+        name: '欢迎旅程',
+        description: null,
+        segment: null,
+        updatedAt: '2026-07-16T08:00:00.000Z',
+      }).success,
+    ).toBe(false);
+    expect(journeyListItemSchema.safeParse({ ...item, versionCount: -1 }).success).toBe(false);
   });
 
   it('旅程详情必须带草稿字段，null 表示还没有保存编排', () => {

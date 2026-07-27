@@ -76,7 +76,7 @@ export const journeyListQuerySchema = z
   })
   .strict();
 
-const journeyAccountRefSchema = z
+export const journeyAccountRefSchema = z
   .object({
     id: z.uuid(),
     displayName: z.string().min(1).max(120),
@@ -106,6 +106,8 @@ export const journeyListItemSchema = z
     name: z.string().min(1).max(JOURNEY_NAME_MAX_LENGTH),
     description: z.string().max(JOURNEY_DESCRIPTION_MAX_LENGTH).nullable(),
     segment: journeySegmentSummarySchema.nullable(),
+    // 已发布的版本数量：大于 0 的旅程不能删除。
+    versionCount: z.number().int().min(0),
     updatedAt: z.iso.datetime(),
   })
   .strict();

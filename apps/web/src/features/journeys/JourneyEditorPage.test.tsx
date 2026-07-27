@@ -18,6 +18,7 @@ vi.mock('@/services/journeys', () => ({
   getJourney: vi.fn(),
   saveJourneyDraft: vi.fn(),
   simulateJourney: vi.fn(),
+  publishJourney: vi.fn(),
 }));
 
 const journeyId = '88a0f727-a226-4cb4-9495-74364f8d0e33';
@@ -54,6 +55,8 @@ function renderEditor() {
   const router = createMemoryRouter(
     [
       { path: '/journeys/:id/:view', element: <JourneyEditorPage /> },
+      { path: '/journeys/:id', element: <div>旅程详情</div> },
+      { path: '/journeys/:id/versions/:versionId', element: <div>版本详情</div> },
       { path: '/campaigns/:id', element: <div>活动详情</div> },
     ],
     { initialEntries: [`/journeys/${journeyId}/editor`] },
@@ -1182,6 +1185,54 @@ describe('旅程编排页面', () => {
     );
     expect(await screen.findByText('活动详情')).toBeTruthy();
     expect(saveJourneyDraft).not.toHaveBeenCalled();
+  });
+
+  it('从编排切换到已发布版本会卸载编辑器，仍要求确认未保存修改', async () => {
+    const { router } = renderEditor();
+    await screen.findByRole('heading', { name: '欢迎旅程' });
+    fireEvent.click(screen.getByRole('button', { name: '添加消息' }));
+
+    let navigation: Promise<void> | undefined;
+    await act(async () => {
+      navigation = router.navigate(
+        `/journeys/${journeyId}/versions/5c1e5c1a-9d0c-4d9c-8e5a-3f1e2d4c6b70`,
+      );
+    });
+
+    expect(await screen.findByRole('dialog', { name: '放弃未保存的修改？' })).toBeTruthy();
+    expect(router.state.location.pathname).toBe(`/journeys/${journeyId}/editor`);
+
+    fireEvent.click(
+      within(await screen.findByRole('dialog')).getByRole('button', { name: '继续编辑' }),
+    );
+    await act(async () => {
+      await navigation;
+    });
+    expect(router.state.location.pathname).toBe(`/journeys/${journeyId}/editor`);
+    expect(screen.getByLabelText('消息：消息')).toBeTruthy();
+  });
+
+  it('从编排进入旅程详情页会先确认未保存修改，确认后才离开', async () => {
+    const { router } = renderEditor();
+    await screen.findByRole('heading', { name: '欢迎旅程' });
+    fireEvent.click(screen.getByRole('button', { name: '添加消息' }));
+
+    let navigation: Promise<void> | undefined;
+    await act(async () => {
+      navigation = router.navigate(`/journeys/${journeyId}`);
+    });
+
+    expect(await screen.findByRole('dialog', { name: '放弃未保存的修改？' })).toBeTruthy();
+    expect(router.state.location.pathname).toBe(`/journeys/${journeyId}/editor`);
+
+    fireEvent.click(
+      within(await screen.findByRole('dialog')).getByRole('button', { name: '放弃修改' }),
+    );
+    await act(async () => {
+      await navigation;
+    });
+    expect(await screen.findByText('旅程详情')).toBeTruthy();
+    expect(router.state.location.pathname).toBe(`/journeys/${journeyId}`);
   });
 
   it('切换旅程后忽略旧保存响应，新旅程仍使用自己的内容和修订号', async () => {

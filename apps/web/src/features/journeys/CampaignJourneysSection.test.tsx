@@ -82,6 +82,7 @@ const journeyListItem = {
   name: journey.name,
   description: journey.description,
   segment: { id: segment.id, name: segment.name },
+  versionCount: 0,
   updatedAt: journey.updatedAt,
 };
 const unauthorizedBody = {
@@ -114,6 +115,8 @@ function renderApp(initialPath = `/campaigns/${campaignId}`) {
 
 beforeEach(() => {
   mock = new MockAdapter(apiClient);
+  // 旅程详情页会读取已发布版本；本文件不验证版本列表，统一返回空结果。
+  mock.onGet(new RegExp(`/journeys/${journeyId}/versions$`)).reply(200, listBody());
 });
 
 afterEach(() => {
@@ -125,6 +128,25 @@ afterEach(() => {
 });
 
 describe('活动旅程管理', () => {
+  it('列表按已发布版本数量显示发布状态', async () => {
+    const publishedJourney = {
+      ...journeyListItem,
+      id: '88a0f727-a226-4cb4-9495-74364f8d0e35',
+      name: '已发布旅程',
+      versionCount: 2,
+    };
+    mock.onGet('/userinfo').reply(200, { data: account });
+    mock.onGet(`/campaigns/${campaignId}`).reply(200, { data: campaign });
+    mock
+      .onGet(`/campaigns/${campaignId}/journeys`)
+      .reply(200, listBody([journeyListItem, publishedJourney]));
+    renderApp();
+
+    expect(await screen.findByText('未发布')).toBeTruthy();
+    expect(screen.getByText('已发布')).toBeTruthy();
+    expect(screen.getByText('共 2 版')).toBeTruthy();
+  });
+
   it('可搜索并选择分群后创建旅程，保存成功后重新读取列表', async () => {
     mock.onGet('/userinfo').reply(200, { data: account });
     mock.onGet(`/campaigns/${campaignId}`).reply(200, { data: campaign });
@@ -301,6 +323,49 @@ describe('活动旅程管理', () => {
       name: '服务器上的新名称',
     });
   }, 30_000);
+
+  it('旅程详情保留活动与分群链接，完整规则按需查看', async () => {
+    mock.onGet('/userinfo').reply(200, { data: account });
+    mock.onGet(`/journeys/${journeyId}`).reply(200, { data: journey });
+    renderApp(`/journeys/${journeyId}`);
+
+    expect(await screen.findByRole('heading', { name: journey.name })).toBeTruthy();
+    expect(screen.getAllByRole('heading', { name: journey.name })).toHaveLength(1);
+    expect(screen.getByRole('link', { name: campaign.name }).getAttribute('href')).toBe(
+      `/campaigns/${campaignId}`,
+    );
+    expect(screen.getByRole('link', { name: segment.name }).getAttribute('href')).toBe(
+      `/segments/${segmentId}`,
+    );
+    expect(within(screen.getByRole('region', { name: '所属活动' })).getByText('草稿')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '编排旅程' })).toBeTruthy();
+    expect(screen.queryByRole('group', { name: '分群规则' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '查看完整规则' }));
+    const drawer = await screen.findByRole('dialog', { name: '入口分群规则' });
+    expect(within(drawer).getByText('全部满足')).toBeTruthy();
+    expect(within(drawer).getByText('年龄')).toBeTruthy();
+    expect(within(drawer).getByText('30')).toBeTruthy();
+    expect(
+      mock.history.get.filter((request) => request.url === `/journeys/${journeyId}`),
+    ).toHaveLength(1);
+  });
+
+  it('旅程详情不限人群时保留说明与时间，不提供空规则入口', async () => {
+    mock.onGet('/userinfo').reply(200, { data: account });
+    mock
+      .onGet(`/journeys/${journeyId}`)
+      .reply(200, { data: { ...journey, segment: null, description: null } });
+    renderApp(`/journeys/${journeyId}`);
+
+    expect(await screen.findByText('不限人群')).toBeTruthy();
+    expect(screen.getByText('未填写')).toBeTruthy();
+    expect(screen.getByText(`创建者：${account.displayName}`)).toBeTruthy();
+    expect(screen.getByText(/创建于/)).toBeTruthy();
+    expect(screen.getByText(/更新于/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '查看完整规则' })).toBeNull();
+    expect(await screen.findByText('尚未发布版本')).toBeTruthy();
+  });
 
   it('从旅程详情返回活动时恢复活动旅程的搜索与分页网址', async () => {
     mock.onGet('/userinfo').reply(200, { data: account });

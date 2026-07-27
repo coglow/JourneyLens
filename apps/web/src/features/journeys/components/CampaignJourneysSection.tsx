@@ -11,6 +11,8 @@ import {
   Pagination,
   Spin,
   Table,
+  Tag,
+  Tooltip,
   Typography,
 } from 'antd';
 import type { TableProps } from 'antd';
@@ -168,7 +170,7 @@ export function CampaignJourneysSection({ campaignId, campaignStatus }: Props) {
   }
 
   // 列宽合计：操作列只在可写时出现，两种情况的表格总宽度不同。
-  const tableScrollX = writable ? 1020 : 870;
+  const tableScrollX = writable ? 1170 : 1020;
 
   const columns: NonNullable<TableProps<JourneyListItem>['columns']> = [
     {
@@ -216,6 +218,23 @@ export function CampaignJourneysSection({ campaignId, campaignStatus }: Props) {
         ),
     },
     {
+      title: '状态',
+      dataIndex: 'versionCount',
+      key: 'versionCount',
+      width: 150,
+      render: (versionCount: number) =>
+        versionCount === 0 ? (
+          <Typography.Text type="secondary">未发布</Typography.Text>
+        ) : (
+          <Flex align="center" gap={6} wrap>
+            <Tag color="success" style={{ marginInlineEnd: 0 }}>
+              已发布
+            </Tag>
+            <Typography.Text type="secondary">共 {versionCount} 版</Typography.Text>
+          </Flex>
+        ),
+    },
+    {
       title: '更新时间',
       dataIndex: 'updatedAt',
       key: 'updatedAt',
@@ -244,15 +263,25 @@ export function CampaignJourneysSection({ campaignId, campaignStatus }: Props) {
                 >
                   编辑
                 </Button>
-                <Button
-                  type="link"
-                  size="small"
-                  danger
-                  disabled={deleteMutation.isPending}
-                  onClick={() => confirmDelete(journey)}
-                >
-                  删除
-                </Button>
+                {journey.versionCount > 0 ? (
+                  <Tooltip title="该旅程已有发布版本，不能删除">
+                    <span style={{ display: 'inline-flex', cursor: 'not-allowed' }}>
+                      <Button type="link" size="small" danger disabled>
+                        删除
+                      </Button>
+                    </span>
+                  </Tooltip>
+                ) : (
+                  <Button
+                    type="link"
+                    size="small"
+                    danger
+                    disabled={deleteMutation.isPending}
+                    onClick={() => confirmDelete(journey)}
+                  >
+                    删除
+                  </Button>
+                )}
               </Flex>
             ),
           } satisfies NonNullable<TableProps<JourneyListItem>['columns']>[number],

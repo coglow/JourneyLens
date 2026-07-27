@@ -8,11 +8,17 @@ import {
   journeySimulationRequestSchema,
   journeySimulationResponseSchema,
   journeyUpdateSchema,
+  journeyVersionDetailResponseSchema,
+  journeyVersionListQuerySchema,
+  journeyVersionListResponseSchema,
+  journeyVersionPublishSchema,
   type JourneyCreateInput,
   type JourneyDraftDefinition,
   type JourneyListQueryInput,
   type JourneySimulationInput,
   type JourneyUpdateInput,
+  type JourneyVersionPublishInput,
+  type PaginationQueryInput,
 } from '@journeylens/shared';
 import { ApiError, request, requestVoid } from './api';
 
@@ -87,6 +93,59 @@ export async function saveJourneyDraft(
 
 export async function deleteJourney(id: string): Promise<void> {
   await requestVoid({ url: `/journeys/${encodeURIComponent(id)}`, method: 'DELETE' });
+}
+
+/** 发布版本：只提交已保存内容的两个修订号，快照由服务端构造。 */
+export async function publishJourney(id: string, input: JourneyVersionPublishInput) {
+  const payload = journeyVersionPublishSchema.parse(input);
+  const body = await request(
+    {
+      url: `/journeys/${encodeURIComponent(id)}/publish`,
+      method: 'POST',
+      data: payload,
+    },
+    journeyVersionDetailResponseSchema,
+  );
+  return body.data;
+}
+
+export async function getJourneyVersions(
+  id: string,
+  input: PaginationQueryInput = {},
+  signal?: AbortSignal,
+) {
+  const result = journeyVersionListQuerySchema.safeParse(input);
+  if (!result.success) {
+    const messages = getPaginationErrorMessages(result.error.issues);
+    throw new ApiError(undefined, 'BAD_REQUEST', messages.join('；') || '请检查分页条件');
+  }
+
+  const query = result.data;
+  const params: Record<string, string | number> = {};
+  if (query.page !== 1) params.page = query.page;
+  if (query.pageSize !== 10) params.pageSize = query.pageSize;
+
+  return request(
+    {
+      url: `/journeys/${encodeURIComponent(id)}/versions`,
+      method: 'GET',
+      params,
+      ...(signal ? { signal } : {}),
+    },
+    journeyVersionListResponseSchema,
+  );
+}
+
+export async function getJourneyVersion(id: string, versionId: string, signal?: AbortSignal) {
+  const body = await request(
+    {
+      url: `/journeys/${encodeURIComponent(id)}/versions/${encodeURIComponent(versionId)}`,
+      method: 'GET',
+      ...(signal ? { signal } : {}),
+    },
+    journeyVersionDetailResponseSchema,
+  );
+  return body.data;
 }
 
 /** 单次模拟：提交点击时的画布与资料副本，不保存草稿或用户资料。 */
