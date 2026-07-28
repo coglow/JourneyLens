@@ -120,13 +120,20 @@ describe('活动列表与创建', () => {
       name: '已排期活动',
       status: 'scheduled',
     };
+    const paused = {
+      ...summary,
+      id: '2d4f4d57-9d59-4ed5-a2fa-d71733cebb63',
+      name: '已暂停活动',
+      status: 'paused',
+    };
     const deletable = { ...summary, name: '可删除活动' };
     mock.onGet('/userinfo').reply(200, { data: account });
-    mock.onGet('/campaigns').reply(200, listBody([linkedDraft, scheduled, deletable]));
+    mock.onGet('/campaigns').reply(200, listBody([linkedDraft, scheduled, paused, deletable]));
     renderApp();
 
     const linkedRow = await screen.findByRole('row', { name: /有旅程的草稿/ });
     const scheduledRow = screen.getByRole('row', { name: /已排期活动/ });
+    const pausedRow = screen.getByRole('row', { name: /已暂停活动/ });
     const deletableRow = screen.getByRole('row', { name: /可删除活动/ });
     expect(within(linkedRow).getByRole('button', { name: '删除' }).hasAttribute('disabled')).toBe(
       true,
@@ -137,6 +144,14 @@ describe('活动列表与创建', () => {
     expect(
       within(deletableRow).getByRole('button', { name: '删除' }).hasAttribute('disabled'),
     ).toBe(false);
+    // 暂停是维护窗口：可以编辑资料，但活动记录仍然保留。
+    expect(within(pausedRow).getByText('已暂停')).toBeDefined();
+    expect(within(pausedRow).getByRole('button', { name: '编辑' }).hasAttribute('disabled')).toBe(
+      false,
+    );
+    expect(within(pausedRow).getByRole('button', { name: '删除' }).hasAttribute('disabled')).toBe(
+      true,
+    );
   });
 
   it('编辑操作直接打开活动表单；确认删除后刷新当前列表', async () => {

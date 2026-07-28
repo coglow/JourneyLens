@@ -4,6 +4,7 @@ import {
   campaignCreateSchema,
   campaignIdParamsSchema,
   campaignListQuerySchema,
+  campaignTransitionBodySchema,
   campaignUpdateSchema,
   getPaginationErrorMessages,
 } from '@journeylens/shared';
@@ -53,10 +54,29 @@ export function registerCampaignRoutes(app: FastifyInstance, prisma: PrismaClien
     const params = campaignIdParamsSchema.safeParse(request.params);
     if (!params.success) throw new ApiError(400, 'BAD_REQUEST', '活动链接无效');
 
-    const deleted = await service.deleteDraft(params.data.id);
-    if (!deleted) throw new ApiError(404, 'NOT_FOUND', '活动不存在或已无法删除');
+    await service.deleteDraft(params.data.id);
     return reply.code(204).send();
   });
+
+  // 四个状态动作的参数、正文校验和响应结构相同，只有路径与执行的 service 方法不同。
+  const transitions = {
+    start: (id: string) => service.start(id),
+    pause: (id: string) => service.pause(id),
+    resume: (id: string) => service.resume(id),
+    stop: (id: string) => service.stop(id),
+  };
+
+  for (const [action, run] of Object.entries(transitions)) {
+    app.post(`/api/campaigns/:id/${action}`, async (request) => {
+      const params = campaignIdParamsSchema.safeParse(request.params);
+      if (!params.success) throw new ApiError(400, 'BAD_REQUEST', '活动链接无效');
+
+      const input = campaignTransitionBodySchema.safeParse(request.body);
+      if (!input.success) throw new ApiError(400, 'BAD_REQUEST', '请检查操作内容');
+
+      return { data: await run(params.data.id) };
+    });
+  }
 
   app.post('/api/campaigns', async (request, reply) => {
     const input = campaignCreateSchema.safeParse(request.body);

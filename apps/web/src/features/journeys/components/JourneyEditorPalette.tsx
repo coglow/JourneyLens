@@ -77,7 +77,7 @@ export function JourneyEditorPalette({
           <Button
             autoInsertSpace={false}
             aria-label="复制"
-            disabled={!hasSelection}
+            disabled={!canEdit || !hasSelection}
             onClick={onCopy}
           >
             复制
@@ -91,18 +91,26 @@ export function JourneyEditorPalette({
             删除
           </Button>
         </div>
-        <Typography.Text type="secondary" className={styles.keyboardHint ?? ''}>
-          快捷键：Ctrl+Z 撤销
-          <br />
-          Ctrl+Shift+Z 重做
-          <br />
-          Ctrl+C/V 复制粘贴
-          <br />
-          Delete 删除；输入框内不生效。
-        </Typography.Text>
-        <Typography.Text type="secondary" className={styles.keyboardHint ?? ''}>
-          从节点的连接点拖到空白处，选择下一步。
-        </Typography.Text>
+        {canEdit ? (
+          <>
+            <Typography.Text type="secondary" className={styles.keyboardHint ?? ''}>
+              快捷键：Ctrl+Z 撤销
+              <br />
+              Ctrl+Shift+Z 重做
+              <br />
+              Ctrl+C/V 复制粘贴
+              <br />
+              Delete 删除；输入框内不生效。
+            </Typography.Text>
+            <Typography.Text type="secondary" className={styles.keyboardHint ?? ''}>
+              从节点的连接点拖到空白处，选择下一步。
+            </Typography.Text>
+          </>
+        ) : (
+          <Typography.Text type="secondary" className={styles.keyboardHint ?? ''}>
+            只读：可以查看画布、步骤设置和旅程模拟，不能复制、粘贴或修改。
+          </Typography.Text>
+        )}
       </div>
     </aside>
   );

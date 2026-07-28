@@ -226,6 +226,13 @@ describe('活动 API', () => {
           status: 'scheduled',
           createdById: testAccountId,
         },
+        {
+          id: '00000000-0000-4000-8000-000000000104',
+          name: '冬季活动',
+          description: null,
+          status: 'paused',
+          createdById: testAccountId,
+        },
       ],
     });
     const { app } = makeApp(db);
@@ -253,6 +260,15 @@ describe('活动 API', () => {
         headers: { cookie },
       });
       expect(filtered.json().page.total).toBe(2);
+
+      // 暂停是新增的可筛选状态，列表和详情使用同一套枚举。
+      const pausedOnly = await app.inject({
+        method: 'GET',
+        url: '/api/campaigns?status=paused',
+        headers: { cookie },
+      });
+      expect(pausedOnly.json().page.total).toBe(1);
+      expect(pausedOnly.json().data[0]).toMatchObject({ name: '冬季活动', status: 'paused' });
 
       const invalidStatus = await app.inject({
         method: 'GET',
@@ -500,6 +516,35 @@ describe('活动 API', () => {
     }
   });
 
+  it('PATCH 允许草稿和暂停，其他状态返回不可编辑', async () => {
+    const { app } = makeApp(db);
+    try {
+      const cookie = await signedInCookie(app);
+      const created = await postCampaign(app, cookie, { name: '可维护活动' });
+      const id = created.json().data.id as string;
+
+      await db.prisma.campaign.update({ where: { id }, data: { status: 'paused' } });
+      const updated = await patchCampaign(app, cookie, id, { description: '暂停期间补充说明' });
+      expect(updated.statusCode).toBe(200);
+      expect(updated.json().data).toMatchObject({
+        status: 'paused',
+        description: '暂停期间补充说明',
+      });
+
+      for (const status of ['running', 'stopped', 'scheduled', 'ended'] as const) {
+        await db.prisma.campaign.update({ where: { id }, data: { status } });
+        const rejected = await patchCampaign(app, cookie, id, { name: `${status} 改名` });
+        expect(rejected.statusCode).toBe(409);
+        expect(rejected.json().error).toMatchObject({
+          code: 'CAMPAIGN_NOT_EDITABLE',
+          message: '只有草稿或已暂停的活动可以修改',
+        });
+      }
+    } finally {
+      await app.close();
+    }
+  });
+
   it('DELETE 只删除草稿，成功返回 204，删除后详情不存在', async () => {
     const { app } = makeApp(db);
     try {
@@ -538,7 +583,13 @@ describe('活动 API', () => {
         where: { id: scheduledId },
         data: { status: 'scheduled' },
       });
-      expect((await deleteCampaign(app, cookie, scheduledId)).statusCode).toBe(404);
+      // 活动存在但不是草稿：返回状态不允许，而不是笼统的“不存在”。
+      const notDraft = await deleteCampaign(app, cookie, scheduledId);
+      expect(notDraft.statusCode).toBe(409);
+      expect(notDraft.json().error).toMatchObject({
+        code: 'CAMPAIGN_NOT_DRAFT',
+        message: '只有草稿活动可以删除',
+      });
     } finally {
       await app.close();
     }

@@ -19,6 +19,7 @@ import type { TableProps } from 'antd';
 import { PlusOutlined, SearchOutlined } from '@ant-design/icons';
 import {
   PAGE_SIZES,
+  canEditCampaign,
   type CampaignStatus,
   type JourneyDetail,
   type JourneyListItem,
@@ -62,7 +63,8 @@ export function CampaignJourneysSection({ campaignId, campaignStatus }: Props) {
   });
   const deleteMutation = useMutation({ mutationFn: deleteJourney });
   const list = listQuery.data;
-  const writable = campaignStatus === 'draft';
+  // 草稿与暂停都能维护旅程；删除仍逐条受 versionCount 限制。
+  const writable = canEditCampaign(campaignStatus);
   useSyncListPage(listQuery);
 
   useEffect(() => {

@@ -64,3 +64,13 @@ export async function updateCampaign(id: string, input: CampaignUpdateInput) {
 export async function deleteCampaign(id: string): Promise<void> {
   await requestVoid({ url: `/campaigns/${encodeURIComponent(id)}`, method: 'DELETE' });
 }
+
+export type CampaignTransition = 'start' | 'pause' | 'resume' | 'stop';
+
+export async function transitionCampaign(id: string, action: CampaignTransition) {
+  const body = await request(
+    { url: `/campaigns/${encodeURIComponent(id)}/${action}`, method: 'POST', data: {} },
+    campaignDetailResponseSchema,
+  );
+  return body.data;
+}

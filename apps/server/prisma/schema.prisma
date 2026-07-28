@@ -16,6 +16,7 @@ enum CampaignStatus {
   draft
   scheduled
   running
+  paused
   ended
   stopped
 }

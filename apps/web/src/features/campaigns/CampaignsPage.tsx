@@ -22,6 +22,7 @@ import type { TableProps } from 'antd';
 import {
   CAMPAIGN_STATUSES,
   PAGE_SIZES,
+  canEditCampaign,
   type CampaignListQueryInput,
   type CampaignDetail,
   type CampaignStatus,
@@ -59,13 +60,9 @@ const statusOptions = [
 const filterCol = { xs: 24, sm: 12, lg: 8, xl: 6 };
 
 function getDeleteDisabledReason(campaign: CampaignListItem): string | undefined {
-  if (campaign.status !== 'draft') return '只有草稿活动可以删除';
+  if (campaign.status !== 'draft') return '只有草稿活动可以删除，已启动或已暂停的活动会保留记录';
   if (campaign.journeyCount > 0) return '该活动存在引用旅程，请先删除活动中的旅程';
   return undefined;
-}
-
-function canEditCampaign(campaign: CampaignListItem): boolean {
-  return campaign.status === 'draft';
 }
 
 function getCampaignColumns(
@@ -162,7 +159,8 @@ function getCampaignColumns(
               type="link"
               loading={editingCampaignId === campaign.id}
               disabled={
-                !canEditCampaign(campaign) || (actionsDisabled && editingCampaignId !== campaign.id)
+                !canEditCampaign(campaign.status) ||
+                (actionsDisabled && editingCampaignId !== campaign.id)
               }
               onClick={(event) => onEdit(campaign, event.currentTarget)}
             >
@@ -268,7 +266,7 @@ export function CampaignsPage() {
       : undefined;
 
   async function openEdit(campaign: CampaignListItem, button: HTMLElement): Promise<void> {
-    if (!canEditCampaign(campaign)) return;
+    if (!canEditCampaign(campaign.status)) return;
     editButtonRef.current = button;
     setEditTarget(campaign);
     setEditError(undefined);

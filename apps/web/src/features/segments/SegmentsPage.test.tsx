@@ -345,7 +345,7 @@ describe('分群列表', () => {
       name: '欢迎旅程',
       description: null,
       revision: 1,
-      campaign: { id: campaignId, name: '春季活动', status: 'draft' },
+      campaign: { id: campaignId, name: '春季活动', status: 'paused' },
       segment: { id: segment.id, name: segment.name, revision: 1, rules: segment.rules },
       draftDefinition: null,
       createdAt: segment.updatedAt,
@@ -386,6 +386,8 @@ describe('分群列表', () => {
       state: { returnTo: '?q=member' },
     });
     expect(await screen.findByRole('link', { name: '欢迎旅程' })).toBeTruthy();
+    // 引用列表直接展示活动状态，暂停是共享契约中的正常值。
+    expect(screen.getByText('已暂停')).toBeTruthy();
     await waitFor(() => expect(router.state.location.search).toBe('?page=2&pageSize=20'));
     // 等页面按修正后的网址重新渲染，旅程链接携带的返回地址才与当前页码一致。
     await act(async () => {});

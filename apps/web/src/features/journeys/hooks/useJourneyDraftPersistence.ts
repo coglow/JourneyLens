@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Modal } from 'antd';
 import { useBlocker } from 'react-router';
 import {
+  canEditCampaign,
   journeyDraftDefinitionSchema,
   type JourneyDetail,
   type JourneyDraftDefinition,
@@ -124,7 +125,8 @@ export function useJourneyDraftPersistence({
     },
   });
   const readOnly =
-    journey?.campaign.status !== 'draft' ||
+    journey === undefined ||
+    !canEditCampaign(journey.campaign.status) ||
     serverReadOnly ||
     journeyMissing ||
     initializedId !== id;
@@ -221,7 +223,7 @@ export function useJourneyDraftPersistence({
       if (error instanceof ApiError && error.code === 'JOURNEY_REVISION_CONFLICT') {
         setConflict(true);
         setSaveError('旅程已在其他页面修改，你的内容仍保留在本页。读取最新内容前会先确认。');
-      } else if (error instanceof ApiError && error.code === 'CAMPAIGN_NOT_DRAFT') {
+      } else if (error instanceof ApiError && error.code === 'CAMPAIGN_NOT_EDITABLE') {
         setServerReadOnly(true);
         setSaveError('活动已不能编辑，当前编排无法保存。');
       } else if (error instanceof ApiError && error.status === 404) {
@@ -302,7 +304,7 @@ export function useJourneyDraftPersistence({
           ? conflict
             ? '旅程已更新'
             : '有未保存修改'
-          : journey?.campaign.status !== 'draft'
+          : !canEditCampaign(journey.campaign.status)
             ? '只读'
             : journey.draftDefinition
               ? `${lastSaveSource === 'auto' ? '已自动保存' : '草稿已保存'} · ${formatSavedAt(journey.updatedAt)}`

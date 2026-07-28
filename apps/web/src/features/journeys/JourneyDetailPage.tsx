@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link, useLocation, useNavigate, useParams } from 'react-router';
 import { PageHeader } from '@/components/PageHeader';
 import { ApiError, getApiErrorMessage, isSessionExpired } from '@/services/api';
+import { canEditCampaign } from '@journeylens/shared';
 import { campaignStatusLabels } from '@/features/campaigns/campaign-status';
 import { getJourney } from '@/services/journeys';
 import { EntrySegmentRulesDrawer } from '@/features/journeys/components/EntrySegmentRulesDrawer';
@@ -65,7 +66,7 @@ export function JourneyDetailPage() {
                   navigate(`/journeys/${journey.id}/editor`, { state: location.state })
                 }
               >
-                {journey.campaign.status === 'draft' ? '编排旅程' : '查看编排'}
+                {canEditCampaign(journey.campaign.status) ? '编排旅程' : '查看编排'}
               </Button>
             )
           }

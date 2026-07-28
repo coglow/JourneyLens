@@ -1038,7 +1038,26 @@ describe('旅程编排页面', () => {
     fireEvent.click(continueButton);
   });
 
-  it('只读活动仍允许复制，但快捷键不能粘贴或修改画布', async () => {
+  it('暂停活动下可以编排和发布，不显示只读提示', async () => {
+    vi.mocked(getJourney).mockResolvedValue({
+      ...journey,
+      campaign: { ...journey.campaign, status: 'paused' },
+    });
+    renderEditor();
+    await screen.findByRole('heading', { name: '欢迎旅程' });
+
+    expect(screen.queryByText(/旅程只能查看/)).toBeNull();
+    expect(screen.getByRole('button', { name: '保存编排' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '发布版本' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '添加结束旅程' }).hasAttribute('disabled')).toBe(
+      false,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '添加结束旅程' }));
+    expect(await screen.findByLabelText('结束：结束')).toBeTruthy();
+  });
+
+  it('只读活动不能复制、粘贴或修改画布', async () => {
     vi.mocked(getJourney).mockResolvedValue({
       ...journey,
       campaign: { ...journey.campaign, status: 'running' },
@@ -1059,19 +1078,22 @@ describe('旅程编排页面', () => {
       (screen.getByRole('button', { name: '删除步骤及相关连线' }) as HTMLButtonElement).disabled,
     ).toBe(true);
     expect(screen.queryByRole('button', { name: '保存编排' })).toBeNull();
+    expect((screen.getByRole('button', { name: '复制' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText(/只读：可以查看画布/)).toBeDefined();
 
+    // 只读时不再接管复制、粘贴等快捷键，交回浏览器默认行为。
     const copy = dispatchShortcut(
       endNode.closest<HTMLElement>('[data-testid^="rf__node-"]')!,
       'c',
       { ctrlKey: true },
     );
-    expect(copy.defaultPrevented).toBe(true);
+    expect(copy.defaultPrevented).toBe(false);
     const body = document.body;
     const oldTabIndex = body.getAttribute('tabindex');
     body.tabIndex = 0;
     try {
       const paste = dispatchShortcut(body, 'v', { metaKey: true });
-      expect(paste.defaultPrevented).toBe(true);
+      expect(paste.defaultPrevented).toBe(false);
       fireEvent.keyDown(screen.getByLabelText('旅程编排'), { key: 'Delete' });
       fireEvent.keyDown(screen.getByLabelText('旅程编排'), { key: 'z', ctrlKey: true });
       expect(screen.getAllByLabelText('结束：结束')).toHaveLength(1);

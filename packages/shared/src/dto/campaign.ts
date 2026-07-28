@@ -1,7 +1,14 @@
 import { z } from 'zod';
 import { paginatedListSchema, paginationQuerySchema } from './pagination.js';
 
-export const CAMPAIGN_STATUSES = ['draft', 'scheduled', 'running', 'ended', 'stopped'] as const;
+export const CAMPAIGN_STATUSES = [
+  'draft',
+  'scheduled',
+  'running',
+  'paused',
+  'ended',
+  'stopped',
+] as const;
 
 const normalizedNameSchema = z
   .string()
@@ -48,7 +55,24 @@ export const campaignUpdateSchema = z
 
 export const campaignIdParamsSchema = z.object({ id: z.uuid() }).strict();
 
+/** 状态操作没有业务参数：正文必须是空对象，携带状态等字段一律拒绝。 */
+export const campaignTransitionBodySchema = z.object({}).strict();
+
 export const campaignStatusSchema = z.enum(CAMPAIGN_STATUSES);
+
+/**
+ * 活动资料与旅程维护开放的状态：草稿和暂停是配置维护窗口。
+ * 后端把同一常量用作写入条件，前后端判断不会各自漂移。
+ */
+export const EDITABLE_CAMPAIGN_STATUSES = ['draft', 'paused'] as const;
+
+/**
+ * 活动资料与旅程维护是否开放：只有草稿和暂停是配置维护窗口。
+ * 启动、暂停、恢复、停止本身，以及活动删除、已发布版本删除仍各自判断，不能只看这个条件。
+ */
+export function canEditCampaign(status: CampaignStatus): boolean {
+  return (EDITABLE_CAMPAIGN_STATUSES as readonly CampaignStatus[]).includes(status);
+}
 
 export const campaignListQuerySchema = z
   .object({

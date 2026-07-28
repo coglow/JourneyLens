@@ -17,6 +17,7 @@ import {
   JOURNEY_BRANCH_LABELS,
   JOURNEY_LAYOUT_DIRECTIONS,
   JOURNEY_NODE_LIMIT,
+  canEditCampaign,
   type JourneyBranch,
   type JourneyLayoutDirection,
   type JourneyNodeType,
@@ -251,6 +252,9 @@ export function JourneyEditorPage() {
       )
         return;
 
+      // 只读时不接管复制、粘贴、撤销和重做，交回浏览器默认行为。
+      if (!canEdit) return;
+
       if (key === 'c') {
         if (!hasSelection || window.getSelection()?.toString()) return;
         event.preventDefault();
@@ -260,10 +264,9 @@ export function JourneyEditorPage() {
       if (key === 'v') {
         if (!hasClipboard()) return;
         event.preventDefault();
-        if (canEdit && pasteSelection()) clearSaveError();
+        if (pasteSelection()) clearSaveError();
         return;
       }
-      if (!canEdit) return;
 
       event.preventDefault();
       const changed = key === 'y' || event.shiftKey ? redoCanvas() : undoCanvas();
@@ -405,7 +408,7 @@ export function JourneyEditorPage() {
               查看已发布版本
             </Button>
           )}
-          {journey !== undefined && journey.campaign.status === 'draft' && (
+          {journey !== undefined && canEditCampaign(journey.campaign.status) && (
             <JourneyPublishDialog
               journeyId={id}
               revision={journey.revision}
@@ -413,7 +416,7 @@ export function JourneyEditorPage() {
               onReadLatest={readLatestAfterConfirm}
             />
           )}
-          {journey?.campaign.status === 'draft' && (
+          {journey !== undefined && canEditCampaign(journey.campaign.status) && (
             <Button
               type="primary"
               loading={saving}
@@ -433,7 +436,7 @@ export function JourneyEditorPage() {
         </Flex>
       </header>
 
-      {journey && journey.campaign.status !== 'draft' && (
+      {journey && !canEditCampaign(journey.campaign.status) && (
         <Alert
           className={styles.pageAlert ?? ''}
           type="warning"

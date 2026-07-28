@@ -578,8 +578,38 @@ describe('活动旅程管理', () => {
 
     expect(await screen.findByRole('link', { name: '欢迎旅程' })).toBeTruthy();
     expect(screen.getByText('高价值会员')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: '新建旅程' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /新建旅程/ })).toBeNull();
     expect(screen.queryByRole('button', { name: '编辑' })).toBeNull();
     expect(screen.queryByRole('button', { name: '删除' })).toBeNull();
+  });
+
+  it('暂停活动允许维护旅程，已有发布版本的旅程仍不能删除', async () => {
+    const pausedCampaign = { ...campaign, status: 'paused' };
+    const published = {
+      ...journeyListItem,
+      id: '88a0f727-a226-4cb4-9495-74364f8d0e34',
+      name: '已发布旅程',
+      versionCount: 1,
+    };
+    mock.onGet('/userinfo').reply(200, { data: account });
+    mock.onGet(`/campaigns/${campaignId}`).reply(200, { data: pausedCampaign });
+    mock
+      .onGet(`/campaigns/${campaignId}/journeys`)
+      .reply(200, listBody([published, journeyListItem]));
+    renderApp();
+
+    const section = await screen.findByRole('region', { name: '活动旅程' });
+    expect(await within(section).findByRole('link', { name: '欢迎旅程' })).toBeTruthy();
+    expect(within(section).getByRole('button', { name: /新建旅程/ })).toBeTruthy();
+    expect(within(section).getAllByRole('button', { name: '编辑' })).toHaveLength(2);
+
+    const publishedRow = within(section).getByRole('row', { name: /已发布旅程/ });
+    const unpublishedRow = within(section).getByRole('row', { name: /欢迎旅程/ });
+    expect(
+      within(publishedRow).getByRole('button', { name: '删除' }).hasAttribute('disabled'),
+    ).toBe(true);
+    expect(
+      within(unpublishedRow).getByRole('button', { name: '删除' }).hasAttribute('disabled'),
+    ).toBe(false);
   });
 });

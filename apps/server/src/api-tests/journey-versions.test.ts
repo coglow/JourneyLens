@@ -394,19 +394,49 @@ describe('旅程发布与版本冻结', () => {
     }
   });
 
-  it('非草稿活动不能发布版本', async () => {
+  it('不可编辑状态不能发布版本，暂停可以发布新版本', async () => {
     const { app } = makeApp(db);
     try {
       const cookie = await signedInCookie(app);
       const { id, revision } = await seedSavedJourney(app, cookie);
-      await db.prisma.campaign.update({ where: { id: campaignId }, data: { status: 'scheduled' } });
 
-      const blocked = await publish(app, cookie, id, { revision, segmentRevision: 3 });
-      expect(blocked.statusCode).toBe(409);
-      expect(blocked.json().error).toMatchObject({
-        code: 'CAMPAIGN_NOT_DRAFT',
-        message: '只有草稿活动可以发布旅程',
+      for (const status of ['scheduled', 'running', 'stopped'] as const) {
+        await db.prisma.campaign.update({ where: { id: campaignId }, data: { status } });
+        const blocked = await publish(app, cookie, id, { revision, segmentRevision: 3 });
+        expect(blocked.statusCode).toBe(409);
+        expect(blocked.json().error).toMatchObject({
+          code: 'CAMPAIGN_NOT_EDITABLE',
+          message: '只有草稿或已暂停的活动可以发布旅程',
+        });
+      }
+      expect(await db.prisma.journeyVersion.count()).toBe(0);
+
+      // 暂停是维护窗口：修正后可以发布新版本，旧版内容不变。
+      await db.prisma.campaign.update({ where: { id: campaignId }, data: { status: 'paused' } });
+      const first = await publish(app, cookie, id, { revision, segmentRevision: 3 });
+      expect(first.statusCode).toBe(201);
+      const firstSnapshot = first.json().data.snapshot;
+
+      const saved = await saveDraft(app, cookie, id, revision, draftWithBody('暂停期间修正的正文'));
+      expect(saved.statusCode).toBe(200);
+      const second = await publish(app, cookie, id, {
+        revision: saved.json().data.revision,
+        segmentRevision: 3,
       });
+      expect(second.statusCode).toBe(201);
+      expect(second.json().data.versionNumber).toBe(2);
+      expect(second.json().data.snapshot.definition).toMatchObject({
+        nodes: expect.arrayContaining([
+          expect.objectContaining({ type: 'message', body: '暂停期间修正的正文' }),
+        ]),
+      });
+
+      const versions = await db.prisma.journeyVersion.findMany({
+        where: { journeyId: id },
+        orderBy: { versionNumber: 'asc' },
+      });
+      expect(versions.map((version) => version.versionNumber)).toEqual([1, 2]);
+      expect(versions[0]?.snapshot).toEqual(firstSnapshot);
     } finally {
       await app.close();
     }

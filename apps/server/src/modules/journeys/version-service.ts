@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient } from '@prisma/client';
 import {
+  canEditCampaign,
   getJourneyDraftWarnings,
   journeyDraftDefinitionSchema,
   journeyVersionSnapshotMetaSchema,
@@ -11,6 +12,7 @@ import {
   type SegmentRule,
 } from '@journeylens/shared';
 import { ApiError } from '../../errors.js';
+import { lockCampaignForJourneyWrite } from '../campaigns/campaign-lock.js';
 
 const versionSummarySelect = {
   id: true,
@@ -94,6 +96,20 @@ export class JourneyVersionService {
     accountId: string,
   ): Promise<{ version: JourneyVersionDetail; created: boolean }> {
     return this.prisma.$transaction(async (tx) => {
+      // 活动标识不可变：先普通读取归属（不取得行锁），再按“活动 → 旅程 → 分群”的统一顺序加锁，
+      // 与旅程写入、启停使用同一顺序，避免互相等待形成环。
+      const located = await tx.journey.findUnique({
+        where: { id: journeyId },
+        select: { campaignId: true },
+      });
+      if (located === null) throw journeyNotFound();
+
+      // 活动共享锁持有到提交，发布期间状态不会被暂停、恢复或停止改变。
+      const campaignStatus = await lockCampaignForJourneyWrite(tx, located.campaignId);
+      if (campaignStatus === null) {
+        throw new ApiError(404, 'NOT_FOUND', '活动不存在');
+      }
+
       // 锁住旅程行：同一旅程的发布请求依次处理，版本号分配和“同一依据只生成一版”都靠这把锁。
       const lockedJourney = await tx.$queryRaw<Array<{ id: string }>>`
         SELECT "id" FROM "journeys" WHERE "id" = ${journeyId}::uuid FOR UPDATE
@@ -112,13 +128,9 @@ export class JourneyVersionService {
         },
       });
       if (journey === null) throw journeyNotFound();
-
-      // 共享锁按 Journey → Campaign → Segment 的顺序获取，避免发布期间活动状态或分群规则被并发修改。
-      const lockedCampaign = await tx.$queryRaw<Array<{ status: string }>>`
-        SELECT "status"::text AS "status" FROM "campaigns" WHERE "id" = ${journey.campaignId}::uuid FOR SHARE
-      `;
-      if (lockedCampaign[0]?.status !== 'draft') {
-        throw new ApiError(409, 'CAMPAIGN_NOT_DRAFT', '只有草稿活动可以发布旅程');
+      // 草稿与暂停都允许发布：暂停是维护窗口，修正内容需要生成新的固定版本。
+      if (!canEditCampaign(campaignStatus)) {
+        throw new ApiError(409, 'CAMPAIGN_NOT_EDITABLE', '只有草稿或已暂停的活动可以发布旅程');
       }
 
       if (journey.revision !== input.revision) throw revisionConflict();

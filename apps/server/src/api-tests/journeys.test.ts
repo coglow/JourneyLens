@@ -102,7 +102,7 @@ const draftDefinition = {
 async function seedCampaign(
   id: string,
   name: string,
-  status: 'draft' | 'scheduled' = 'draft',
+  status: 'draft' | 'scheduled' | 'paused' | 'running' | 'stopped' = 'draft',
 ): Promise<void> {
   await db.prisma.campaign.create({
     data: { id, name, status, createdById: testAccountId, createdAt: testNow, updatedAt: testNow },
@@ -211,6 +211,21 @@ function deleteSegment(app: TestApp, cookie: string, id: string) {
     url: `/api/segments/${id}`,
     headers: { host: 'localhost', origin: 'http://localhost', cookie },
   });
+}
+
+/** 断言请求在指定时间内没有返回，说明它确实停在数据库写入上，而不是已经处理完。 */
+async function expectRequestBlocked(request: Promise<unknown>): Promise<void> {
+  let settled = false;
+  void Promise.resolve(request).then(
+    () => {
+      settled = true;
+    },
+    () => {
+      settled = true;
+    },
+  );
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  expect(settled).toBe(false);
 }
 
 describe('旅程 API', () => {
@@ -560,11 +575,14 @@ describe('旅程 API', () => {
       const created = await createJourney(app, cookie, campaignAId, { name: '原旅程' });
       const id = created.json().data.id as string;
 
-      // 在甲的写入已经完成、服务尚未继续处理时，让乙读取新版本并完成保存。
-      const originalUpdate = db.prisma.journey.update.bind(db.prisma.journey);
-      vi.spyOn(db.prisma.journey, 'update').mockImplementationOnce((args) => {
-        const operation = originalUpdate(args);
-        return operation.then(async (result) => {
+      // 甲的事务提交后、响应返回前，让乙读取最新内容并完成保存：甲仍返回自己写入的结果。
+      const runTransaction = db.prisma.$transaction.bind(db.prisma) as (
+        fn: (tx: Prisma.TransactionClient) => Promise<unknown>,
+      ) => Promise<unknown>;
+      vi.spyOn(db.prisma, '$transaction').mockImplementationOnce(((
+        fn: (tx: Prisma.TransactionClient) => Promise<unknown>,
+      ) =>
+        runTransaction(fn).then(async (result) => {
           const latest = await app.inject({
             method: 'GET',
             url: `/api/journeys/${id}`,
@@ -579,8 +597,7 @@ describe('旅程 API', () => {
           expect(second.statusCode).toBe(200);
           expect(second.json().data).toMatchObject({ name: '乙的修改', revision: 3 });
           return result;
-        }) as unknown as typeof operation;
-      });
+        })) as unknown as typeof db.prisma.$transaction);
 
       const first = await patchJourney(app, cookie, id, {
         revision: 1,
@@ -611,16 +628,30 @@ describe('旅程 API', () => {
       const created = await createJourney(app, cookie, campaignAId, { name: '即将删除的旅程' });
       const id = created.json().data.id as string;
 
-      const originalFindUnique = db.prisma.journey.findUnique.bind(db.prisma.journey);
-      vi.spyOn(db.prisma.journey, 'findUnique').mockImplementationOnce((args) => {
-        const operation = originalFindUnique(args);
-        return operation.then(async (result) => {
-          await db.prisma.journey.delete({ where: { id } });
-          return result;
-        }) as unknown as typeof operation;
+      // 服务读到旅程后，写入会停在旅程行锁上；此时在事务内删除，提交后写入条件落空。
+      let locked!: () => void;
+      const lockAcquired = new Promise<void>((resolve) => {
+        locked = resolve;
       });
+      let release!: () => void;
+      const holdLock = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const deleting = db.prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT "id" FROM "journeys" WHERE "id" = ${id}::uuid FOR UPDATE`;
+        locked();
+        await holdLock;
+        await tx.journey.delete({ where: { id } });
+      });
+      await lockAcquired;
 
-      const response = await patchJourney(app, cookie, id, { revision: 1, name: '无法保存的修改' });
+      const pending = patchJourney(app, cookie, id, { revision: 1, name: '无法保存的修改' });
+      await expectRequestBlocked(pending);
+
+      release();
+      await deleting;
+
+      const response = await pending;
       expect(response.statusCode).toBe(404);
       expect(response.json().error).toMatchObject({ code: 'NOT_FOUND', message: '旅程不存在' });
     } finally {
@@ -768,18 +799,80 @@ describe('旅程 API', () => {
 
       const created = await createJourney(app, cookie, campaignAId, { name: '不该创建' });
       expect(created.statusCode).toBe(409);
-      expect(created.json().error.code).toBe('CAMPAIGN_NOT_DRAFT');
+      expect(created.json().error).toMatchObject({
+        code: 'CAMPAIGN_NOT_EDITABLE',
+        message: '只有草稿或已暂停的活动可以新建旅程',
+      });
 
       const patched = await patchJourney(app, cookie, journeyId, { revision: 1, name: '不该修改' });
       expect(patched.statusCode).toBe(409);
-      expect(patched.json().error.code).toBe('CAMPAIGN_NOT_DRAFT');
+      expect(patched.json().error).toMatchObject({
+        code: 'CAMPAIGN_NOT_EDITABLE',
+        message: '只有草稿或已暂停的活动可以修改旅程',
+      });
 
       const deleted = await deleteJourney(app, cookie, journeyId);
       expect(deleted.statusCode).toBe(409);
-      expect(deleted.json().error.code).toBe('CAMPAIGN_NOT_DRAFT');
+      expect(deleted.json().error).toMatchObject({
+        code: 'CAMPAIGN_NOT_EDITABLE',
+        message: '只有草稿或已暂停的活动可以删除旅程',
+      });
 
       expect(await db.prisma.journey.count()).toBe(1);
       expect((await db.prisma.journey.findUnique({ where: { id: journeyId } }))?.revision).toBe(1);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('暂停活动允许新建、修改、保存和删除未发布旅程', async () => {
+    await seedCampaign(campaignAId, '已暂停活动', 'paused');
+    const { app } = makeApp(db);
+    try {
+      const cookie = await signedInCookie(app);
+
+      const created = await createJourney(app, cookie, campaignAId, { name: '暂停期间新建' });
+      expect(created.statusCode).toBe(201);
+      expect(created.json().data.campaign).toMatchObject({ status: 'paused' });
+      const id = created.json().data.id as string;
+
+      const saved = await putJourneyDraft(app, cookie, id, { revision: 1, draftDefinition });
+      expect(saved.statusCode).toBe(200);
+      expect(saved.json().data).toMatchObject({ revision: 2, draftDefinition });
+
+      const patched = await patchJourney(app, cookie, id, { revision: 2, name: '暂停期间改名' });
+      expect(patched.statusCode).toBe(200);
+      expect(patched.json().data.name).toBe('暂停期间改名');
+
+      // 从未发布：可以删掉误建的旅程。
+      expect((await deleteJourney(app, cookie, id)).statusCode).toBe(204);
+      expect(await db.prisma.journey.count({ where: { id } })).toBe(0);
+
+      // 已有发布版本：即使当前是暂停也不能删除。
+      const published = await createJourney(app, cookie, campaignAId, { name: '已有版本旅程' });
+      const publishedId = published.json().data.id as string;
+      await db.prisma.journeyVersion.create({
+        data: {
+          journeyId: publishedId,
+          versionNumber: 1,
+          sourceRevision: 1,
+          sourceSegmentRevision: null,
+          snapshot: {
+            name: '已有版本旅程',
+            description: null,
+            entrySegment: null,
+            definition: draftDefinition,
+          } as unknown as Prisma.InputJsonValue,
+          publishedById: testAccountId,
+          publishedAt: testNow,
+        },
+      });
+      const blocked = await deleteJourney(app, cookie, publishedId);
+      expect(blocked.statusCode).toBe(409);
+      expect(blocked.json().error).toMatchObject({
+        code: 'JOURNEY_HAS_VERSIONS',
+        message: '该旅程已有发布版本，不能删除',
+      });
     } finally {
       await app.close();
     }
@@ -907,20 +1000,33 @@ describe('旅程 API', () => {
     try {
       const cookie = await signedInCookie(app);
 
-      const originalFindUnique = db.prisma.segment.findUnique.bind(db.prisma.segment);
-      vi.spyOn(db.prisma.segment, 'findUnique').mockImplementationOnce((args) => {
-        const record = originalFindUnique(args);
-        // 在服务确认分群存在之后、写入旅程之前删除分群，模拟真实竞争。
-        return record.then(async (found) => {
-          await db.prisma.segment.deleteMany({ where: { id: segmentAId } });
-          return found;
-        }) as unknown as typeof record;
+      // 服务确认分群存在后，写入会停在分群外键检查上；此时删除分群，引用无法建立。
+      let locked!: () => void;
+      const lockAcquired = new Promise<void>((resolve) => {
+        locked = resolve;
       });
+      let release!: () => void;
+      const holdLock = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const deleting = db.prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT "id" FROM "segments" WHERE "id" = ${segmentAId}::uuid FOR UPDATE`;
+        locked();
+        await holdLock;
+        await tx.segment.delete({ where: { id: segmentAId } });
+      });
+      await lockAcquired;
 
-      const created = await createJourney(app, cookie, campaignAId, {
+      const pending = createJourney(app, cookie, campaignAId, {
         name: '竞争写入旅程',
         segmentId: segmentAId,
       });
+      await expectRequestBlocked(pending);
+
+      release();
+      await deleting;
+
+      const created = await pending;
       expect(created.statusCode).toBe(409);
       expect(created.json().error.code).toBe('JOURNEY_ASSOCIATION_MISSING');
       expect(await db.prisma.journey.count()).toBe(0);
@@ -1021,25 +1127,20 @@ describe('旅程 API', () => {
       );
       expect((await listJourneys(app, cookie, campaignAId)).statusCode).toBe(500);
 
-      vi.spyOn(db.prisma.journey, 'create').mockRejectedValueOnce(
-        new Error('database write failed'),
-      );
+      // 写入在事务内完成：事务整体失败时同样不能被伪装成成功。
+      vi.spyOn(db.prisma, '$transaction').mockRejectedValueOnce(new Error('database write failed'));
       expect((await createJourney(app, cookie, campaignAId, { name: '写入失败' })).statusCode).toBe(
         500,
       );
 
       const created = await createJourney(app, cookie, campaignAId, { name: '更新失败旅程' });
       const id = created.json().data.id as string;
-      vi.spyOn(db.prisma.journey, 'update').mockRejectedValueOnce(
-        new Error('database write failed'),
-      );
+      vi.spyOn(db.prisma, '$transaction').mockRejectedValueOnce(new Error('database write failed'));
       expect(
         (await patchJourney(app, cookie, id, { revision: 1, name: '更新失败' })).statusCode,
       ).toBe(500);
 
-      vi.spyOn(db.prisma.journey, 'deleteMany').mockRejectedValueOnce(
-        new Error('database write failed'),
-      );
+      vi.spyOn(db.prisma, '$transaction').mockRejectedValueOnce(new Error('database write failed'));
       expect((await deleteJourney(app, cookie, id)).statusCode).toBe(500);
     } finally {
       await app.close();
@@ -1317,8 +1418,8 @@ describe('旅程 API', () => {
       });
       expect(readonly.statusCode).toBe(409);
       expect(readonly.json().error).toMatchObject({
-        code: 'CAMPAIGN_NOT_DRAFT',
-        message: '只有草稿活动可以维护旅程',
+        code: 'CAMPAIGN_NOT_EDITABLE',
+        message: '只有草稿或已暂停的活动可以修改旅程',
       });
       expect(await db.prisma.journey.findUnique({ where: { id: journeyId } })).toMatchObject({
         revision: 1,
@@ -1372,9 +1473,7 @@ describe('旅程 API', () => {
       );
       expect(crossOrigin.statusCode).toBe(403);
 
-      vi.spyOn(db.prisma.journey, 'update').mockRejectedValueOnce(
-        new Error('database write failed'),
-      );
+      vi.spyOn(db.prisma, '$transaction').mockRejectedValueOnce(new Error('database write failed'));
       expect(
         (await putJourneyDraft(app, cookie, id, { revision: 1, draftDefinition })).statusCode,
       ).toBe(500);
