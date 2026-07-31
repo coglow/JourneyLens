@@ -7,7 +7,7 @@ import {
   type JourneyConditionRule,
 } from '../journeys/journey-condition.js';
 import { JOURNEY_EVENT_TYPES, journeyEventField } from '../journeys/journey-events.js';
-import { validateSimulationFieldValue } from '../journeys/field-value.js';
+import { validateFieldValue } from '../journeys/field-value.js';
 import { segmentRuleSchema } from '../segments/segment-rule.js';
 
 const NODE_ID_MAX_LENGTH = 64;
@@ -79,7 +79,7 @@ export const journeySimulationScenarioSchema = z
         });
         continue;
       }
-      const message = validateSimulationFieldValue(field, value);
+      const message = validateFieldValue(field, value);
       if (message !== undefined) {
         ctx.addIssue({ code: 'custom', path: ['user', 'attributes', key], message });
       }
@@ -110,7 +110,7 @@ export const journeySimulationScenarioSchema = z
           });
           continue;
         }
-        const message = validateSimulationFieldValue(field, value);
+        const message = validateFieldValue(field, value);
         if (message !== undefined) {
           ctx.addIssue({ code: 'custom', path: ['events', index, 'payload', key], message });
         }

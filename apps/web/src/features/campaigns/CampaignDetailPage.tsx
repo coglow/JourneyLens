@@ -185,7 +185,8 @@ export function CampaignDetailPage() {
     confirmTransition({
       action: 'start',
       title: '启动活动？',
-      content: '启动后，活动资料和旅程将不能修改。未发布的内容不会应用。',
+      content:
+        '启动后，活动资料和旅程将不能修改；用户行为会触发已发布旅程运行。未发布的内容不会应用。',
       okText: '启动活动',
       cancelText: '暂不启动',
       notice: '活动已启动',
@@ -197,7 +198,7 @@ export function CampaignDetailPage() {
       action: 'pause',
       title: '暂停活动？',
       content:
-        '暂停后可修改活动资料，新建或调整旅程；只能删除从未发布过的旅程。未发布内容不会应用。',
+        '暂停后可修改活动资料，新建或调整旅程；已有执行会继续按固定版本推进，等待时间不冻结；暂停期间的新行为不会进入该活动。',
       okText: '暂停活动',
       cancelText: '继续运行',
       notice: '活动已暂停',
@@ -208,7 +209,8 @@ export function CampaignDetailPage() {
     confirmTransition({
       action: 'resume',
       title: '恢复活动？',
-      content: '恢复后，活动资料和旅程将不能修改。未发布的内容不会应用。',
+      content:
+        '恢复后，活动资料和旅程将不能修改；只对之后的新行为重新开放进入，暂停期间的行为不会补判，已有执行继续原版本。',
       okText: '恢复活动',
       cancelText: '保持暂停',
       notice: '活动已恢复',
@@ -219,7 +221,8 @@ export function CampaignDetailPage() {
     confirmTransition({
       action: 'stop',
       title: '停止活动？',
-      content: '停止后不能再次启动或恢复，活动与旅程将保持只读。',
+      content:
+        '停止后不能再次启动或恢复，活动与旅程将保持只读；尚未结束的执行会终止，已完成记录保留。',
       okText: '停止活动',
       cancelText: campaign?.status === 'paused' ? '保持暂停' : '继续运行',
       notice: '活动已停止',
@@ -411,7 +414,7 @@ export function CampaignDetailPage() {
         style={{ marginTop: 16 }}
         type="info"
         showIcon
-        title="当前仅支持活动状态管理，暂不自动运行旅程或发送消息。"
+        title="活动进行中时，用户行为会触发已发布旅程运行；暂停后已有执行继续，停止会终止未结束执行。"
       />
 
       {campaign !== undefined && (

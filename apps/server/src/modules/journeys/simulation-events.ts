@@ -4,8 +4,7 @@ import type {
   JourneySimulationScenario,
   SimulationEventCheck,
 } from '@journeylens/shared';
-import { journeyEventHasProductId } from '@journeylens/shared';
-import { compareSegmentValue } from '../segments/rule-evaluator.js';
+import { getEventMatchReason } from './event-matching.js';
 
 export type SimulationFact = {
   id: string;
@@ -33,55 +32,6 @@ export function buildSimulationFacts(scenario: JourneySimulationScenario): Simul
     );
 }
 
-function payloadValue(event: SimulationFact, path: string): unknown {
-  return Object.hasOwn(event.payload, path) ? event.payload[path] : undefined;
-}
-
-function filterMatches(event: SimulationFact, filter: JourneyEventFilter | undefined): boolean {
-  return (
-    filter === undefined ||
-    compareSegmentValue(payloadValue(event, filter.path), filter.operator, filter.right)
-  );
-}
-
-/**
- * “限同一商品”的判断：进入行为和候选行为都要带商品编号才能比较。
- * 任何一侧没有商品编号都算信息不足，与商品不同分开返回，便于界面说明原因。
- */
-function productMatchReason(
-  entryEvent: SimulationFact,
-  candidate: SimulationFact,
-  sameProduct: boolean,
-): 'product_missing' | 'product_mismatch' | undefined {
-  if (!sameProduct) return undefined;
-  if (!journeyEventHasProductId(entryEvent.type) || !journeyEventHasProductId(candidate.type)) {
-    return 'product_missing';
-  }
-  const entryProduct = payloadValue(entryEvent, 'productId');
-  const candidateProduct = payloadValue(candidate, 'productId');
-  if (
-    typeof entryProduct !== 'string' ||
-    entryProduct.length === 0 ||
-    typeof candidateProduct !== 'string' ||
-    candidateProduct.length === 0
-  ) {
-    return 'product_missing';
-  }
-  return entryProduct === candidateProduct ? undefined : 'product_mismatch';
-}
-
-function reasonForCandidate(
-  candidate: SimulationFact,
-  expectedType: JourneyEventType,
-  filter: JourneyEventFilter | undefined,
-  entryEvent: SimulationFact,
-  sameProduct: boolean,
-): 'wrong_type' | 'filter_mismatch' | 'product_missing' | 'product_mismatch' | undefined {
-  if (candidate.type !== expectedType) return 'wrong_type';
-  if (!filterMatches(candidate, filter)) return 'filter_mismatch';
-  return productMatchReason(entryEvent, candidate, sameProduct);
-}
-
 /**
  * 统计滚动窗口内的行为次数；窗口是 [计算时刻 - 窗口长度, 计算时刻]，两端都包含。
  * 进入行为本身也在事实列表里，命中类型时同样计入，这样“进入时就已发生”的条件不需要另写分支。
@@ -106,13 +56,13 @@ export function countMatchingEvents(input: {
     else if (fact.offsetSeconds < start) reason = 'outside_window';
     else {
       reason =
-        reasonForCandidate(
-          fact,
-          input.eventType,
-          input.filter,
-          input.entryEvent,
-          input.sameProduct,
-        ) ?? 'counted';
+        getEventMatchReason({
+          candidate: fact,
+          expectedType: input.eventType,
+          filter: input.filter,
+          entryEvent: input.entryEvent,
+          sameProduct: input.sameProduct,
+        }) ?? 'counted';
       if (reason === 'counted') count += 1;
     }
     checks.push({ eventId: fact.id, reason });
@@ -171,13 +121,15 @@ export function waitForMatchingEvent(input: {
       checks.push({ eventId: event.id, reason: 'already_used' });
       continue;
     }
-    if (!filterMatches(event, input.filter)) {
-      checks.push({ eventId: event.id, reason: 'filter_mismatch' });
-      continue;
-    }
-    const productReason = productMatchReason(input.entryFact, event, input.sameProduct);
-    if (productReason !== undefined) {
-      checks.push({ eventId: event.id, reason: productReason });
+    const reason = getEventMatchReason({
+      candidate: event,
+      expectedType: input.eventType,
+      filter: input.filter,
+      entryEvent: input.entryFact,
+      sameProduct: input.sameProduct,
+    });
+    if (reason !== undefined) {
+      checks.push({ eventId: event.id, reason });
       continue;
     }
     matchedEventId = event.id;

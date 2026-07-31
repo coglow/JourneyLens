@@ -41,21 +41,21 @@ const categoryValues = AUDIENCE_FIELDS.find((field) => field.key === 'preferredC
 
 const eventFields: Record<JourneyEventType, readonly JourneyEventField[]> = {
   reservation_created: [
-    { key: 'reservationId', label: '预约编号', kind: 'string', maxLength: 160 },
-    { key: 'productId', label: '商品编号', kind: 'string', maxLength: 160 },
+    { key: 'reservationId', label: '预约 ID', kind: 'string', maxLength: 160 },
+    { key: 'productId', label: '商品 ID', kind: 'string', maxLength: 160 },
     { key: 'productName', label: '商品名称', kind: 'string', maxLength: 180 },
   ],
   product_viewed: [
-    { key: 'productId', label: '商品编号', kind: 'string', maxLength: 160 },
+    { key: 'productId', label: '商品 ID', kind: 'string', maxLength: 160 },
     { key: 'productName', label: '商品名称', kind: 'string', maxLength: 180 },
     { key: 'category', label: '商品类目', kind: 'string', values: categoryValues },
     { key: 'price', label: '商品价格（元）', kind: 'number', minimum: 0, precision: 2 },
   ],
-  app_session_started: [{ key: 'sessionId', label: '访问编号', kind: 'string', maxLength: 160 }],
-  app_exit: [{ key: 'sessionId', label: '访问编号', kind: 'string', maxLength: 160 }],
+  app_session_started: [{ key: 'sessionId', label: '访问 ID', kind: 'string', maxLength: 160 }],
+  app_exit: [{ key: 'sessionId', label: '访问 ID', kind: 'string', maxLength: 160 }],
   purchase_completed: [
-    { key: 'orderId', label: '订单编号', kind: 'string', maxLength: 160 },
-    { key: 'productId', label: '商品编号', kind: 'string', maxLength: 160 },
+    { key: 'orderId', label: '订单 ID', kind: 'string', maxLength: 160 },
+    { key: 'productId', label: '商品 ID', kind: 'string', maxLength: 160 },
     { key: 'productName', label: '商品名称', kind: 'string', maxLength: 180 },
     { key: 'amount', label: '实付金额（元）', kind: 'number', minimum: 0, precision: 2 },
   ],

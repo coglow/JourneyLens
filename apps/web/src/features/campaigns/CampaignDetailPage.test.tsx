@@ -113,12 +113,18 @@ describe('活动详情启停', () => {
     expect(within(page()).getByRole('button', { name: '编辑活动' })).toBeDefined();
     expect(within(page()).getByRole('button', { name: '删除活动' })).toBeDefined();
     expect(within(page()).queryByRole('button', { name: '停止活动' })).toBeNull();
-    expect(screen.getByText('当前仅支持活动状态管理，暂不自动运行旅程或发送消息。')).toBeDefined();
+    expect(
+      screen.getByText(
+        '活动进行中时，用户行为会触发已发布旅程运行；消息采用演示发送，不会真实发出。暂停后已有执行继续，停止会终止未结束执行。',
+      ),
+    ).toBeDefined();
 
     fireEvent.click(startButton);
     const cancelled = await screen.findByRole('dialog');
     expect(
-      within(cancelled).getByText('启动后，活动资料和旅程将不能修改。未发布的内容不会应用。'),
+      within(cancelled).getByText(
+        '启动后，活动资料和旅程将不能修改；用户行为会触发已发布旅程运行。未发布的内容不会应用。',
+      ),
     ).toBeDefined();
     fireEvent.click(within(cancelled).getByRole('button', { name: '暂不启动' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
@@ -184,7 +190,9 @@ describe('活动详情启停', () => {
     fireEvent.click(await screen.findByRole('button', { name: '停止活动' }));
     const dialog = await screen.findByRole('dialog');
     expect(
-      within(dialog).getByText('停止后不能再次启动或恢复，活动与旅程将保持只读。'),
+      within(dialog).getByText(
+        '停止后不能再次启动或恢复，活动与旅程将保持只读；尚未结束的执行会终止，已完成记录保留。',
+      ),
     ).toBeDefined();
     fireEvent.click(within(dialog).getByRole('button', { name: '停止活动' }));
 
@@ -204,7 +212,7 @@ describe('活动详情启停', () => {
     const dialog = await screen.findByRole('dialog');
     expect(
       within(dialog).getByText(
-        '暂停后可修改活动资料，新建或调整旅程；只能删除从未发布过的旅程。未发布内容不会应用。',
+        '暂停后可修改活动资料，新建或调整旅程；已有执行会继续按固定版本推进，等待时间不冻结；暂停期间的新行为不会进入该活动。',
       ),
     ).toBeDefined();
     fireEvent.click(within(dialog).getByRole('button', { name: '暂停活动' }));
@@ -234,7 +242,9 @@ describe('活动详情启停', () => {
     fireEvent.click(within(page()).getByRole('button', { name: '恢复活动' }));
     const dialog = await screen.findByRole('dialog');
     expect(
-      within(dialog).getByText('恢复后，活动资料和旅程将不能修改。未发布的内容不会应用。'),
+      within(dialog).getByText(
+        '恢复后，活动资料和旅程将不能修改；只对之后的新行为重新开放进入，暂停期间的行为不会补判，已有执行继续原版本。',
+      ),
     ).toBeDefined();
     fireEvent.click(within(dialog).getByRole('button', { name: '恢复活动' }));
 

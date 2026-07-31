@@ -7,11 +7,11 @@ function hasAtMostTwoDecimals(value: number): boolean {
   return Math.abs(value * 100 - Math.round(value * 100)) < 1e-6;
 }
 
-/** 只校验字段目录已有的类型和范围，缺失及 null 都是合法的模拟输入。 */
-export function validateSimulationFieldValue(
-  field: SimulationField,
-  value: unknown,
-): string | undefined {
+/**
+ * 只校验字段目录已有的类型和范围，缺失及 null 都是合法的可选输入。
+ * 模拟场景可任意留空，真实上报的必填标识由接收契约另外判断。
+ */
+export function validateFieldValue(field: SimulationField, value: unknown): string | undefined {
   if (value === undefined || value === null) return undefined;
 
   if (field.kind === 'number') {

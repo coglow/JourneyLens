@@ -1,5 +1,6 @@
 import {
   AppstoreOutlined,
+  HistoryOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   TeamOutlined,
@@ -23,6 +24,12 @@ const navigationItems = [
     icon: <AppstoreOutlined aria-hidden="true" />,
   },
   { key: 'segments', label: '分群', path: '/segments', icon: <TeamOutlined aria-hidden="true" /> },
+  {
+    key: 'executions',
+    label: '执行记录',
+    path: '/executions',
+    icon: <HistoryOutlined aria-hidden="true" />,
+  },
 ] as const;
 
 type WorkbenchLayoutProps = {

@@ -123,7 +123,7 @@ describe('模拟资料契约', () => {
 });
 
 describe('模拟请求契约', () => {
-  it('只接受画布和本次完整资料，不再接受按编号回读的旧格式', () => {
+  it('只接受画布和本次完整资料，不再接受按 ID 回读的旧格式', () => {
     expect(
       journeySimulationRequestSchema.safeParse({ draftDefinition: definition, scenario }).success,
     ).toBe(true);

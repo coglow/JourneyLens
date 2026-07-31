@@ -2,14 +2,18 @@ import { vi } from 'vitest';
 import { buildApp, type AppLoggerOption } from '../app.js';
 import { testNow, type TestDatabase } from './test-database.js';
 
-export function makeApp(db: TestDatabase, logger: AppLoggerOption = false) {
+export function makeApp(
+  db: TestDatabase,
+  logger: AppLoggerOption = false,
+  now: () => Date = () => testNow,
+) {
   const verifyPassword = vi.fn(async (hash: string, password: string) => {
     return hash === 'stored-argon2-hash' && password === 'correct-password';
   });
   const app = buildApp({
     prisma: db.prisma,
     verifyPassword,
-    now: () => testNow,
+    now,
     logger,
   });
   return { app, verifyPassword };

@@ -30,13 +30,13 @@ const baseAttributes: Record<string, unknown> = {
 };
 
 const user: SegmentAudienceInput = {
-  displayName: '林小满',
+  displayName: '霖铃铃',
   email: 'lin@example.com',
   attributes: baseAttributes,
 };
 
 const noGender: SegmentAudienceInput = {
-  displayName: '吴念',
+  displayName: '李四',
   email: null,
   attributes: { age: 39, totalOrders: 0, isBlacklisted: true },
 };
@@ -166,7 +166,7 @@ describe('分群规则求值', () => {
   });
 
   it('昵称和邮箱文本比较保持大小写语义', () => {
-    expect(evaluate(compare('displayName', 'eq', '林小满'))).toBe(true);
+    expect(evaluate(compare('displayName', 'eq', '霖铃铃'))).toBe(true);
     expect(evaluate(compare('displayName', 'eq', '林小桃'))).toBe(false);
     expect(evaluate(compare('email', 'contains', 'lin@'))).toBe(true);
     expect(evaluate(compare('email', 'contains', 'LIN@'))).toBe(false);

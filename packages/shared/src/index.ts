@@ -20,6 +20,8 @@ export * from './segments/segment-rule-satisfiability.js';
 export * from './dto/api-error.js';
 export * from './dto/auth.js';
 export * from './dto/campaign.js';
+export * from './dto/event.js';
+export * from './dto/execution.js';
 export * from './dto/journey.js';
 export * from './dto/journey-version.js';
 export * from './dto/journey-simulation.js';

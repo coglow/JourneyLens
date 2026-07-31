@@ -106,7 +106,7 @@ describe('模拟资料编辑', () => {
   it('四个页签编辑对应资料，保留进入、历史与后续行为的边界', () => {
     render(<Harness />);
     fireEvent.click(screen.getByRole('tab', { name: '进入行为' }));
-    fireEvent.change(screen.getByRole('textbox', { name: '商品编号' }), {
+    fireEvent.change(screen.getByRole('textbox', { name: '商品 ID' }), {
       target: { value: 'P-ENTRY' },
     });
     fireEvent.click(screen.getByRole('tab', { name: '历史行为（1）' }));

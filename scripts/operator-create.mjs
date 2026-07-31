@@ -1,6 +1,8 @@
 import { spawnSync } from 'node:child_process';
 
 const args = process.argv.slice(2);
+// pnpm 会把分隔符 `--` 一并传入；账号工具只接受 --email 和 --display-name。
+if (args[0] === '--') args.shift();
 const build = spawnSync('pnpm', ['--filter', '@journeylens/server', 'run', 'build'], {
   stdio: 'inherit',
 });

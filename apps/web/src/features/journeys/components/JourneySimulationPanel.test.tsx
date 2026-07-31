@@ -131,9 +131,9 @@ describe('旅程模拟面板', () => {
     expect(within(summary).getByText('zhang@example.com')).toBeTruthy();
     expect(within(summary).getByText('25')).toBeTruthy();
     expect(within(summary).getByText('否')).toBeTruthy();
-    expect(within(summary).getByText(/浏览商品 · 进入时 商品编号：P-100/)).toBeTruthy();
-    expect(within(summary).getByText(/完成购买 · 进入前 2 天 商品编号：P-200/)).toBeTruthy();
-    expect(within(summary).getByText(/完成购买 · 进入后 2 小时 商品编号：P-100/)).toBeTruthy();
+    expect(within(summary).getByText(/浏览商品 · 进入时 商品 ID：P-100/)).toBeTruthy();
+    expect(within(summary).getByText(/完成购买 · 进入前 2 天 商品 ID：P-200/)).toBeTruthy();
+    expect(within(summary).getByText(/完成购买 · 进入后 2 小时 商品 ID：P-100/)).toBeTruthy();
     expect(screen.queryByRole('dialog', { name: '编辑模拟资料' })).toBeNull();
   });
 

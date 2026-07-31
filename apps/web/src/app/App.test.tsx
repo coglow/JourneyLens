@@ -106,7 +106,8 @@ describe('登录与会话路由', () => {
     expect(screen.getByRole('banner').textContent).toContain('JourneyLens');
     expect(screen.getByRole('menuitem', { name: '活动' })).toBeTruthy();
     expect(screen.getByRole('menuitem', { name: '分群' })).toBeTruthy();
-    expect(screen.getAllByRole('menuitem')).toHaveLength(2);
+    expect(screen.getByRole('menuitem', { name: '执行记录' })).toBeTruthy();
+    expect(screen.getAllByRole('menuitem')).toHaveLength(3);
     expect(await screen.findByText('暂无活动')).toBeTruthy();
     expect(mock.history.get.map((request) => request.url)).toContain('/campaigns');
     expect(mock.history.post[0]?.url).toBe('/auth/login');

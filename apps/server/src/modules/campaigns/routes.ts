@@ -11,8 +11,12 @@ import {
 import { ApiError } from '../../errors.js';
 import { CampaignService } from './service.js';
 
-export function registerCampaignRoutes(app: FastifyInstance, prisma: PrismaClient): void {
-  const service = new CampaignService(prisma);
+export function registerCampaignRoutes(
+  app: FastifyInstance,
+  prisma: PrismaClient,
+  now?: () => Date,
+): void {
+  const service = new CampaignService(prisma, now);
 
   app.get('/api/campaigns', async (request) => {
     const query = campaignListQuerySchema.safeParse(request.query);

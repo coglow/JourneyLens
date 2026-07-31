@@ -461,7 +461,7 @@ function validateJourneyDraft(definition: JourneyDraftShape, ctx: z.RefinementCt
           !journeyEventHasProductId(rule.eventType) ||
           (start?.type === 'start' && !journeyEventHasProductId(start.entryBehavior))
         ) {
-          addDraftIssue(ctx, '同商品判断要求进入行为和统计行为都支持商品编号', [
+          addDraftIssue(ctx, '同商品判断要求进入行为和统计行为都支持商品 ID', [
             'nodes',
             index,
             'rules',
@@ -476,7 +476,7 @@ function validateJourneyDraft(definition: JourneyDraftShape, ctx: z.RefinementCt
       (!journeyEventHasProductId(node.eventType) ||
         (start?.type === 'start' && !journeyEventHasProductId(start.entryBehavior)))
     ) {
-      addDraftIssue(ctx, '同商品判断要求进入行为和等待行为都支持商品编号', [
+      addDraftIssue(ctx, '同商品判断要求进入行为和等待行为都支持商品 ID', [
         'nodes',
         index,
         'sameProduct',

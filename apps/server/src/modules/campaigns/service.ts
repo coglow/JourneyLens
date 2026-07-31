@@ -32,8 +32,16 @@ function campaignMissing(): ApiError {
   return new ApiError(404, 'NOT_FOUND', '活动不存在');
 }
 
+/** 搜索词里的通配符按普通字符匹配，避免用户输入 % 或 _ 时命中全部记录。 */
+function escapeLikePattern(value: string): string {
+  return value.replace(/[\\%_]/g, (character) => `\\${character}`);
+}
+
 export class CampaignService {
-  constructor(private readonly prisma: PrismaClient) {}
+  constructor(
+    private readonly prisma: PrismaClient,
+    private readonly now: () => Date = () => new Date(),
+  ) {}
 
   async create(input: CampaignCreate, accountId: string) {
     const campaign = await this.prisma.campaign.create({
@@ -57,8 +65,8 @@ export class CampaignService {
       ...(input.q
         ? {
             OR: [
-              { name: { contains: input.q, mode: 'insensitive' } },
-              { description: { contains: input.q, mode: 'insensitive' } },
+              { name: { contains: escapeLikePattern(input.q), mode: 'insensitive' } },
+              { description: { contains: escapeLikePattern(input.q), mode: 'insensitive' } },
             ],
           }
         : {}),
@@ -245,6 +253,18 @@ export class CampaignService {
       if (status !== 'running' && status !== 'paused') {
         throw new ApiError(409, 'CAMPAIGN_INVALID_TRANSITION', '只有进行中或已暂停的活动可以停止');
       }
+
+      const stoppedAt = this.now();
+      // 活动行排他锁持有到提交：执行步骤先取得共享锁时先完成当步，停止随后终止剩余运行。
+      await tx.execution.updateMany({
+        where: { campaignId: id, status: { in: ['running', 'waiting'] } },
+        data: { status: 'stopped', endedAt: stoppedAt },
+      });
+      // 未结束的等待步骤同步停止；已完成步骤和消息记录保留原事实。
+      await tx.executionStep.updateMany({
+        where: { execution: { campaignId: id }, status: 'waiting' },
+        data: { status: 'stopped', endedAt: stoppedAt },
+      });
 
       const updated = await tx.campaign.update({
         where: { id },

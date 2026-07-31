@@ -52,7 +52,7 @@ describe('分群规则契约', () => {
         kind: 'compare',
         left: { source: 'user', path: 'displayName' },
         operator: 'eq',
-        right: '林小满',
+        right: '霖铃铃',
       },
       { kind: 'compare', left: { source: 'user', path: 'email' }, operator: 'exists' },
       {

@@ -58,6 +58,19 @@ async function seedAudience(): Promise<void> {
     // 只替换本项目自己的演示样本，且删除与重建在同一事务里，失败不会留下半套数据。
     await prisma.$transaction(
       async (tx) => {
+        // 新增执行与事件外键后，先清理这些演示受众的运行历史，再替换受众本身；
+        // 其他受众、活动与发布版本不受影响。
+        const demoUsers = await tx.audienceUser.findMany({
+          where: { externalId: { startsWith: DEMO_AUDIENCE_EXTERNAL_PREFIX } },
+          select: { id: true },
+        });
+        const demoUserIds = demoUsers.map((user) => user.id);
+        if (demoUserIds.length > 0) {
+          // 步骤随执行级联删除，然后才能删除被触发行为引用的演示事件。
+          await tx.execution.deleteMany({ where: { audienceUserId: { in: demoUserIds } } });
+          await tx.event.deleteMany({ where: { audienceUserId: { in: demoUserIds } } });
+        }
+
         await tx.audienceUser.deleteMany({
           where: { externalId: { startsWith: DEMO_AUDIENCE_EXTERNAL_PREFIX } },
         });
@@ -72,6 +85,7 @@ async function seedAudience(): Promise<void> {
 
     const total = await prisma.audienceUser.count();
     console.log(`演示受众已初始化：本次 ${users.length} 人，数据库共有 ${total} 人`);
+    console.log('已同时清理这些演示受众关联的执行、步骤和事件记录。');
     printSummary(users);
   } finally {
     await prisma.$disconnect();

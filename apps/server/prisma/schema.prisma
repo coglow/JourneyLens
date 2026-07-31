@@ -21,22 +21,56 @@ enum CampaignStatus {
   stopped
 }
 
+enum JourneyEventType {
+  product_viewed
+  purchase_completed
+  reservation_created
+  app_session_started
+  app_exit
+  registration_completed
+  subscription_started
+}
+
+enum JourneyNodeType {
+  start
+  condition
+  wait
+  wait_for_event
+  message
+  end
+}
+
+enum ExecutionStatus {
+  running
+  waiting
+  completed
+  failed
+  stopped
+}
+
+enum ExecutionStepStatus {
+  waiting
+  succeeded
+  failed
+  stopped
+}
+
 model OperatorAccount {
-  id              String        @id @db.Uuid
-  email           String        @db.VarChar(320)
-  emailNormalized String        @unique @map("email_normalized") @db.VarChar(320)
-  passwordHash    String        @map("password_hash")
-  displayName     String        @map("display_name") @db.VarChar(120)
-  status          AccountStatus @default(active)
-  lastLoginAt     DateTime?     @map("last_login_at") @db.Timestamptz(6)
-  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt       DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id              String           @id @db.Uuid
+  email           String           @db.VarChar(320)
+  emailNormalized String           @unique @map("email_normalized") @db.VarChar(320)
+  passwordHash    String           @map("password_hash")
+  displayName     String           @map("display_name") @db.VarChar(120)
+  status          AccountStatus    @default(active)
+  lastLoginAt     DateTime?        @map("last_login_at") @db.Timestamptz(6)
+  createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   sessions        Session[]
   campaigns       Campaign[]
-  segmentsCreated Segment[]     @relation("SegmentCreatedBy")
-  segmentsUpdated Segment[]     @relation("SegmentUpdatedBy")
-  journeysCreated Journey[]     @relation("JourneyCreatedBy")
-  journeysUpdated Journey[]     @relation("JourneyUpdatedBy")
+  segmentsCreated Segment[]        @relation("SegmentCreatedBy")
+  segmentsUpdated Segment[]        @relation("SegmentUpdatedBy")
+  journeysCreated Journey[]        @relation("JourneyCreatedBy")
+  journeysUpdated Journey[]        @relation("JourneyUpdatedBy")
   journeyVersions JourneyVersion[] @relation("JourneyVersionPublisher")
 
   @@map("operator_accounts")
@@ -66,37 +100,40 @@ model Campaign {
   createdAt   DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt   DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   journeys    Journey[]
+  executions  Execution[]
 
   @@index([createdAt(sort: Desc), id(sort: Desc)])
   @@map("campaigns")
 }
 
 model AudienceUser {
-  id          String   @id @db.Uuid
-  externalId  String   @unique @map("external_id") @db.VarChar(160)
-  displayName String   @map("display_name") @db.VarChar(120)
-  email       String?  @db.VarChar(320)
-  attributes  Json     @default("{}")
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id          String      @id @db.Uuid
+  externalId  String      @unique @map("external_id") @db.VarChar(160)
+  displayName String      @map("display_name") @db.VarChar(120)
+  email       String?     @db.VarChar(320)
+  attributes  Json        @default("{}")
+  createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  events      Event[]
+  executions  Execution[]
 
   @@map("audience_users")
 }
 
 /// 运营分群：rules 保存校验后的规则树；revision 每次成功修改递增，用于并发冲突检测。
 model Segment {
-  id          String          @id @default(uuid()) @db.Uuid
-  name        String          @unique @db.VarChar(160)
-  description String?         @db.Text
-  rules       Json
+  id              String                  @id @default(uuid()) @db.Uuid
+  name            String                  @unique @db.VarChar(160)
+  description     String?                 @db.Text
+  rules           Json
   /// 修改时同时作为更新条件，避免两个页面互相静默覆盖。
-  revision    Int             @default(1)
-  createdBy   OperatorAccount @relation("SegmentCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
-  createdById String          @map("created_by") @db.Uuid
-  updatedBy   OperatorAccount @relation("SegmentUpdatedBy", fields: [updatedById], references: [id], onDelete: Restrict)
-  updatedById String          @map("updated_by") @db.Uuid
-  createdAt   DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  revision        Int                     @default(1)
+  createdBy       OperatorAccount         @relation("SegmentCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdById     String                  @map("created_by") @db.Uuid
+  updatedBy       OperatorAccount         @relation("SegmentUpdatedBy", fields: [updatedById], references: [id], onDelete: Restrict)
+  updatedById     String                  @map("updated_by") @db.Uuid
+  createdAt       DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime                @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   previewSnapshot SegmentPreviewSnapshot?
   journeys        Journey[]
 
@@ -136,7 +173,8 @@ model Journey {
   createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  versions        JourneyVersion[]
+  versions   JourneyVersion[]
+  executions Execution[]
 
   /// 同一活动内名称唯一；不同活动可以同名。
   @@unique([campaignId, name])
@@ -156,7 +194,81 @@ model JourneyVersion {
   publishedBy           OperatorAccount @relation("JourneyVersionPublisher", fields: [publishedById], references: [id], onDelete: Restrict)
   publishedById         String          @map("published_by") @db.Uuid
   publishedAt           DateTime        @map("published_at") @db.Timestamptz(6)
+  executions            Execution[]
 
   @@unique([journeyId, versionNumber])
   @@map("journey_versions")
+}
+
+/// 模拟上游业务行为
+model Event {
+  id               String           @id @db.Uuid
+  audienceUser     AudienceUser     @relation(fields: [audienceUserId], references: [id], onDelete: Restrict)
+  audienceUserId   String           @map("audience_user_id") @db.Uuid
+  type             JourneyEventType
+  payload          Json
+  audienceSnapshot Json             @map("audience_snapshot")
+  receivedAt       DateTime         @map("received_at") @db.Timestamptz(6)
+  executions       Execution[]      @relation("ExecutionTriggerEvent")
+  matchedSteps     ExecutionStep[]  @relation("StepMatchedEvent")
+
+  @@index([audienceUserId, type, receivedAt, id])
+  @@map("events")
+}
+
+
+model Execution {
+  id               String          @id @default(uuid()) @db.Uuid
+  campaign         Campaign        @relation(fields: [campaignId], references: [id], onDelete: Restrict)
+  campaignId       String          @map("campaign_id") @db.Uuid
+  journey          Journey         @relation(fields: [journeyId], references: [id], onDelete: Restrict)
+  journeyId        String          @map("journey_id") @db.Uuid
+  journeyVersion   JourneyVersion  @relation(fields: [journeyVersionId], references: [id], onDelete: Restrict)
+  journeyVersionId String          @map("journey_version_id") @db.Uuid
+  audienceUser     AudienceUser    @relation(fields: [audienceUserId], references: [id], onDelete: Restrict)
+  audienceUserId   String          @map("audience_user_id") @db.Uuid
+  triggerEvent     Event           @relation("ExecutionTriggerEvent", fields: [triggerEventId], references: [id], onDelete: Restrict)
+  triggerEventId   String          @map("trigger_event_id") @db.Uuid
+  status           ExecutionStatus @default(running)
+  currentNodeId    String?         @map("current_node_id") @db.VarChar(64)
+  failureReason    String?         @map("failure_reason") @db.Text
+  createdAt        DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  startedAt        DateTime        @map("started_at") @db.Timestamptz(6)
+  endedAt          DateTime?       @map("ended_at") @db.Timestamptz(6)
+  steps            ExecutionStep[]
+
+  @@unique([journeyId, triggerEventId])
+
+  @@index([status, createdAt, id])
+  @@index([campaignId, createdAt(sort: Desc), id(sort: Desc)])
+  @@index([journeyId, createdAt(sort: Desc), id(sort: Desc)])
+  @@index([audienceUserId, createdAt(sort: Desc), id(sort: Desc)])
+  @@index([createdAt(sort: Desc), id(sort: Desc)])
+  @@index([endedAt])
+  @@map("executions")
+}
+
+
+model ExecutionStep {
+  id             String              @id @default(uuid()) @db.Uuid
+  execution      Execution           @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  executionId    String              @map("execution_id") @db.Uuid
+  order          Int
+  nodeId         String              @map("node_id") @db.VarChar(64)
+  nodeType       JourneyNodeType     @map("node_type")
+  status         ExecutionStepStatus
+  output         Json
+  failureReason  String?             @map("failure_reason") @db.Text
+  startedAt      DateTime            @map("started_at") @db.Timestamptz(6)
+  endedAt        DateTime?           @map("ended_at") @db.Timestamptz(6)
+  deadlineAt     DateTime?           @map("deadline_at") @db.Timestamptz(6)
+  matchedEvent   Event?              @relation("StepMatchedEvent", fields: [matchedEventId], references: [id], onDelete: Restrict)
+  matchedEventId String?             @map("matched_event_id") @db.Uuid
+
+
+  @@unique([executionId, nodeId])
+  @@unique([executionId, order])
+
+  @@unique([executionId, matchedEventId])
+  @@map("execution_steps")
 }

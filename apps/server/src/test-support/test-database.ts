@@ -11,6 +11,8 @@ const SERVER_ROOT = fileURLToPath(new URL('../..', import.meta.url));
 
 export interface TestDatabase {
   prisma: PrismaClient;
+  /** 供“重启后继续推进”用例新建独立连接。 */
+  connectionUri: string;
   reset(): Promise<void>;
   close(): Promise<void>;
 }
@@ -62,6 +64,7 @@ export async function startTestDatabase(): Promise<TestDatabase> {
 
     return {
       prisma,
+      connectionUri: databaseUrl,
       async reset() {
         // 每个用例前清空业务数据；账号保留并恢复为可用状态，避免用例互相影响。
         await prisma.$executeRawUnsafe(

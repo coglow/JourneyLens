@@ -25,6 +25,17 @@ export async function lockCampaignForTransition(
   return lockCampaign(tx, campaignId, 'UPDATE');
 }
 
+/**
+ * 执行步骤先取得活动共享锁：停止动作的排他锁会等待当步提交，
+ * 共享锁内推进步骤时也不会与停止同时提交。
+ */
+export async function lockCampaignForExecution(
+  tx: Prisma.TransactionClient,
+  campaignId: string,
+): Promise<CampaignStatus | null> {
+  return lockCampaign(tx, campaignId, 'SHARE');
+}
+
 async function lockCampaign(
   tx: Prisma.TransactionClient,
   campaignId: string,
