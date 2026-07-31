@@ -3,10 +3,12 @@ import {
   campaignDetailResponseSchema,
   campaignListQuerySchema,
   campaignListResponseSchema,
+  campaignOverviewResponseSchema,
   campaignUpdateSchema,
   getPaginationErrorMessages,
   type CampaignCreateInput,
   type CampaignListQueryInput,
+  type CampaignOverview,
   type CampaignUpdateInput,
 } from '@journeylens/shared';
 import { ApiError, request, requestVoid } from './api';
@@ -48,6 +50,21 @@ export async function getCampaign(id: string, signal?: AbortSignal) {
   const body = await request(
     { url: `/campaigns/${encodeURIComponent(id)}`, method: 'GET', ...(signal ? { signal } : {}) },
     campaignDetailResponseSchema,
+  );
+  return body.data;
+}
+
+export async function getCampaignOverview(
+  id: string,
+  signal?: AbortSignal,
+): Promise<CampaignOverview> {
+  const body = await request(
+    {
+      url: `/campaigns/${encodeURIComponent(id)}/overview`,
+      method: 'GET',
+      ...(signal ? { signal } : {}),
+    },
+    campaignOverviewResponseSchema,
   );
   return body.data;
 }

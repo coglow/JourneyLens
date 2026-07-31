@@ -44,6 +44,12 @@ const unauthorizedBody = {
 const serverErrorBody = {
   error: { code: 'INTERNAL_ERROR', message: '服务暂时不可用', requestId: 'test-request-id' },
 };
+const emptyOverview = {
+  campaignId: campaign.id,
+  executionCount: 0,
+  audienceCount: 0,
+  statusCounts: { running: 0, waiting: 0, completed: 0, failed: 0, stopped: 0 },
+};
 
 function listBody(
   data: unknown[] = [],
@@ -66,6 +72,7 @@ function listBody(
 
 function renderApp(initialPath = '/') {
   mock.onGet(/\/campaigns\/[^/]+\/journeys$/).reply(200, listBody());
+  mock.onGet(/\/campaigns\/[^/]+\/overview$/).reply(200, { data: emptyOverview });
   const router = createMemoryRouter(appRoutes, { initialEntries: [initialPath] });
 
   function CaptureQueryClient() {
@@ -501,7 +508,10 @@ describe('活动列表与创建', () => {
 
     fireEvent.click(await screen.findByRole('link', { name: campaign.name }));
     expect(await screen.findByText('未填写')).toBeTruthy();
-    expect(screen.getByRole('cell', { name: campaign.createdBy.displayName })).toBeTruthy();
+    const detailsCard = screen.getByText('活动资料').closest('.ant-card');
+    expect(
+      within(detailsCard as HTMLElement).getByText(campaign.createdBy.displayName),
+    ).toBeTruthy();
     expect(router.state.location.pathname).toBe(`/campaigns/${campaign.id}`);
     expect(listParams()[0]).toEqual({ q: 'spring', status: 'draft', page: 2, pageSize: 20 });
     expect(mock.history.get.map((request) => request.url)).toContain(`/campaigns/${campaign.id}`);
@@ -517,23 +527,27 @@ describe('活动列表与创建', () => {
   it('重新进入已缓存的详情时保留内容，刷新失败显示提示并可重试', async () => {
     mock.onGet('/userinfo').reply(200, { data: account });
     mock.onGet(`/campaigns/${campaign.id}`).replyOnce(200, { data: campaign });
-    mock.onGet('/campaigns').replyOnce(200, listBody([summary]));
+    mock.onGet('/campaigns').reply(200, listBody([summary]));
     mock.onGet(`/campaigns/${campaign.id}`).networkErrorOnce();
     mock.onGet(`/campaigns/${campaign.id}`).replyOnce(200, { data: campaign });
     const router = renderApp(`/campaigns/${campaign.id}`);
 
-    expect(await screen.findByRole('cell', { name: campaign.name })).toBeTruthy();
-    await router.navigate('/campaigns');
+    expect(await screen.findByRole('heading', { name: /春季活动/ })).toBeTruthy();
+    await act(async () => {
+      await router.navigate('/campaigns');
+    });
     expect(await screen.findByRole('link', { name: campaign.name })).toBeTruthy();
-    await router.navigate(`/campaigns/${campaign.id}`);
+    await act(async () => {
+      await router.navigate(`/campaigns/${campaign.id}`);
+    });
 
     expect(await screen.findByText('活动暂时无法刷新')).toBeTruthy();
     expect(screen.getByText('无法连接服务器，请稍后重试')).toBeTruthy();
-    expect(screen.getByRole('cell', { name: campaign.name })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: /春季活动/ })).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: /重\s*试/ }));
     await waitFor(() => expect(screen.queryByText('活动暂时无法刷新')).toBeNull());
-    expect(screen.getByRole('cell', { name: campaign.name })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: /春季活动/ })).toBeTruthy();
   }, 15_000);
 
   it('删除后如果原页已越界，会回到最后一页并更新网址', async () => {
@@ -577,7 +591,7 @@ describe('活动列表与创建', () => {
     mock.onGet(`/campaigns/${campaign.id}`).replyOnce(200, { data: updated });
     const router = renderApp(`/campaigns/${campaign.id}`);
 
-    expect(await screen.findByRole('cell', { name: '50.00' })).toBeTruthy();
+    expect(await screen.findByText('50.00')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '编辑活动' }));
     expect(((await screen.findByLabelText('活动名称')) as HTMLInputElement).value).toBe(
       campaign.name,
@@ -592,9 +606,9 @@ describe('活动列表与创建', () => {
     fireEvent.change(screen.getByLabelText('预算金额'), { target: { value: '' } });
     fireEvent.click(screen.getByRole('button', { name: '保存修改' }));
 
-    expect(await screen.findByRole('cell', { name: '修改后的活动' })).toBeTruthy();
-    expect(screen.getByRole('cell', { name: '未填写' })).toBeTruthy();
-    expect(screen.getByRole('cell', { name: '未设置' })).toBeTruthy();
+    expect(await screen.findByText('修改后的活动')).toBeTruthy();
+    expect(screen.getByText('未填写')).toBeTruthy();
+    expect(screen.getByText('未设置')).toBeTruthy();
     expect(router.state.location.pathname).toBe(`/campaigns/${campaign.id}`);
     expect(mock.history.patch).toHaveLength(1);
     expect(mock.history.patch[0]?.url).toBe(`/campaigns/${campaign.id}`);
@@ -612,7 +626,7 @@ describe('活动列表与创建', () => {
     mock.onGet(`/campaigns/${campaign.id}`).reply(200, { data: campaign });
     renderApp(`/campaigns/${campaign.id}`);
 
-    await screen.findByRole('cell', { name: campaign.name });
+    await screen.findByRole('heading', { name: /春季活动/ });
     const editButton = screen.getByRole('button', { name: '编辑活动' });
     fireEvent.click(editButton);
     await screen.findByRole('dialog', { name: '编辑活动' });
@@ -649,7 +663,7 @@ describe('活动列表与创建', () => {
     mock.onGet(`/campaigns/${campaign.id}`).replyOnce(200, { data: updated });
     renderApp(`/campaigns/${campaign.id}`);
 
-    await screen.findByRole('cell', { name: campaign.name });
+    await screen.findByRole('heading', { name: /春季活动/ });
     fireEvent.click(screen.getByRole('button', { name: '编辑活动' }));
     const nameInput = (await screen.findByLabelText('活动名称')) as HTMLInputElement;
     fireEvent.change(nameInput, { target: { value: '修改后的活动' } });
@@ -659,9 +673,9 @@ describe('活动列表与创建', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '保存修改' }));
     expect(await screen.findByText('活动已保存，暂时无法刷新')).toBeTruthy();
-    expect(screen.getByRole('cell', { name: '修改后的活动' })).toBeTruthy();
+    expect(screen.getByText('修改后的活动')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /重\s*试/ }));
-    expect(await screen.findByRole('cell', { name: '修改后的活动' })).toBeTruthy();
+    expect(await screen.findByText('修改后的活动')).toBeTruthy();
     expect(mock.history.patch).toHaveLength(2);
   }, 15_000);
 
@@ -675,7 +689,7 @@ describe('活动列表与创建', () => {
     });
     const router = renderApp(`/campaigns/${campaign.id}`);
 
-    await screen.findByRole('cell', { name: campaign.name });
+    await screen.findByRole('heading', { name: /春季活动/ });
     fireEvent.click(screen.getByRole('button', { name: '删除活动' }));
     const firstConfirmation = await screen.findByRole('dialog');
     expect(
@@ -684,7 +698,7 @@ describe('活动列表与创建', () => {
     fireEvent.click(within(firstConfirmation).getByRole('button', { name: '保留活动' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(mock.history.delete).toHaveLength(0);
-    expect(screen.getByRole('cell', { name: campaign.name })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: /春季活动/ })).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: '删除活动' }));
     const secondConfirmation = await screen.findByRole('dialog');
@@ -706,12 +720,12 @@ describe('活动列表与创建', () => {
     mock.onGet('/campaigns').replyOnce(200, listBody());
     renderApp(`/campaigns/${campaign.id}`);
 
-    await screen.findByRole('cell', { name: campaign.name });
+    await screen.findByRole('heading', { name: /春季活动/ });
     fireEvent.click(screen.getByRole('button', { name: '删除活动' }));
     const failedDeleteConfirmation = await screen.findByRole('dialog');
     fireEvent.click(within(failedDeleteConfirmation).getByRole('button', { name: '删除活动' }));
     expect(await screen.findByText('服务暂时不可用')).toBeTruthy();
-    expect(screen.getByRole('cell', { name: campaign.name })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: /春季活动/ })).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: '删除活动' }));
     const successfulDeleteConfirmation = await screen.findByRole('dialog');
@@ -746,7 +760,7 @@ describe('活动列表与创建', () => {
 
     expect(await screen.findByText('服务暂时不可用')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /重\s*试/ }));
-    expect(await screen.findByRole('cell', { name: campaign.createdBy.displayName })).toBeTruthy();
+    expect(await screen.findByText(campaign.createdBy.displayName)).toBeTruthy();
 
     cleanup();
     queryClient?.clear();
@@ -775,11 +789,11 @@ describe('活动列表与创建', () => {
     await screen.findByRole('heading', { name: '活动详情' });
     await waitFor(() => expect(detailRequests(firstId)).toHaveLength(1));
     await router.navigate(`/campaigns/${secondId}`);
-    expect(await screen.findByRole('heading', { level: 2, name: '第二个活动' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { level: 2, name: /第二个活动/ })).toBeTruthy();
     await act(async () => {
       resolveFirst();
     });
-    expect(screen.getByRole('heading', { level: 2, name: '第二个活动' })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 2, name: /第二个活动/ })).toBeTruthy();
     expect(screen.queryByText(campaign.name)).toBeNull();
   });
 });

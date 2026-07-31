@@ -1,0 +1,47 @@
+.metricLink {
+  display: inline-block;
+  color: inherit;
+  text-decoration: none;
+}
+
+.metricLink:focus-visible {
+  outline: 2px solid var(--ant-color-primary, #1677ff);
+  outline-offset: 3px;
+}
+
+.metricLink:hover :global(.ant-statistic-content-value) {
+  color: var(--ant-color-primary-hover, #4096ff);
+}
+
+.statusGrid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  row-gap: 16px;
+}
+
+.statusMetric {
+  min-width: 0;
+  align-items: flex-start;
+  text-align: start;
+}
+
+.statusMetric .metricLink {
+  margin-inline-start: 14px;
+}
+
+@media (max-width: 767px) {
+  .statusGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 479px) {
+  .statusGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.emptyNote {
+  display: block;
+  margin-top: 16px;
+}

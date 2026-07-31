@@ -117,6 +117,57 @@ export class CampaignService {
     return campaign === null ? null : serializeCampaign(campaign);
   }
 
+  /**
+   * 这里只能用 SQL：Prisma 的 count/groupBy 无法表达去重计数和按状态的条件计数；
+   * 拆成多次 Prisma 查询会多出几次往返，且各次读取属于不同快照，可能出现分项之和与执行总数对不上的情况。
+   */
+  async getOverview(id: string) {
+    // ${id} 是参数绑定而非字符串拼接；::uuid 转换的前提是路由层已用 uuid 规则校验过入参。
+    const rows = await this.prisma.$queryRaw<
+      Array<{
+        campaignId: string;
+        executionCount: bigint;
+        audienceCount: bigint;
+        running: bigint;
+        waiting: bigint;
+        completed: bigint;
+        failed: bigint;
+        stopped: bigint;
+      }>
+    >`
+      SELECT
+        campaign.id AS "campaignId",
+        COUNT(execution.id) AS "executionCount",
+        COUNT(DISTINCT execution.audience_user_id) AS "audienceCount",
+        COUNT(execution.id) FILTER (WHERE execution.status = 'running') AS "running",
+        COUNT(execution.id) FILTER (WHERE execution.status = 'waiting') AS "waiting",
+        COUNT(execution.id) FILTER (WHERE execution.status = 'completed') AS "completed",
+        COUNT(execution.id) FILTER (WHERE execution.status = 'failed') AS "failed",
+        COUNT(execution.id) FILTER (WHERE execution.status = 'stopped') AS "stopped"
+      FROM campaigns AS campaign
+      LEFT JOIN executions AS execution ON execution.campaign_id = campaign.id
+      WHERE campaign.id = ${id}::uuid
+      GROUP BY campaign.id
+    `;
+
+    const row = rows[0];
+    if (row === undefined) return null;
+
+    // 数据库的计数结果是 bigint，JSON 里统一转成数字。
+    return {
+      campaignId: row.campaignId,
+      executionCount: Number(row.executionCount),
+      audienceCount: Number(row.audienceCount),
+      statusCounts: {
+        running: Number(row.running),
+        waiting: Number(row.waiting),
+        completed: Number(row.completed),
+        failed: Number(row.failed),
+        stopped: Number(row.stopped),
+      },
+    };
+  }
+
   async update(id: string, input: CampaignUpdate) {
     const data: Prisma.CampaignUpdateManyMutationInput = {};
     if (input.name !== undefined) data.name = input.name;

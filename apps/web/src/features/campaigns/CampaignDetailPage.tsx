@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Alert, Badge, Button, Card, Descriptions, Flex, Modal, Spin } from 'antd';
+import { Alert, Badge, Button, Card, Col, Descriptions, Flex, Modal, Row, Spin } from 'antd';
 import { canEditCampaign, type CampaignDetail } from '@journeylens/shared';
 import { useLocation, useNavigate, useParams } from 'react-router';
 import { PageHeader } from '@/components/PageHeader';
@@ -20,6 +20,7 @@ import { formatDateTime } from '@/utils/format-date-time';
 import { campaignQueryKeys } from './campaign-queries';
 import { campaignStatusBadges, campaignStatusLabels } from './campaign-status';
 import { CampaignFormDrawer } from './components/CampaignFormDrawer';
+import { CampaignOverviewSection } from './components/CampaignOverviewSection';
 import { CampaignJourneysSection } from '@/features/journeys/components/CampaignJourneysSection';
 
 type TransitionConfirm = {
@@ -118,6 +119,7 @@ export function CampaignDetailPage() {
           // 删除后列表和详情都不能再展示旧数据，直接移除缓存，回到列表时重新读取。
           queryClient.removeQueries({ queryKey: campaignQueryKeys.lists });
           queryClient.removeQueries({ queryKey: campaignQueryKeys.detail(id) });
+          queryClient.removeQueries({ queryKey: campaignQueryKeys.overview(id) });
           navigate(`/campaigns${returnTo}`, { state: 'campaign-deleted' });
         } catch (error) {
           if (!isSessionExpired(error)) {
@@ -132,13 +134,21 @@ export function CampaignDetailPage() {
   }
 
   /**
-   * 状态动作成功：先取消页面上仍在进行的读取，再写入本次结果。
+   * 状态动作成功：先取消页面上仍在进行的详情读取，再写入本次结果。
    * 取消不掉的旧读取会在写入之后落回缓存，把页面覆盖回旧状态，与成功提示矛盾。
+   * 只有停止会终止未结束的执行、改变概览统计，启动、暂停、恢复不重新读取概览。
    */
-  async function applyTransition(next: CampaignDetail, notice: string): Promise<void> {
+  async function applyTransition(
+    next: CampaignDetail,
+    notice: string,
+    action: CampaignTransition,
+  ): Promise<void> {
     await queryClient.cancelQueries({ queryKey: campaignQueryKeys.detail(id) });
     queryClient.setQueryData(campaignQueryKeys.detail(id), next);
     void queryClient.invalidateQueries({ queryKey: campaignQueryKeys.lists });
+    if (action === 'stop') {
+      void queryClient.invalidateQueries({ queryKey: campaignQueryKeys.overview(id) });
+    }
     setTransitionError(undefined);
     setTransitionNotice(notice);
   }
@@ -173,7 +183,7 @@ export function CampaignDetailPage() {
       onOk: async () => {
         try {
           const updated = await transitionMutation.mutateAsync(config.action);
-          await applyTransition(updated, config.notice);
+          await applyTransition(updated, config.notice, config.action);
         } catch (error) {
           handleTransitionFailure(error);
         }
@@ -231,7 +241,7 @@ export function CampaignDetailPage() {
   }
 
   return (
-    <section aria-label="活动详情" style={{ maxWidth: 960, margin: '0 auto' }}>
+    <section aria-label="活动详情" style={{ maxWidth: 1440, margin: '0 auto' }}>
       <Flex vertical gap={16}>
         <PageHeader
           back={
@@ -244,7 +254,19 @@ export function CampaignDetailPage() {
               返回活动列表
             </Button>
           }
-          title={campaign?.name ?? '活动详情'}
+          title={
+            campaign === undefined ? (
+              '活动详情'
+            ) : (
+              <Flex align="center" gap={12} wrap>
+                <span>{campaign.name}</span>
+                <Badge
+                  status={campaignStatusBadges[campaign.status]}
+                  text={campaignStatusLabels[campaign.status]}
+                />
+              </Flex>
+            )
+          }
           actions={
             campaign === undefined ? undefined : (
               <div ref={actionsRef}>
@@ -296,130 +318,123 @@ export function CampaignDetailPage() {
             )
           }
         />
-        <Card>
-          {refreshAlertTitle && (
-            <Alert
-              style={{ marginBottom: 16 }}
-              type="warning"
-              showIcon
-              title={refreshAlertTitle}
-              description={refreshError === undefined ? refreshFailure : null}
-              action={
-                <Button
-                  onClick={() =>
-                    void refreshDetail(refreshError === undefined ? undefined : 'saved')
-                  }
-                >
-                  重试
+        {refreshAlertTitle && (
+          <Alert
+            type="warning"
+            showIcon
+            title={refreshAlertTitle}
+            description={refreshError === undefined ? refreshFailure : null}
+            action={
+              <Button
+                onClick={() => void refreshDetail(refreshError === undefined ? undefined : 'saved')}
+              >
+                重试
+              </Button>
+            }
+          />
+        )}
+
+        {deleteError && (
+          <Alert
+            type="error"
+            showIcon
+            title={deleteError.message}
+            action={
+              deleteError.hasJourneys ? (
+                <Button type="link" href="#journeys">
+                  查看旅程
                 </Button>
-              }
-            />
-          )}
+              ) : undefined
+            }
+          />
+        )}
 
-          {deleteError && (
-            <Alert
-              style={{ marginBottom: 16 }}
-              type="error"
-              showIcon
-              title={deleteError.message}
-              action={
-                deleteError.hasJourneys ? (
-                  <Button type="link" href="#journeys">
-                    查看旅程
-                  </Button>
-                ) : undefined
-              }
-            />
-          )}
+        {transitionNotice && (
+          <Alert
+            type="success"
+            showIcon
+            title={transitionNotice}
+            closable={{ onClose: () => setTransitionNotice(undefined) }}
+          />
+        )}
 
-          {transitionNotice && (
-            <Alert
-              style={{ marginBottom: 16 }}
-              type="success"
-              showIcon
-              title={transitionNotice}
-              closable={{ onClose: () => setTransitionNotice(undefined) }}
-            />
-          )}
+        {transitionError && (
+          <Alert
+            type="error"
+            showIcon
+            title={transitionError.message}
+            action={
+              transitionError.code === 'CAMPAIGN_HAS_NO_PUBLISHED_JOURNEY' ? (
+                <Button type="link" href="#journeys">
+                  查看旅程
+                </Button>
+              ) : transitionError.code === 'CAMPAIGN_INVALID_TRANSITION' ||
+                transitionError.code === 'CAMPAIGN_NOT_EDITABLE' ||
+                transitionError.code === 'TIMEOUT' ? (
+                <Button type="link" onClick={() => void refreshDetail()}>
+                  刷新状态
+                </Button>
+              ) : undefined
+            }
+          />
+        )}
 
-          {transitionError && (
-            <Alert
-              style={{ marginBottom: 16 }}
-              type="error"
-              showIcon
-              title={transitionError.message}
-              action={
-                transitionError.code === 'CAMPAIGN_HAS_NO_PUBLISHED_JOURNEY' ? (
-                  <Button type="link" href="#journeys">
-                    查看旅程
-                  </Button>
-                ) : transitionError.code === 'CAMPAIGN_INVALID_TRANSITION' ||
-                  transitionError.code === 'CAMPAIGN_NOT_EDITABLE' ||
-                  transitionError.code === 'TIMEOUT' ? (
-                  <Button type="link" onClick={() => void refreshDetail()}>
-                    刷新状态
-                  </Button>
-                ) : undefined
-              }
-            />
-          )}
+        {campaign === undefined && (
+          <Card>
+            {campaignQuery.isPending && (
+              <Flex
+                justify="center"
+                role="status"
+                aria-label="正在读取活动"
+                style={{ padding: '48px 0' }}
+              >
+                <Spin />
+              </Flex>
+            )}
+            {notFound && <Alert type="warning" showIcon title="活动不存在" />}
+            {loadError && (
+              <Alert
+                type="error"
+                showIcon
+                title={loadError}
+                action={<Button onClick={() => void campaignQuery.refetch()}>重试</Button>}
+              />
+            )}
+          </Card>
+        )}
 
-          {campaign === undefined && campaignQuery.isPending && (
-            <div
-              role="status"
-              aria-label="正在读取活动"
-              style={{ padding: '48px 0', textAlign: 'center' }}
-            >
-              <Spin />
-            </div>
-          )}
-
-          {notFound && <Alert type="warning" showIcon title="活动不存在" />}
-
-          {loadError && (
-            <Alert
-              type="error"
-              showIcon
-              title={loadError}
-              action={<Button onClick={() => void campaignQuery.refetch()}>重试</Button>}
-            />
-          )}
-
-          {campaign !== undefined && (
-            <Descriptions bordered column={1}>
-              <Descriptions.Item label="活动名称">{campaign.name}</Descriptions.Item>
-              <Descriptions.Item label="说明">{campaign.description ?? '未填写'}</Descriptions.Item>
-              <Descriptions.Item label="预算">
-                {campaign.budget?.amount ?? '未设置'}
-              </Descriptions.Item>
-              <Descriptions.Item label="状态">
-                <Badge
-                  status={campaignStatusBadges[campaign.status]}
-                  text={campaignStatusLabels[campaign.status]}
-                />
-              </Descriptions.Item>
-              <Descriptions.Item label="创建者">{campaign.createdBy.displayName}</Descriptions.Item>
-              <Descriptions.Item label="创建时间">
-                {formatDateTime(campaign.createdAt)}
-              </Descriptions.Item>
-              <Descriptions.Item label="更新时间">
-                {formatDateTime(campaign.updatedAt)}
-              </Descriptions.Item>
-            </Descriptions>
-          )}
-        </Card>
+        {campaign !== undefined && (
+          <>
+            <Row gutter={[16, 16]} align="stretch">
+              <Col xs={24} md={8} style={{ display: 'flex' }}>
+                <Card title="活动资料" style={{ flex: 1 }}>
+                  <Descriptions column={1} layout="horizontal" colon={false}>
+                    <Descriptions.Item label="说明">
+                      {campaign.description ?? '未填写'}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="预算">
+                      {campaign.budget?.amount ?? '未设置'}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="创建者">
+                      {campaign.createdBy.displayName}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="创建时间">
+                      {formatDateTime(campaign.createdAt)}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="更新时间">
+                      {formatDateTime(campaign.updatedAt)}
+                    </Descriptions.Item>
+                  </Descriptions>
+                </Card>
+              </Col>
+              <Col xs={24} md={16} style={{ display: 'flex' }}>
+                <CampaignOverviewSection campaignId={campaign.id} />
+              </Col>
+            </Row>
+            <CampaignJourneysSection campaignId={campaign.id} campaignStatus={campaign.status} />
+          </>
+        )}
       </Flex>
-
-      <Alert
-        style={{ marginTop: 16 }}
-        type="info"
-        showIcon
-        title="活动进行中时，用户行为会触发已发布旅程运行；暂停后已有执行继续，停止会终止未结束执行。"
-      />
-
-      {campaign !== undefined && (
-        <CampaignJourneysSection campaignId={campaign.id} campaignStatus={campaign.status} />
-      )}
 
       {campaign !== undefined && (
         <CampaignFormDrawer

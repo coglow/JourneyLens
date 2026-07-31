@@ -46,6 +46,12 @@ const stoppedCampaign = {
   updatedAt: '2026-07-17T10:00:00.000Z',
 };
 const emptyJourneys = { data: [], page: { page: 1, pageSize: 10, total: 0 } };
+const emptyOverview = {
+  campaignId,
+  executionCount: 0,
+  audienceCount: 0,
+  statusCounts: { running: 0, waiting: 0, completed: 0, failed: 0, stopped: 0 },
+};
 
 function errorBody(code: string, message: string) {
   return { error: { code, message, requestId: 'test-request-id' } };
@@ -60,9 +66,22 @@ function mockDetailSequence(sequence: unknown[]): void {
   });
 }
 
-function renderDetail(options: { returnTo?: string } = {}) {
+function renderDetail(
+  options: {
+    returnTo?: string;
+    overviewResponses?: Array<{ status: number; body: unknown }>;
+  } = {},
+) {
   mock.onGet('/userinfo').reply(200, { data: account });
   mock.onGet(/\/campaigns\/[^/]+\/journeys$/).reply(200, emptyJourneys);
+  const overviewResponses = options.overviewResponses ?? [
+    { status: 200, body: { data: emptyOverview } },
+  ];
+  overviewResponses.forEach(({ status, body }, index) => {
+    const reply = mock.onGet(`/campaigns/${campaignId}/overview`);
+    if (index === overviewResponses.length - 1) reply.reply(status, body);
+    else reply.replyOnce(status, body);
+  });
 
   const router = createMemoryRouter(appRoutes, {
     initialEntries: [
@@ -105,6 +124,59 @@ afterEach(() => {
 });
 
 describe('活动详情启停', () => {
+  it('停止活动后重新读取概览，概览刷新失败不改写操作成功提示', async () => {
+    mockDetailSequence([runningCampaign]);
+    mock.onPost(`/campaigns/${campaignId}/stop`).reply(200, { data: stoppedCampaign });
+    renderDetail({
+      overviewResponses: [
+        { status: 200, body: { data: emptyOverview } },
+        { status: 500, body: errorBody('INTERNAL_ERROR', '服务暂时不可用') },
+      ],
+    });
+
+    await screen.findByText('运行概览');
+    fireEvent.click(await screen.findByRole('button', { name: '停止活动' }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: '停止活动' }));
+
+    expect(await screen.findByText('活动已停止')).toBeDefined();
+    expect(await screen.findByText('运行概览暂时无法刷新，当前数字可能不是最新的')).toBeDefined();
+    expect(
+      mock.history.get.filter((request) => request.url === `/campaigns/${campaignId}/overview`),
+    ).toHaveLength(2);
+  });
+
+  it('概览显示活动不存在时刷新详情，页面收敛为活动不存在', async () => {
+    mock.onGet(`/campaigns/${campaignId}`).replyOnce(200, { data: runningCampaign });
+    mock.onGet(`/campaigns/${campaignId}`).reply(404, errorBody('NOT_FOUND', '活动不存在'));
+    renderDetail({
+      overviewResponses: [{ status: 404, body: errorBody('NOT_FOUND', '活动不存在') }],
+    });
+
+    expect(await screen.findByText('活动不存在')).toBeDefined();
+    expect(screen.queryByText('运行概览')).toBeNull();
+    expect(
+      mock.history.get.filter((request) => request.url === `/campaigns/${campaignId}`),
+    ).toHaveLength(2);
+  });
+
+  it('B版把状态放在标题旁，资料、概览和完整旅程区域均保留', async () => {
+    mockDetailSequence([{ ...runningCampaign, description: '演示活动说明' }]);
+    renderDetail();
+
+    expect(await screen.findByRole('heading', { name: /春季活动.*进行中/ })).toBeDefined();
+    expect(screen.getByText('活动资料')).toBeDefined();
+    const detailsCard = screen.getByText('活动资料').closest('.ant-card');
+    expect(within(detailsCard as HTMLElement).getByText('说明')).toBeDefined();
+    expect(within(detailsCard as HTMLElement).getByText('演示活动说明')).toBeDefined();
+    expect(screen.getAllByText('演示活动说明')).toHaveLength(1);
+    expect(screen.getByText('运行概览')).toBeDefined();
+    expect(screen.getByText('旅程')).toBeDefined();
+    expect(screen.getByText('创建者')).toBeDefined();
+    expect(screen.getByText('创建时间')).toBeDefined();
+    expect(screen.getByText('更新时间')).toBeDefined();
+  });
+
   it('草稿活动启动需要确认，取消不发请求，确认后进入进行中', async () => {
     mockDetailSequence([draftCampaign]);
     renderDetail();
@@ -113,11 +185,6 @@ describe('活动详情启停', () => {
     expect(within(page()).getByRole('button', { name: '编辑活动' })).toBeDefined();
     expect(within(page()).getByRole('button', { name: '删除活动' })).toBeDefined();
     expect(within(page()).queryByRole('button', { name: '停止活动' })).toBeNull();
-    expect(
-      screen.getByText(
-        '活动进行中时，用户行为会触发已发布旅程运行；消息采用演示发送，不会真实发出。暂停后已有执行继续，停止会终止未结束执行。',
-      ),
-    ).toBeDefined();
 
     fireEvent.click(startButton);
     const cancelled = await screen.findByRole('dialog');
@@ -223,6 +290,10 @@ describe('活动详情启停', () => {
     expect(within(page()).getByRole('button', { name: '停止活动' })).toBeDefined();
     expect(within(page()).queryByRole('button', { name: '启动活动' })).toBeNull();
     expect(within(page()).queryByRole('button', { name: '删除活动' })).toBeNull();
+    // 暂停不改变执行记录，概览不跟着重新读取。
+    expect(
+      mock.history.get.filter((request) => request.url === `/campaigns/${campaignId}/overview`),
+    ).toHaveLength(1);
     // 暂停是维护窗口：旅程区域恢复新建入口（按钮名包含图标标签）。
     expect(screen.getByRole('button', { name: /新建旅程/ })).toBeDefined();
   });

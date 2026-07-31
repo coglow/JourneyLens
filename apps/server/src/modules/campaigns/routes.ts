@@ -4,6 +4,7 @@ import {
   campaignCreateSchema,
   campaignIdParamsSchema,
   campaignListQuerySchema,
+  campaignOverviewResponseSchema,
   campaignTransitionBodySchema,
   campaignUpdateSchema,
   getPaginationErrorMessages,
@@ -38,6 +39,15 @@ export function registerCampaignRoutes(
     const campaign = await service.get(params.data.id);
     if (campaign === null) throw new ApiError(404, 'NOT_FOUND', '活动不存在');
     return { data: campaign };
+  });
+
+  app.get('/api/campaigns/:id/overview', async (request) => {
+    const params = campaignIdParamsSchema.safeParse(request.params);
+    if (!params.success) throw new ApiError(400, 'BAD_REQUEST', '活动链接无效');
+
+    const overview = await service.getOverview(params.data.id);
+    if (overview === null) throw new ApiError(404, 'NOT_FOUND', '活动不存在');
+    return campaignOverviewResponseSchema.parse({ data: overview });
   });
 
   app.patch('/api/campaigns/:id', async (request) => {

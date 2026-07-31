@@ -130,6 +130,29 @@ export const campaignListResponseSchema = paginatedListSchema(campaignListItemSc
 
 export const campaignDetailResponseSchema = z.object({ data: campaignDetailSchema }).strict();
 
+const campaignOverviewStatusCountsSchema = z
+  .object({
+    running: z.number().int().nonnegative(),
+    waiting: z.number().int().nonnegative(),
+    completed: z.number().int().nonnegative(),
+    failed: z.number().int().nonnegative(),
+    stopped: z.number().int().nonnegative(),
+  })
+  .strict();
+
+export const campaignOverviewResponseSchema = z
+  .object({
+    data: z
+      .object({
+        campaignId: z.uuid(),
+        executionCount: z.number().int().nonnegative(),
+        audienceCount: z.number().int().nonnegative(),
+        statusCounts: campaignOverviewStatusCountsSchema,
+      })
+      .strict(),
+  })
+  .strict();
+
 export type CampaignCreate = z.output<typeof campaignCreateSchema>;
 export type CampaignCreateInput = z.input<typeof campaignCreateSchema>;
 export type CampaignStatus = z.infer<typeof campaignStatusSchema>;
@@ -140,3 +163,4 @@ export type CampaignListQuery = z.output<typeof campaignListQuerySchema>;
 export type CampaignListQueryInput = z.input<typeof campaignListQuerySchema>;
 export type CampaignListItem = z.infer<typeof campaignListItemSchema>;
 export type CampaignDetail = z.infer<typeof campaignDetailSchema>;
+export type CampaignOverview = z.infer<typeof campaignOverviewResponseSchema>['data'];
