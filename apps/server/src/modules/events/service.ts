@@ -1,7 +1,15 @@
 import { isDeepStrictEqual } from 'node:util';
 import { Prisma, type PrismaClient } from '@prisma/client';
 import { evaluateSegmentRule, type SegmentAudienceInput } from '../segments/rule-evaluator.js';
-import type { EventIngest, EventIngestResult, JourneyVersionSnapshot } from '@journeylens/shared';
+import type {
+  EventDetail,
+  EventExecutionListQuery,
+  EventIngest,
+  EventIngestResult,
+  EventListQuery,
+  EventRelatedExecution,
+  JourneyVersionSnapshot,
+} from '@journeylens/shared';
 import { ApiError } from '../../errors.js';
 import { lockCampaignForExecution } from '../campaigns/campaign-lock.js';
 
@@ -16,6 +24,10 @@ const eventRepeatSelect = {
 
 type EventRepeatRecord = Prisma.EventGetPayload<{ select: typeof eventRepeatSelect }>;
 
+function escapeLikePattern(value: string): string {
+  return value.replace(/[\\%_]/g, (character) => `\\${character}`);
+}
+
 /**
  * 接收上游业务行为并创建真实执行。
  *
@@ -27,6 +39,148 @@ export class EventService {
     private readonly prisma: PrismaClient,
     private readonly now: () => Date = () => new Date(),
   ) {}
+
+  async list(input: EventListQuery) {
+    const keyword = input.q === undefined ? undefined : escapeLikePattern(input.q);
+    const where: Prisma.EventWhereInput = {
+      ...(input.eventId ? { id: input.eventId } : {}),
+      ...(input.type ? { type: input.type } : {}),
+      ...(keyword
+        ? {
+            audienceUser: {
+              OR: [
+                { displayName: { contains: keyword, mode: 'insensitive' } },
+                { externalId: { contains: keyword, mode: 'insensitive' } },
+              ],
+            },
+          }
+        : {}),
+      ...(input.receivedFrom || input.receivedTo
+        ? {
+            receivedAt: {
+              ...(input.receivedFrom ? { gte: new Date(input.receivedFrom) } : {}),
+              ...(input.receivedTo ? { lte: new Date(input.receivedTo) } : {}),
+            },
+          }
+        : {}),
+    };
+
+    const total = await this.prisma.event.count({ where });
+    const lastPage = Math.max(1, Math.ceil(total / input.pageSize));
+    const page = Math.min(input.page, lastPage);
+    const records = await this.prisma.event.findMany({
+      where,
+      skip: (page - 1) * input.pageSize,
+      take: input.pageSize,
+      orderBy: [{ receivedAt: 'desc' }, { id: 'desc' }],
+      select: {
+        id: true,
+        type: true,
+        receivedAt: true,
+        audienceUser: { select: { externalId: true, displayName: true } },
+      },
+    });
+
+    return {
+      data: records.map((record) => ({
+        id: record.id,
+        type: record.type,
+        receivedAt: record.receivedAt.toISOString(),
+        audience: record.audienceUser,
+      })),
+      page: { page, pageSize: input.pageSize, total },
+    };
+  }
+
+  async get(id: string): Promise<EventDetail> {
+    const record = await this.prisma.event.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        type: true,
+        receivedAt: true,
+        payload: true,
+        audienceUser: { select: { externalId: true, displayName: true } },
+      },
+    });
+    if (record === null) throw new ApiError(404, 'NOT_FOUND', '行为记录不存在');
+
+    return {
+      id: record.id,
+      type: record.type,
+      receivedAt: record.receivedAt.toISOString(),
+      payload: record.payload as EventDetail['payload'],
+      audience: record.audienceUser,
+    };
+  }
+
+  async listExecutions(id: string, input: EventExecutionListQuery) {
+    const event = await this.prisma.event.findUnique({ where: { id }, select: { id: true } });
+    if (event === null) throw new ApiError(404, 'NOT_FOUND', '行为记录不存在');
+
+    // 每行对应一条旅程参与记录；同一参与可保留进入和结束等待两种事实，不按旅程名称合并。
+    const where: Prisma.ExecutionWhereInput = {
+      OR: [{ triggerEventId: id }, { steps: { some: { matchedEventId: id } } }],
+    };
+    const { total, page, records } = await this.prisma.$transaction(async (transaction) => {
+      const total = await transaction.execution.count({ where });
+      const lastPage = Math.max(1, Math.ceil(total / input.pageSize));
+      const page = Math.min(input.page, lastPage);
+      const records = await transaction.execution.findMany({
+        where,
+        skip: (page - 1) * input.pageSize,
+        take: input.pageSize,
+        orderBy: [{ startedAt: 'desc' }, { id: 'desc' }],
+        select: {
+          id: true,
+          triggerEventId: true,
+          status: true,
+          startedAt: true,
+          campaign: { select: { id: true, name: true } },
+          journey: { select: { id: true, name: true } },
+          journeyVersion: { select: { id: true, versionNumber: true, snapshot: true } },
+          steps: {
+            where: { matchedEventId: id },
+            select: { nodeId: true, endedAt: true },
+          },
+        },
+      });
+      return { total, page, records };
+    });
+
+    return {
+      data: records.map((record) => {
+        const matchedStep = record.steps[0];
+        let step: EventRelatedExecution['matchedStep'] = null;
+        if (matchedStep !== undefined) {
+          const snapshot = record.journeyVersion.snapshot as unknown as JourneyVersionSnapshot;
+          // 等待步骤名称来自执行绑定的发布版本，避免当前草稿改名后误读历史配置。
+          const node = snapshot.definition.nodes.find((item) => item.id === matchedStep.nodeId);
+          if (node === undefined) throw new Error('执行等待步骤不在固定版本中');
+          step = {
+            nodeId: matchedStep.nodeId,
+            nodeName: node.name,
+            endedWaitingAt: matchedStep.endedAt?.toISOString() ?? null,
+          };
+        }
+
+        return {
+          id: record.id,
+          status: record.status,
+          startedAt: record.startedAt.toISOString(),
+          enteredByEvent: record.triggerEventId === id,
+          campaign: record.campaign,
+          journey: record.journey,
+          version: {
+            id: record.journeyVersion.id,
+            versionNumber: record.journeyVersion.versionNumber,
+          },
+          matchedStep: step,
+        } satisfies EventRelatedExecution;
+      }),
+      page: { page, pageSize: input.pageSize, total },
+    };
+  }
 
   async ingest(input: EventIngest): Promise<EventIngestResult> {
     const audience = await this.prisma.audienceUser.findUnique({

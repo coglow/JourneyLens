@@ -28,7 +28,7 @@ import {
   type ExecutionStatus,
 } from '@journeylens/shared';
 import { Link, useLocation, useSearchParams } from 'react-router';
-import { ListFilterBar } from '@/components/ListFilterBar';
+import { ListFilterBar, listFilterColProps } from '@/components/ListFilterBar';
 import { ListPageLayout } from '@/components/ListPageLayout';
 import { PageHeader } from '@/components/PageHeader';
 import { useListPagination, useSyncListPage } from '@/hooks/use-list-pagination';
@@ -52,7 +52,6 @@ type FilterValues = {
   endedRange?: DateTimeRange;
 };
 
-const filterCol = { xs: 24, sm: 12, lg: 8, xl: 6 };
 const statusOptions = [
   { label: '全部', value: 'all' },
   ...EXECUTION_STATUSES.map((status) => ({ label: executionStatusLabels[status], value: status })),
@@ -149,7 +148,7 @@ function getExecutionColumns(
       width: 130,
       fixed: 'end',
       render: (_value, execution) => (
-        <Link to={`/executions/${execution.id}`} state={{ returnTo }}>
+        <Link to={`/executions/${execution.id}`} state={{ returnTo }} style={{ fontWeight: 600 }}>
           查看执行轨迹
         </Link>
       ),
@@ -300,7 +299,7 @@ export function ExecutionsPage() {
           }
           filters={
             <ListFilterBar form={form} onSearch={applyFilters} onReset={resetFilters}>
-              <Col {...filterCol}>
+              <Col {...listFilterColProps}>
                 <Form.Item name="campaignId" label="活动">
                   <PagedSelect
                     resourceKey="campaigns"
@@ -324,7 +323,7 @@ export function ExecutionsPage() {
                   />
                 </Form.Item>
               </Col>
-              <Col {...filterCol}>
+              <Col {...listFilterColProps}>
                 <Form.Item name="journeyId" label="旅程">
                   <PagedSelect
                     resourceKey={`journeys:${watchedCampaignId ?? 'none'}`}
@@ -346,12 +345,12 @@ export function ExecutionsPage() {
                   />
                 </Form.Item>
               </Col>
-              <Col {...filterCol}>
+              <Col {...listFilterColProps}>
                 <Form.Item name="status" label="状态">
                   <Select allowClear options={statusOptions} />
                 </Form.Item>
               </Col>
-              <Col {...filterCol}>
+              <Col {...listFilterColProps}>
                 <Form.Item name="q" label="关键词">
                   <Input
                     allowClear
@@ -361,7 +360,7 @@ export function ExecutionsPage() {
                   />
                 </Form.Item>
               </Col>
-              <Col {...filterCol}>
+              <Col {...listFilterColProps}>
                 <Form.Item name="createdRange" label="创建时间">
                   <DatePicker.RangePicker
                     showTime={{ format: 'HH:mm' }}
@@ -372,7 +371,7 @@ export function ExecutionsPage() {
                   />
                 </Form.Item>
               </Col>
-              <Col {...filterCol}>
+              <Col {...listFilterColProps}>
                 <Form.Item name="endedRange" label="结束时间">
                   <DatePicker.RangePicker
                     showTime={{ format: 'HH:mm' }}

@@ -96,7 +96,7 @@ export const journeySimulationScenarioSchema = z
         ctx.addIssue({
           code: 'custom',
           path: ['events', index, 'id'],
-          message: '行为标识不能重复',
+          message: '行为ID不能重复',
         });
       }
       ids.add(event.id);

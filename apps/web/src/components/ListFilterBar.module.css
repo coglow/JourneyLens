@@ -1,7 +1,10 @@
-/* Form.Item 在 inline 布局下自带 16px 右间距，会和 Row 的 gutter 叠加成双倍间距；归零后间距只由 gutter 控制。 */
+/* 字段间距统一由 Row 的 gutter 控制，标签与控件的布局交给 antd Form。 */
 .form :global(.ant-form-item) {
-  margin-inline-end: 0;
   margin-bottom: 0;
+}
+
+.form {
+  width: 100%;
 }
 
 .form :global(.ant-form-item-label > label) {

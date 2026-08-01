@@ -31,7 +31,7 @@ import {
   getSegments,
   refreshSegmentEstimate,
 } from '@/services/segments';
-import { ListFilterBar } from '@/components/ListFilterBar';
+import { ListFilterBar, listFilterColProps } from '@/components/ListFilterBar';
 import { ListPageLayout } from '@/components/ListPageLayout';
 import { PageHeader } from '@/components/PageHeader';
 import { useListPagination, useSyncListPage } from '@/hooks/use-list-pagination';
@@ -52,8 +52,6 @@ type SegmentRowActions = {
   onDelete: (segment: SegmentListItem) => void;
   setEditButton: (id: string, button: HTMLElement | null) => void;
 };
-
-const filterCol = { xs: 24, sm: 16, lg: 12, xl: 8 };
 
 function getSegmentColumns(
   search: string,
@@ -412,8 +410,8 @@ export function SegmentsPage() {
           loadingLabel="正在读取分群"
           filters={
             <ListFilterBar form={form} onSearch={applyFilters} onReset={resetFilters}>
-              <Col {...filterCol}>
-                <Form.Item name="q" label="关键词" layout="horizontal">
+              <Col {...listFilterColProps}>
+                <Form.Item name="q" label="关键词">
                   <Input
                     allowClear
                     maxLength={100}

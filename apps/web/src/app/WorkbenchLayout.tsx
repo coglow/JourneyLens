@@ -1,6 +1,7 @@
 import {
   AppstoreOutlined,
   HistoryOutlined,
+  SolutionOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   TeamOutlined,
@@ -15,7 +16,6 @@ import styles from './WorkbenchLayout.module.css';
 
 const { Sider, Content } = Layout;
 const SIDEBAR_WIDTH = '220px';
-
 const navigationItems = [
   {
     key: 'campaigns',
@@ -29,6 +29,12 @@ const navigationItems = [
     label: '执行记录',
     path: '/executions',
     icon: <HistoryOutlined aria-hidden="true" />,
+  },
+  {
+    key: 'events',
+    label: '行为记录',
+    path: '/events',
+    icon: <SolutionOutlined aria-hidden="true" />,
   },
 ] as const;
 

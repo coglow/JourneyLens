@@ -266,9 +266,6 @@ export function ExecutionDetailPage() {
                             {JOURNEY_EVENT_TYPE_LABELS[trace.triggerEvent.type]}
                           </Tag>
                         </Typography.Title>
-                        <Typography.Paragraph type="secondary">
-                          这里展示启动本次执行的行为，后续匹配行为请在执行轨迹中查看。
-                        </Typography.Paragraph>
                         <Descriptions column={{ xs: 1, sm: 2 }} size="middle">
                           <Descriptions.Item label="关联用户">
                             {trace.audience.displayName}

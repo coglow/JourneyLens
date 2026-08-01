@@ -4,6 +4,8 @@ import { CampaignsPage } from '@/features/campaigns/CampaignsPage';
 import { CampaignDetailPage } from '@/features/campaigns/CampaignDetailPage';
 import { ExecutionDetailPage } from '@/features/executions/ExecutionDetailPage';
 import { ExecutionsPage } from '@/features/executions/ExecutionsPage';
+import { EventDetailPage } from '@/features/events/EventDetailPage';
+import { EventsPage } from '@/features/events/EventsPage';
 import { JourneyDetailPage } from '@/features/journeys/JourneyDetailPage';
 import { JourneyEditorPage } from '@/features/journeys/JourneyEditorPage';
 import { JourneyVersionPage } from '@/features/journeys/JourneyVersionPage';
@@ -30,6 +32,8 @@ export const appRoutes: RouteObject[] = [
           { path: 'journeys/:id', element: <JourneyDetailPage /> },
           { path: 'executions', element: <ExecutionsPage /> },
           { path: 'executions/:id', element: <ExecutionDetailPage /> },
+          { path: 'events', element: <EventsPage /> },
+          { path: 'events/:id', element: <EventDetailPage /> },
           { path: 'segments', element: <SegmentsPage /> },
           { path: 'segments/:id', element: <SegmentDetailPage /> },
         ],

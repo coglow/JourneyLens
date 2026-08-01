@@ -36,7 +36,7 @@ import {
   isSessionExpired,
 } from '@/services/api';
 import { deleteCampaign, getCampaign, getCampaigns } from '@/services/campaigns';
-import { ListFilterBar } from '@/components/ListFilterBar';
+import { ListFilterBar, listFilterColProps } from '@/components/ListFilterBar';
 import { ListPageLayout } from '@/components/ListPageLayout';
 import { PageHeader } from '@/components/PageHeader';
 import { useListPagination, useSyncListPage } from '@/hooks/use-list-pagination';
@@ -56,8 +56,6 @@ const statusOptions = [
   { label: '全部', value: 'all' },
   ...CAMPAIGN_STATUSES.map((status) => ({ label: campaignStatusLabels[status], value: status })),
 ];
-
-const filterCol = { xs: 24, sm: 12, lg: 8, xl: 6 };
 
 function getDeleteDisabledReason(campaign: CampaignListItem): string | undefined {
   if (campaign.status !== 'draft') return '只有草稿活动可以删除，已启动或已暂停的活动会保留记录';
@@ -403,8 +401,8 @@ export function CampaignsPage() {
           loadingLabel="正在读取活动"
           filters={
             <ListFilterBar form={form} onSearch={applyFilters} onReset={resetFilters}>
-              <Col {...filterCol}>
-                <Form.Item name="q" label="关键词" layout="horizontal">
+              <Col {...listFilterColProps}>
+                <Form.Item name="q" label="关键词">
                   <Input
                     allowClear
                     maxLength={180}
@@ -414,8 +412,8 @@ export function CampaignsPage() {
                   />
                 </Form.Item>
               </Col>
-              <Col {...filterCol}>
-                <Form.Item name="status" label="状态" layout="horizontal">
+              <Col {...listFilterColProps}>
+                <Form.Item name="status" label="状态">
                   <Select allowClear options={statusOptions} style={{ width: '100%' }} />
                 </Form.Item>
               </Col>
