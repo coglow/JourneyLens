@@ -240,7 +240,7 @@ describe('执行轨迹详情', () => {
     expect(screen.getByText(/等到匹配行为/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /5\. 购买感谢消息/ }));
     expect(screen.getByText('感谢购买，我们会尽快为你安排发货。')).toBeTruthy();
-    expect(screen.getByText('演示发送 · 不会实际投递')).toBeTruthy();
+    expect(screen.getByText('短信 · 演示发送')).toBeTruthy();
     expect(screen.getAllByText(/用户在等待窗口内完成了同商品购买/).length).toBeGreaterThan(0);
     expect(screen.queryByText('每 3 秒自动刷新')).toBeNull();
 

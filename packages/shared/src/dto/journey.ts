@@ -140,6 +140,40 @@ export const journeyDraftSaveSchema = z
 export const journeyListResponseSchema = paginatedListSchema(journeyListItemSchema);
 export const journeyDetailResponseSchema = z.object({ data: journeyDetailSchema }).strict();
 
+// 旅程统计入口只按名称搜索，并按所属活动筛选；campaignId 由活动下拉提供，不额外查询活动是否存在。
+export const journeyStatsListQuerySchema = z
+  .object({
+    ...paginationQuerySchema.shape,
+    q: z
+      .string()
+      .trim()
+      .max(JOURNEY_SEARCH_MAX_LENGTH, `搜索词最多 ${JOURNEY_SEARCH_MAX_LENGTH} 个字符`)
+      .transform((value) => value || undefined)
+      .optional(),
+    campaignId: z.uuid({ error: '请选择有效的活动' }).optional(),
+  })
+  .strict();
+
+// 统计入口只打开最新发布版本；历史版本仍从版本列表进入。
+const latestJourneyVersionSchema = z
+  .object({
+    id: z.uuid(),
+    versionNumber: z.number().int().min(1),
+    publishedAt: z.iso.datetime(),
+  })
+  .strict();
+
+export const journeyStatsItemSchema = z
+  .object({
+    id: z.uuid(),
+    name: z.string().min(1).max(JOURNEY_NAME_MAX_LENGTH),
+    campaign: campaignRefSchema,
+    latestVersion: latestJourneyVersionSchema,
+  })
+  .strict();
+
+export const journeyStatsListResponseSchema = paginatedListSchema(journeyStatsItemSchema);
+
 export type JourneyCreate = z.output<typeof journeyCreateSchema>;
 export type JourneyCreateInput = z.input<typeof journeyCreateSchema>;
 export type JourneyUpdate = z.output<typeof journeyUpdateSchema>;
@@ -147,6 +181,9 @@ export type JourneyUpdateInput = z.input<typeof journeyUpdateSchema>;
 export type JourneyListQuery = z.output<typeof journeyListQuerySchema>;
 export type JourneyListQueryInput = z.input<typeof journeyListQuerySchema>;
 export type JourneyListItem = z.infer<typeof journeyListItemSchema>;
+export type JourneyStatsListQuery = z.output<typeof journeyStatsListQuerySchema>;
+export type JourneyStatsListQueryInput = z.input<typeof journeyStatsListQuerySchema>;
+export type JourneyStatsItem = z.infer<typeof journeyStatsItemSchema>;
 export type JourneyDetail = z.infer<typeof journeyDetailSchema>;
 export type JourneyDraftSave = z.output<typeof journeyDraftSaveSchema>;
 export type JourneyDraftSaveInput = z.input<typeof journeyDraftSaveSchema>;

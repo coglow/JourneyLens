@@ -1,5 +1,12 @@
+import { randomUUID } from 'node:crypto';
 import type { Prisma } from '@prisma/client';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import {
+  journeyVersionStatsResponseSchema,
+  type ExecutionStatus,
+  type ExecutionStepStatus,
+  type JourneyNodeType,
+} from '@journeylens/shared';
 import {
   startTestDatabase,
   testAccountId,
@@ -7,6 +14,14 @@ import {
   type TestDatabase,
 } from '../test-support/test-database.js';
 import { jsonHeaders, makeApp, signedInCookie, type TestApp } from '../test-support/harness.js';
+import {
+  addTestVersion,
+  createAudienceUser,
+  fullDefinition,
+  minimalDefinition,
+  publishTestJourney,
+  type TestJourney,
+} from '../test-support/execution-fixtures.js';
 
 let db: TestDatabase;
 
@@ -625,6 +640,421 @@ describe('旅程发布与版本冻结', () => {
       expect([first.statusCode, second.statusCode].sort()).toEqual([200, 201]);
       expect(first.json().data.id).toBe(second.json().data.id);
       expect(await db.prisma.journeyVersion.count({ where: { journeyId: id } })).toBe(2);
+    } finally {
+      await app.close();
+    }
+  });
+});
+
+const evaluatedAt = testNow.toISOString();
+
+const conditionOutput = (branch: 'met' | 'unmet') => ({
+  kind: 'condition',
+  rule: { kind: 'compare', left: { source: 'user', path: 'age' }, operator: 'gte', right: 18 },
+  matched: branch === 'met',
+  branch,
+  evidence: { kind: 'value', evaluatedAt, actual: { exists: true, value: 30 } },
+});
+
+const waitOutput = { kind: 'wait', waitSeconds: 5 };
+
+const waitForEventOutput = (outcome: 'matched' | 'timeout') => ({
+  kind: 'wait_for_event',
+  eventType: 'purchase_completed',
+  waitSeconds: 60,
+  sameProduct: true,
+  outcome,
+  matchedEventId: outcome === 'matched' ? randomUUID() : null,
+});
+
+const startOutput = { kind: 'start', entryBehavior: 'product_viewed' };
+const endOutput = { kind: 'end', note: null };
+const failedOutput = { kind: 'failed', reason: '判断用户资料失败' };
+
+function messageOutput(audienceUserId: string, body: string) {
+  return {
+    kind: 'message',
+    channel: 'sms',
+    subject: null,
+    body,
+    audienceUserId,
+    demo: true,
+  };
+}
+
+interface SeedStep {
+  nodeId: string;
+  nodeType: JourneyNodeType;
+  status: ExecutionStepStatus;
+  output: unknown;
+}
+
+/** 受控数据：直接写入一次执行及其步骤，用于核对统计的计数关系。 */
+async function seedExecution(options: {
+  journey: TestJourney;
+  audienceUserId: string;
+  status: ExecutionStatus;
+  steps: SeedStep[];
+}): Promise<void> {
+  const eventId = randomUUID();
+  await db.prisma.event.create({
+    data: {
+      id: eventId,
+      audienceUserId: options.audienceUserId,
+      type: 'product_viewed',
+      payload: { productId: 'product-1', price: 299 },
+      audienceSnapshot: {},
+      receivedAt: testNow,
+    },
+  });
+  const execution = await db.prisma.execution.create({
+    data: {
+      campaignId: options.journey.campaignId,
+      journeyId: options.journey.journeyId,
+      journeyVersionId: options.journey.versionId,
+      audienceUserId: options.audienceUserId,
+      triggerEventId: eventId,
+      status: options.status,
+      startedAt: testNow,
+      ...(options.status === 'waiting' ? { currentNodeId: 'wait' } : {}),
+    },
+    select: { id: true },
+  });
+
+  for (const [index, step] of options.steps.entries()) {
+    await db.prisma.executionStep.create({
+      data: {
+        executionId: execution.id,
+        order: index + 1,
+        nodeId: step.nodeId,
+        nodeType: step.nodeType,
+        status: step.status,
+        output: step.output as Prisma.InputJsonValue,
+        startedAt: testNow,
+        ...(step.status === 'succeeded' ? { endedAt: testNow } : {}),
+      },
+    });
+  }
+}
+
+function getStats(app: TestApp, cookie: string, id: string, versionId: string) {
+  return app.inject({
+    method: 'GET',
+    url: `/api/journeys/${id}/versions/${versionId}/stats`,
+    headers: { cookie },
+  });
+}
+
+describe('旅程版本运行统计', () => {
+  it('统计要求登录，旅程不存在与跨旅程版本都按版本不存在处理，无效链接明确报错', async () => {
+    const { app } = makeApp(db);
+    try {
+      const journey = await publishTestJourney(db, {
+        name: '统计鉴权',
+        definition: minimalDefinition(),
+      });
+      const other = await publishTestJourney(db, {
+        name: '统计鉴权另一条',
+        definition: minimalDefinition(),
+      });
+
+      const anonymous = await app.inject({
+        method: 'GET',
+        url: `/api/journeys/${journey.journeyId}/versions/${journey.versionId}/stats`,
+      });
+      expect(anonymous.statusCode).toBe(401);
+
+      const cookie = await signedInCookie(app);
+      // 与版本详情一致：按“旅程 + 版本”一起查找，旅程不存在时不额外区分。
+      const missingJourney = await getStats(app, cookie, missingId, journey.versionId);
+      expect(missingJourney.statusCode).toBe(404);
+      expect(missingJourney.json().error.message).toBe('版本不存在');
+
+      const crossed = await getStats(app, cookie, journey.journeyId, other.versionId);
+      expect(crossed.statusCode).toBe(404);
+      expect(crossed.json().error.message).toBe('版本不存在');
+
+      const invalid = await getStats(app, cookie, 'not-a-uuid', journey.versionId);
+      expect(invalid.statusCode).toBe(400);
+      expect(invalid.json().error.message).toBe('版本链接无效');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('按执行记录给出状态分布与去重人数，按步骤记录给出节点与分支计数', async () => {
+    const { app } = makeApp(db);
+    try {
+      const cookie = await signedInCookie(app);
+      const journey = await publishTestJourney(db, {
+        name: '统计计数',
+        definition: fullDefinition(),
+      });
+      const firstUser = await createAudienceUser(db, {
+        externalId: 'stats:user:one',
+        displayName: '统计用户一',
+      });
+      const secondUser = await createAudienceUser(db, {
+        externalId: 'stats:user:two',
+        displayName: '统计用户二',
+      });
+
+      const start: SeedStep = {
+        nodeId: 'start',
+        nodeType: 'start',
+        status: 'succeeded',
+        output: startOutput,
+      };
+      const conditionMet: SeedStep = {
+        nodeId: 'condition',
+        nodeType: 'condition',
+        status: 'succeeded',
+        output: conditionOutput('met'),
+      };
+      const wait: SeedStep = {
+        nodeId: 'wait',
+        nodeType: 'wait',
+        status: 'succeeded',
+        output: waitOutput,
+      };
+
+      // 执行一：满足条件、等到行为、走完全程。
+      await seedExecution({
+        journey,
+        audienceUserId: firstUser,
+        status: 'completed',
+        steps: [
+          start,
+          conditionMet,
+          wait,
+          {
+            nodeId: 'wait-event',
+            nodeType: 'wait_for_event',
+            status: 'succeeded',
+            output: waitForEventOutput('matched'),
+          },
+          {
+            nodeId: 'message-matched',
+            nodeType: 'message',
+            status: 'succeeded',
+            output: messageOutput(firstUser, '感谢购买'),
+          },
+          { nodeId: 'end-matched', nodeType: 'end', status: 'succeeded', output: endOutput },
+        ],
+      });
+      // 执行二：同一用户，等待行为超时。
+      await seedExecution({
+        journey,
+        audienceUserId: firstUser,
+        status: 'completed',
+        steps: [
+          start,
+          conditionMet,
+          wait,
+          {
+            nodeId: 'wait-event',
+            nodeType: 'wait_for_event',
+            status: 'succeeded',
+            output: waitForEventOutput('timeout'),
+          },
+          {
+            nodeId: 'message-timeout',
+            nodeType: 'message',
+            status: 'succeeded',
+            output: messageOutput(firstUser, '购买提醒'),
+          },
+          { nodeId: 'end-timeout', nodeType: 'end', status: 'succeeded', output: endOutput },
+        ],
+      });
+      // 执行三：另一名用户，条件不满足。
+      await seedExecution({
+        journey,
+        audienceUserId: secondUser,
+        status: 'completed',
+        steps: [
+          start,
+          {
+            nodeId: 'condition',
+            nodeType: 'condition',
+            status: 'succeeded',
+            output: conditionOutput('unmet'),
+          },
+          {
+            nodeId: 'message-unmet',
+            nodeType: 'message',
+            status: 'succeeded',
+            output: messageOutput(secondUser, '价格较低'),
+          },
+          { nodeId: 'end-unmet', nodeType: 'end', status: 'succeeded', output: endOutput },
+        ],
+      });
+      // 执行四：停在定时等待上。
+      await seedExecution({
+        journey,
+        audienceUserId: secondUser,
+        status: 'waiting',
+        steps: [
+          start,
+          conditionMet,
+          { nodeId: 'wait', nodeType: 'wait', status: 'waiting', output: waitOutput },
+        ],
+      });
+      // 执行五：条件判断失败。
+      await seedExecution({
+        journey,
+        audienceUserId: firstUser,
+        status: 'failed',
+        steps: [
+          start,
+          {
+            nodeId: 'condition',
+            nodeType: 'condition',
+            status: 'failed',
+            output: failedOutput,
+          },
+        ],
+      });
+      // 执行六：开始后即停止。
+      await seedExecution({
+        journey,
+        audienceUserId: secondUser,
+        status: 'stopped',
+        steps: [{ nodeId: 'start', nodeType: 'start', status: 'stopped', output: startOutput }],
+      });
+
+      const response = await getStats(app, cookie, journey.journeyId, journey.versionId);
+      expect(response.statusCode).toBe(200);
+      // 用共享契约解析响应，多字段或少字段都会失败。
+      const { data } = journeyVersionStatsResponseSchema.parse(response.json());
+
+      expect(data.executionCount).toBe(6);
+      expect(data.audienceCount).toBe(2);
+      expect(data.statusCounts).toEqual({
+        running: 0,
+        waiting: 1,
+        completed: 3,
+        failed: 1,
+        stopped: 1,
+      });
+
+      const byNodeId = new Map(data.nodes.map((node) => [node.nodeId, node]));
+      expect(byNodeId.size).toBe(10);
+      expect(byNodeId.get('start')).toMatchObject({ entered: 6, completed: 5, stopped: 1 });
+      expect(byNodeId.get('condition')).toMatchObject({
+        entered: 5,
+        completed: 4,
+        failed: 1,
+        conditionBranch: { met: 3, unmet: 1 },
+        waitOutcome: null,
+      });
+      expect(byNodeId.get('wait')).toMatchObject({ entered: 3, completed: 2, waiting: 1 });
+      expect(byNodeId.get('wait-event')).toMatchObject({
+        entered: 2,
+        completed: 2,
+        conditionBranch: null,
+        waitOutcome: { matched: 1, timeout: 1 },
+      });
+      for (const messageNodeId of ['message-matched', 'message-timeout', 'message-unmet']) {
+        expect(byNodeId.get(messageNodeId)).toMatchObject({
+          nodeType: 'message',
+          entered: 1,
+          completed: 1,
+        });
+      }
+
+      // 三条基本关系：状态之和等于执行总数、各节点状态之和等于进入数、结束节点完成数之和等于已完成执行数。
+      const { running, waiting, completed, failed, stopped } = data.statusCounts;
+      expect(running + waiting + completed + failed + stopped).toBe(data.executionCount);
+      for (const node of data.nodes) {
+        expect(node.entered).toBe(node.completed + node.waiting + node.failed + node.stopped);
+      }
+      const endCompleted = data.nodes
+        .filter((node) => node.nodeType === 'end')
+        .reduce((sum, node) => sum + node.completed, 0);
+      expect(endCompleted).toBe(completed);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('同一旅程的两个版本互不串数，未到达的节点仍按本版快照列出全 0 行', async () => {
+    const { app } = makeApp(db);
+    try {
+      const cookie = await signedInCookie(app);
+      const journey = await publishTestJourney(db, {
+        name: '统计版本隔离',
+        definition: fullDefinition(),
+      });
+      const secondVersionId = await addTestVersion(db, journey.journeyId, {
+        versionNumber: 2,
+        name: '统计版本隔离',
+        definition: minimalDefinition(),
+      });
+      const audienceUserId = await createAudienceUser(db, {
+        externalId: 'stats:user:isolation',
+        displayName: '统计用户三',
+      });
+
+      await seedExecution({
+        journey,
+        audienceUserId,
+        status: 'completed',
+        steps: [
+          { nodeId: 'start', nodeType: 'start', status: 'succeeded', output: startOutput },
+          {
+            nodeId: 'condition',
+            nodeType: 'condition',
+            status: 'succeeded',
+            output: conditionOutput('unmet'),
+          },
+          { nodeId: 'end-unmet', nodeType: 'end', status: 'succeeded', output: endOutput },
+        ],
+      });
+
+      const first = await getStats(app, cookie, journey.journeyId, journey.versionId);
+      expect(first.statusCode).toBe(200);
+      expect(first.json().data.executionCount).toBe(1);
+      expect(first.json().data.statusCounts.completed).toBe(1);
+
+      const second = await getStats(app, cookie, journey.journeyId, secondVersionId);
+      expect(second.statusCode).toBe(200);
+      const { data } = journeyVersionStatsResponseSchema.parse(second.json());
+      expect(data.executionCount).toBe(0);
+      expect(data.audienceCount).toBe(0);
+      expect(data.statusCounts).toEqual({
+        running: 0,
+        waiting: 0,
+        completed: 0,
+        failed: 0,
+        stopped: 0,
+      });
+      // 第二版只有开始和结束两个节点，没有执行记录时按快照顺序给出全 0 行。
+      expect(data.nodes).toEqual([
+        {
+          nodeId: 'start',
+          name: '开始',
+          nodeType: 'start',
+          entered: 0,
+          completed: 0,
+          waiting: 0,
+          failed: 0,
+          stopped: 0,
+          conditionBranch: null,
+          waitOutcome: null,
+        },
+        {
+          nodeId: 'end',
+          name: '结束',
+          nodeType: 'end',
+          entered: 0,
+          completed: 0,
+          waiting: 0,
+          failed: 0,
+          stopped: 0,
+          conditionBranch: null,
+          waitOutcome: null,
+        },
+      ]);
     } finally {
       await app.close();
     }

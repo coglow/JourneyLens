@@ -5,10 +5,14 @@ import {
   journeyDraftSaveSchema,
   journeyListItemSchema,
   journeyListQuerySchema,
+  journeyStatsListQuerySchema,
+  journeyStatsListResponseSchema,
   journeyUpdateSchema,
 } from './journey.js';
 
 const segmentId = '00000000-0000-4000-8000-000000000001';
+const campaignId = '00000000-0000-4000-8000-000000000002';
+const versionId = '00000000-0000-4000-8000-000000000003';
 
 describe('旅程请求响应契约', () => {
   it('创建时规范化名称和说明，未提供分群按不绑定处理', () => {
@@ -159,5 +163,58 @@ describe('旅程请求响应契约', () => {
       journeyDraftSaveSchema.safeParse({ revision: 1, draftDefinition: { nodes: [], edges: [] } })
         .success,
     ).toBe(false);
+  });
+
+  it('旅程统计列表搜索词去空格后为空视为无筛选，活动和分页非法时拒绝', () => {
+    expect(journeyStatsListQuerySchema.parse({})).toEqual({ page: 1, pageSize: 10 });
+    expect(journeyStatsListQuerySchema.parse({ q: '  浏览挽回  ' }).q).toBe('浏览挽回');
+    expect(journeyStatsListQuerySchema.parse({ q: '   ' }).q).toBeUndefined();
+    expect(journeyStatsListQuerySchema.parse({ campaignId }).campaignId).toBe(campaignId);
+    // 页码和每页条数沿用统一规则：只接受正整数与 10/20/50。
+    expect(journeyStatsListQuerySchema.parse({ page: '2', pageSize: '50' })).toEqual({
+      page: 2,
+      pageSize: 50,
+    });
+
+    for (const invalid of [
+      { q: 'x'.repeat(101) },
+      { campaignId: 'not-a-uuid' },
+      { pageSize: 5 },
+      { page: 0 },
+      { extra: true },
+    ]) {
+      expect(journeyStatsListQuerySchema.safeParse(invalid).success).toBe(false);
+    }
+  });
+
+  it('旅程统计列表项必须带所属活动和最新发布版本', () => {
+    const item = {
+      id: '00000000-0000-4000-8000-000000000004',
+      name: '浏览后购买挽回',
+      campaign: { id: campaignId, name: '浏览挽回活动', status: 'running' },
+      latestVersion: { id: versionId, versionNumber: 2, publishedAt: '2026-08-01T08:00:00.000Z' },
+    };
+
+    expect(
+      journeyStatsListResponseSchema.parse({
+        data: [item],
+        page: { page: 1, pageSize: 10, total: 1 },
+      }).data,
+    ).toHaveLength(1);
+    // 多余字段、缺字段和非法版本号都不接受。
+    for (const invalid of [
+      { ...item, extra: true },
+      { ...item, latestVersion: undefined },
+      { ...item, campaign: undefined },
+      { ...item, latestVersion: { ...item.latestVersion, versionNumber: 0 } },
+      { ...item, latestVersion: { ...item.latestVersion, publishedAt: '2026-08-01' } },
+    ]) {
+      expect(
+        journeyStatsListResponseSchema.safeParse({
+          data: [invalid],
+          page: { page: 1, pageSize: 10, total: 1 },
+        }).success,
+      ).toBe(false);
+    }
   });
 });

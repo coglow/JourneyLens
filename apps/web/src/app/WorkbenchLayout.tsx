@@ -1,5 +1,6 @@
 import {
   AppstoreOutlined,
+  BarChartOutlined,
   HistoryOutlined,
   SolutionOutlined,
   MenuFoldOutlined,
@@ -22,6 +23,12 @@ const navigationItems = [
     label: '活动',
     path: '/campaigns',
     icon: <AppstoreOutlined aria-hidden="true" />,
+  },
+  {
+    key: 'journey-stats',
+    label: '旅程统计',
+    path: '/journey-stats',
+    icon: <BarChartOutlined aria-hidden="true" />,
   },
   { key: 'segments', label: '分群', path: '/segments', icon: <TeamOutlined aria-hidden="true" /> },
   {

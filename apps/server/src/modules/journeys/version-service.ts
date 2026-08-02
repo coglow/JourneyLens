@@ -4,15 +4,18 @@ import {
   getJourneyDraftWarnings,
   journeyDraftDefinitionSchema,
   journeyVersionSnapshotMetaSchema,
+  type ExecutionStatus,
   type JourneyVersionDetail,
   type JourneyVersionListQuery,
   type JourneyVersionPublish,
   type JourneyVersionSnapshot,
+  type JourneyVersionStats,
   type JourneyVersionSummary,
   type SegmentRule,
 } from '@journeylens/shared';
 import { ApiError } from '../../errors.js';
 import { lockCampaignForJourneyWrite } from '../campaigns/campaign-lock.js';
+import { aggregateNodeStats } from './version-stats.js';
 
 const versionSummarySelect = {
   id: true,
@@ -256,5 +259,53 @@ export class JourneyVersionService {
     });
     if (record === null) throw versionNotFound();
     return serializeDetail(record);
+  }
+
+  /**
+   * 版本运行统计：执行状态分布来自执行记录，节点指标来自步骤记录。
+   * 两组数字来源不同，读取放在一个 RepeatableRead 只读事务里，保证同一次响应使用同一个数据库快照，
+   * 不会出现汇总仍显示等待、节点表却已显示正常结束的混读。只做普通查询，不加锁、不写入。
+   */
+  async getStats(journeyId: string, versionId: string): Promise<JourneyVersionStats> {
+    return this.prisma.$transaction(
+      async (tx) => {
+        const version = await tx.journeyVersion.findFirst({
+          where: { id: versionId, journeyId },
+          select: { snapshot: true },
+        });
+        if (version === null) throw versionNotFound();
+        const { definition } = version.snapshot as JourneyVersionSnapshot;
+
+        const executions = await tx.execution.findMany({
+          where: { journeyVersionId: versionId },
+          select: { status: true, audienceUserId: true },
+        });
+        const steps = await tx.executionStep.findMany({
+          where: { execution: { journeyVersionId: versionId } },
+          select: { nodeId: true, status: true, output: true },
+        });
+
+        const statusCounts: Record<ExecutionStatus, number> = {
+          running: 0,
+          waiting: 0,
+          completed: 0,
+          failed: 0,
+          stopped: 0,
+        };
+        const audienceUserIds = new Set<string>();
+        for (const execution of executions) {
+          statusCounts[execution.status] += 1;
+          audienceUserIds.add(execution.audienceUserId);
+        }
+
+        return {
+          executionCount: executions.length,
+          audienceCount: audienceUserIds.size,
+          statusCounts,
+          nodes: aggregateNodeStats(definition.nodes, steps),
+        };
+      },
+      { isolationLevel: 'RepeatableRead' },
+    );
   }
 }

@@ -93,6 +93,45 @@ it('模拟经过的步骤带展示标记，文字与样式同时表达', () => {
   expect(article.getAttribute('data-simulation-state')).toBe('traversed');
 });
 
+it('只在传入进入次数时显示角标，0 值也显示', () => {
+  const props: NodeProps<JourneyCanvasFlowNode> = {
+    id: 'editor-node',
+    type: 'journey',
+    selected: false,
+    dragging: false,
+    isConnectable: true,
+    selectable: true,
+    deletable: true,
+    draggable: true,
+    zIndex: 0,
+    positionAbsoluteX: 0,
+    positionAbsoluteY: 0,
+    data: {
+      layoutDirection: 'vertical',
+      draftNode: {
+        id: 'editor-node',
+        type: 'start',
+        name: '开始',
+        position: { x: 0, y: 0 },
+        entryBehavior: 'product_viewed',
+      },
+    },
+  };
+  const view = render(<JourneyCanvasNode {...props} />);
+
+  // 编辑器不传进入次数：没有角标，也不把未读取的数据显示成 0。
+  expect(view.queryByText(/进入 \d+ 次/)).toBeNull();
+
+  props.data = { ...props.data, enteredCount: 0 };
+  view.rerender(<JourneyCanvasNode {...props} />);
+  expect(view.getByText('进入 0 次')).toBeTruthy();
+
+  props.data = { ...props.data, enteredCount: 12 };
+  view.rerender(<JourneyCanvasNode {...props} />);
+  expect(view.getByText('进入 12 次')).toBeTruthy();
+  expect(view.queryByText('进入 0 次')).toBeNull();
+});
+
 it('行为等待节点提供等到行为与超时两个不同连接点', () => {
   const props: NodeProps<JourneyCanvasFlowNode> = {
     id: 'wait-event',

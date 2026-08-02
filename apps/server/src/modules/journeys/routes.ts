@@ -9,6 +9,7 @@ import {
   journeyIdParamsSchema,
   journeyListQuerySchema,
   journeySimulationRequestSchema,
+  journeyStatsListQuerySchema,
   journeyUpdateSchema,
   journeyVersionListQuerySchema,
   journeyVersionParamsSchema,
@@ -60,6 +61,26 @@ export function registerJourneyRoutes(
       request.currentAccount!.id,
     );
     return reply.code(201).send({ data: journey });
+  });
+
+  // 旅程统计入口：跨活动列出已有发布版本的旅程，只读，不改变任何旅程状态。
+  app.get('/api/journey-stats', async (request) => {
+    const query = journeyStatsListQuerySchema.safeParse(request.query);
+    if (!query.success) {
+      const messages = getPaginationErrorMessages(query.error.issues);
+      if (query.error.issues.some((issue) => issue.path[0] === 'q')) {
+        messages.push('搜索词最多 100 个字符');
+      }
+      if (query.error.issues.some((issue) => issue.path[0] === 'campaignId')) {
+        messages.push('请选择有效的活动');
+      }
+      throw new ApiError(
+        400,
+        'BAD_REQUEST',
+        messages.length > 0 ? messages.join('；') : '请检查搜索词、活动和分页条件',
+      );
+    }
+    return service.listWithPublishedVersions(query.data);
   });
 
   app.get('/api/journeys/:id', async (request) => {
@@ -150,6 +171,13 @@ export function registerJourneyRoutes(
     if (!params.success) throw new ApiError(400, 'BAD_REQUEST', '版本链接无效');
 
     return { data: await versionService.get(params.data.id, params.data.versionId) };
+  });
+
+  app.get('/api/journeys/:id/versions/:versionId/stats', async (request) => {
+    const params = journeyVersionParamsSchema.safeParse(request.params);
+    if (!params.success) throw new ApiError(400, 'BAD_REQUEST', '版本链接无效');
+
+    return { data: await versionService.getStats(params.data.id, params.data.versionId) };
   });
 
   app.delete('/api/journeys/:id', async (request, reply) => {

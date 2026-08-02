@@ -3,6 +3,7 @@ import {
   journeyVersionDetailSchema,
   journeyVersionListResponseSchema,
   journeyVersionPublishSchema,
+  journeyVersionStatsResponseSchema,
   journeyVersionSummarySchema,
 } from './journey-version.js';
 
@@ -127,5 +128,53 @@ describe('旅程版本契约', () => {
       }).success,
     ).toBe(false);
     expect(journeyVersionListResponseSchema.safeParse({ data: [summary] }).success).toBe(false);
+  });
+
+  it('运行统计同时接受节点型计数对象与 null，缺少字段则拒绝', () => {
+    const stats = {
+      executionCount: 2,
+      audienceCount: 1,
+      statusCounts: { running: 0, waiting: 0, completed: 2, failed: 0, stopped: 0 },
+      nodes: [
+        {
+          nodeId: 'n-condition',
+          name: '价格判断',
+          nodeType: 'condition',
+          entered: 2,
+          completed: 2,
+          waiting: 0,
+          failed: 0,
+          stopped: 0,
+          conditionBranch: { met: 1, unmet: 1 },
+          waitOutcome: null,
+        },
+        {
+          nodeId: 'n-wait-event',
+          name: '等待购买',
+          nodeType: 'wait_for_event',
+          entered: 1,
+          completed: 1,
+          waiting: 0,
+          failed: 0,
+          stopped: 0,
+          conditionBranch: null,
+          waitOutcome: { matched: 1, timeout: 0 },
+        },
+      ],
+    };
+
+    expect(journeyVersionStatsResponseSchema.parse({ data: stats }).data).toEqual(stats);
+
+    // 节点类型与可空字段的关系不是契约能保证的，但字段本身不能省略，计数也不能为负。
+    for (const invalid of [
+      { ...stats, executionCount: -1 },
+      { ...stats, nodes: [{ ...stats.nodes[0], conditionBranch: undefined }] },
+      { ...stats, nodes: [{ ...stats.nodes[1], waitOutcome: { matched: 1 } }] },
+      { ...stats, nodes: [{ ...stats.nodes[0], nodeType: 'unknown' }] },
+      { ...stats, statusCounts: { running: 0, waiting: 0, completed: 2 } },
+      { ...stats, audienceCount: 1.5 },
+    ]) {
+      expect(journeyVersionStatsResponseSchema.safeParse({ data: invalid }).success).toBe(false);
+    }
   });
 });

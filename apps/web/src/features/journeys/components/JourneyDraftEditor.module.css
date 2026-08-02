@@ -497,6 +497,17 @@
   line-height: 20px;
 }
 
+.enteredBadge {
+  margin-inline-start: auto;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--ant-color-fill-secondary, #f0f0f0);
+  color: var(--ant-color-text-secondary, #666);
+  font-size: 11px;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
 .nodeName {
   min-width: 0;
   font-size: 15px;

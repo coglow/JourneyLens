@@ -7,15 +7,19 @@ import {
   journeyListResponseSchema,
   journeySimulationRequestSchema,
   journeySimulationResponseSchema,
+  journeyStatsListQuerySchema,
+  journeyStatsListResponseSchema,
   journeyUpdateSchema,
   journeyVersionDetailResponseSchema,
   journeyVersionListQuerySchema,
   journeyVersionListResponseSchema,
   journeyVersionPublishSchema,
+  journeyVersionStatsResponseSchema,
   type JourneyCreateInput,
   type JourneyDraftDefinition,
   type JourneyListQueryInput,
   type JourneySimulationInput,
+  type JourneyStatsListQueryInput,
   type JourneyUpdateInput,
   type JourneyVersionPublishInput,
   type PaginationQueryInput,
@@ -50,6 +54,45 @@ export async function getJourneys(
       ...(signal ? { signal } : {}),
     },
     journeyListResponseSchema,
+  );
+}
+
+/** 旅程统计入口：跨活动读取有发布版本的旅程，最新版本由服务端按版本号给出。 */
+export async function getJourneyStatsList(
+  input: JourneyStatsListQueryInput = {},
+  signal?: AbortSignal,
+) {
+  const result = journeyStatsListQuerySchema.safeParse(input);
+  if (!result.success) {
+    const messages = getPaginationErrorMessages(result.error.issues);
+    if (result.error.issues.some((issue) => issue.path[0] === 'q')) {
+      messages.push('搜索词最多 100 个字符');
+    }
+    if (result.error.issues.some((issue) => issue.path[0] === 'campaignId')) {
+      messages.push('请选择有效的活动');
+    }
+    throw new ApiError(
+      undefined,
+      'BAD_REQUEST',
+      messages.length > 0 ? messages.join('；') : '请检查搜索词、活动和分页条件',
+    );
+  }
+
+  const query = result.data;
+  const params: Record<string, string | number> = {};
+  if (query.q) params.q = query.q;
+  if (query.campaignId) params.campaignId = query.campaignId;
+  if (query.page !== 1) params.page = query.page;
+  if (query.pageSize !== 10) params.pageSize = query.pageSize;
+
+  return request(
+    {
+      url: '/journey-stats',
+      method: 'GET',
+      params,
+      ...(signal ? { signal } : {}),
+    },
+    journeyStatsListResponseSchema,
   );
 }
 
@@ -144,6 +187,18 @@ export async function getJourneyVersion(id: string, versionId: string, signal?: 
       ...(signal ? { signal } : {}),
     },
     journeyVersionDetailResponseSchema,
+  );
+  return body.data;
+}
+
+export async function getJourneyVersionStats(id: string, versionId: string, signal?: AbortSignal) {
+  const body = await request(
+    {
+      url: `/journeys/${encodeURIComponent(id)}/versions/${encodeURIComponent(versionId)}/stats`,
+      method: 'GET',
+      ...(signal ? { signal } : {}),
+    },
+    journeyVersionStatsResponseSchema,
   );
   return body.data;
 }

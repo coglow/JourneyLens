@@ -105,10 +105,11 @@ describe('登录与会话路由', () => {
     expect(router.state.location.pathname).toBe('/campaigns');
     expect(screen.getByRole('banner').textContent).toContain('JourneyLens');
     expect(screen.getByRole('menuitem', { name: '活动' })).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: '旅程统计' })).toBeTruthy();
     expect(screen.getByRole('menuitem', { name: '分群' })).toBeTruthy();
     expect(screen.getByRole('menuitem', { name: '执行记录' })).toBeTruthy();
     expect(screen.getByRole('menuitem', { name: '行为记录' })).toBeTruthy();
-    expect(screen.getAllByRole('menuitem')).toHaveLength(4);
+    expect(screen.getAllByRole('menuitem')).toHaveLength(5);
     expect(await screen.findByText('暂无活动')).toBeTruthy();
     expect(mock.history.get.map((request) => request.url)).toContain('/campaigns');
     expect(mock.history.post[0]?.url).toBe('/auth/login');
@@ -149,6 +150,22 @@ describe('登录与会话路由', () => {
     expect(screen.getByRole('button', { name: '展开侧栏' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '展开侧栏' }));
     expect(screen.getByRole('button', { name: '折叠侧栏' })).toBeTruthy();
+  });
+
+  it('菜单可进入旅程统计，标题、面包屑与工作区名称一致', async () => {
+    mock.onGet('/userinfo').replyOnce(200, { data: account });
+    mock.onGet('/journey-stats').replyOnce(200, {
+      data: [],
+      page: { page: 1, pageSize: 10, total: 0 },
+    });
+    renderApp('/journey-stats');
+
+    expect(await screen.findByRole('heading', { name: '旅程统计' })).toBeTruthy();
+    const breadcrumb = screen.getByRole('navigation', { name: '当前位置' });
+    expect(breadcrumb.textContent).toContain('旅程统计');
+    expect(screen.getByRole('main', { name: '旅程统计工作区' })).toBeTruthy();
+    expect(await screen.findByText('暂无已发布版本的旅程')).toBeTruthy();
+    expect(mock.history.get.map((request) => request.url)).toContain('/journey-stats');
   });
 
   it('错误密码展示服务端的实际错误', async () => {

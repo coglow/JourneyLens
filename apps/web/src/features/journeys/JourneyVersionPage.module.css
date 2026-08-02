@@ -2,10 +2,11 @@
   position: fixed;
   inset: 0;
   display: flex;
+  min-height: 0;
   flex-direction: column;
-  gap: 16px;
-  overflow: auto;
-  padding: 0 24px 24px;
+  gap: 12px;
+  overflow: hidden;
+  padding: 0 24px 16px;
   background: var(--ant-color-bg-layout, #f5f5f5);
 }
 
@@ -13,53 +14,120 @@
   display: flex;
   flex: 0 0 auto;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
   margin-inline: -24px;
-  padding: 20px 24px;
+  padding: 12px 24px;
   border-bottom: 1px solid var(--ant-color-border-secondary, #f0f0f0);
   background: var(--ant-color-bg-container, #fff);
 }
 
-.metadata,
-.notes {
+.metadata {
   display: flex;
   min-width: 0;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px 20px;
+  gap: 4px 20px;
   overflow-wrap: anywhere;
 }
 
-.readOnlyNote {
+.readOnlyNote,
+.audienceSummary {
   display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  padding-inline-start: 20px;
+  padding-inline-start: 16px;
   border-inline-start: 1px solid var(--ant-color-border, #d9d9d9);
   color: var(--ant-color-text-secondary, #666);
   font-size: 13px;
 }
 
 .audienceSummary {
-  display: flex;
-  min-width: 0;
-  flex-wrap: wrap;
-  align-items: center;
   gap: 8px 12px;
-  padding-inline-start: 20px;
-  border-inline-start: 1px solid var(--ant-color-border, #d9d9d9);
 }
 
 .audienceName {
   overflow-wrap: anywhere;
 }
 
-.workspace {
-  display: grid;
-  min-height: 440px;
-  flex: 1 0 440px;
-  grid-template-columns: minmax(0, 1fr) 360px;
+.description {
+  max-width: min(40vw, 480px);
+}
+
+.viewCard {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+  border-radius: 8px;
+  background: var(--ant-color-bg-container, #fff);
+}
+
+.tabs {
+  flex: 0 0 auto;
+}
+
+.tabs :global(.ant-tabs-nav) {
+  margin: 0;
+  padding-inline: 16px;
+}
+
+.tabs :global(.ant-tabs-content-holder) {
+  display: none;
+}
+
+.searchBar {
+  display: flex;
+  min-height: 58px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
   gap: 16px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+}
+
+.searchInput {
+  width: min(100%, 420px);
+}
+
+.viewArea {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  padding: 12px 16px 16px;
+}
+
+.viewPane {
+  position: absolute;
+  inset: 12px 16px 16px;
+  display: none;
+}
+
+.activeView {
+  display: block;
+}
+
+.flowView {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  flex-direction: column;
+}
+
+.flowWorkspace {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 360px);
+  gap: 12px;
 }
 
 .canvasPanel {
@@ -75,26 +143,25 @@
 
 .canvasHeader {
   display: flex;
-  min-height: 56px;
+  min-height: 44px;
   flex: 0 0 auto;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 4px 20px;
-  padding: 12px 20px;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 8px 14px;
   border-bottom: 1px solid var(--ant-color-border-secondary, #f0f0f0);
 }
 
 .canvasHeader > :last-child {
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .canvas {
   position: relative;
   min-height: 0;
-  flex: 1;
+  flex: 1 1 auto;
 }
 
-/* 详情独立滚动，长正文不会撑高工作区或挤小画布。 */
 .detailPanel {
   display: flex;
   min-width: 0;
@@ -103,17 +170,66 @@
   overflow: hidden;
 }
 
+.detailPanel :global(.ant-card-head) {
+  min-height: 48px;
+  flex: 0 0 auto;
+}
+
 .stepIcon {
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  width: 44px;
-  height: 44px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   background: var(--ant-color-primary-bg, #e6f4ff);
   color: var(--ant-color-primary, #1677ff);
-  font-size: 22px;
+  font-size: 18px;
+}
+
+.stepStatsGrid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  border-top: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+  border-inline-start: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+}
+
+.stepStat:nth-child(-n + 2) {
+  grid-column: span 3;
+}
+
+.stepStat:nth-child(n + 3) {
+  grid-column: span 2;
+}
+
+.stepStat,
+.branchStats {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border-inline-end: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+  border-bottom: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+}
+
+.stepStatValue {
+  overflow-wrap: anywhere;
+}
+
+.branchStats {
+  border: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+  border-radius: 6px;
+}
+
+.configCollapse {
+  flex: 0 0 auto;
+}
+
+.configCollapse :global(.ant-collapse-content-box) {
+  max-height: 220px;
+  overflow: auto;
 }
 
 .detailValue,
@@ -124,39 +240,76 @@
 }
 
 .detailValue {
-  font-size: 15px;
+  font-size: 14px;
 }
 
 .messageBody {
-  width: 100%;
-  padding: 16px;
+  max-height: 120px;
+  overflow: auto;
+  padding: 12px;
   border-radius: 8px;
   background: var(--ant-color-fill-quaternary, #fafafa);
-  line-height: 1.8;
+  line-height: 1.7;
 }
 
-@media (max-width: 960px) {
-  .workspace {
-    flex: 0 0 auto;
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: 440px auto;
+.flowNote {
+  flex: 0 0 auto;
+  padding-top: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+@media (max-width: 1199px) {
+  .topbar {
+    gap: 6px;
+    padding-block: 8px;
   }
 
-  .detailPanel {
-    max-height: 480px;
+  .flowWorkspace {
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 320px);
   }
 }
 
-@media (max-width: 600px) {
+@media (max-width: 800px) {
   .page {
-    gap: 12px;
+    gap: 8px;
     padding: 0 12px 12px;
   }
 
   .topbar {
-    gap: 12px;
     margin-inline: -12px;
-    padding: 16px 12px;
+    padding-inline: 12px;
+  }
+
+  .description {
+    max-width: 100%;
+  }
+
+  .searchBar {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .searchInput {
+    width: 100%;
+  }
+
+  .viewArea {
+    padding: 8px;
+  }
+
+  .viewPane {
+    inset: 8px;
+  }
+
+  .flowWorkspace {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(200px, 1fr) minmax(180px, 0.8fr);
+  }
+
+  .metadata {
+    gap: 4px 12px;
   }
 
   .audienceSummary,

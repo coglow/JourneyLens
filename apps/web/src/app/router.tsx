@@ -8,6 +8,7 @@ import { EventDetailPage } from '@/features/events/EventDetailPage';
 import { EventsPage } from '@/features/events/EventsPage';
 import { JourneyDetailPage } from '@/features/journeys/JourneyDetailPage';
 import { JourneyEditorPage } from '@/features/journeys/JourneyEditorPage';
+import { JourneyStatsPage } from '@/features/journeys/JourneyStatsPage';
 import { JourneyVersionPage } from '@/features/journeys/JourneyVersionPage';
 import { SegmentDetailPage } from '@/features/segments/SegmentDetailPage';
 import { SegmentsPage } from '@/features/segments/SegmentsPage';
@@ -29,6 +30,7 @@ export const appRoutes: RouteObject[] = [
         children: [
           { path: 'campaigns', element: <CampaignsPage /> },
           { path: 'campaigns/:id', element: <CampaignDetailPage /> },
+          { path: 'journey-stats', element: <JourneyStatsPage /> },
           { path: 'journeys/:id', element: <JourneyDetailPage /> },
           { path: 'executions', element: <ExecutionsPage /> },
           { path: 'executions/:id', element: <ExecutionDetailPage /> },

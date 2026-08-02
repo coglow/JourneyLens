@@ -20,6 +20,7 @@ type PagedSelectProps = {
 
 const OPTION_PAGE_SIZE = 20 as const;
 
+/** 分页搜索下拉：只通过 loadPage 取选项，选项总数没有上限时滚到底继续加载。 */
 export function PagedSelect({
   id,
   resourceKey,
@@ -34,7 +35,7 @@ export function PagedSelect({
   const deferredSearch = useDeferredValue(search.trim());
 
   const query = useInfiniteQuery({
-    queryKey: ['execution-filter-options', resourceKey, deferredSearch],
+    queryKey: ['paged-select-options', resourceKey, deferredSearch],
     queryFn: ({ pageParam }) =>
       loadPage({
         ...(deferredSearch ? { q: deferredSearch } : {}),

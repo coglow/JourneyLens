@@ -441,7 +441,7 @@ describe('活动旅程管理', () => {
     expect(await screen.findByText('首次进入时发送欢迎内容')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '返回列表' }));
     await waitFor(() => expect(router.state.location.pathname).toBe(`/campaigns/${campaignId}`));
-    expect(await screen.findByRole('heading', { name: '春季活动' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: /春季活动/ })).toBeTruthy();
   }, 15_000);
 
   it('初次读取旅程失败时显示重试，不显示成空列表', async () => {

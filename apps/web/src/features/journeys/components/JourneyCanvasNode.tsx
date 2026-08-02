@@ -28,6 +28,8 @@ export type JourneyCanvasFlowNode = Node<
     layoutDirection: JourneyLayoutDirection;
     /** 仅用于展示本次模拟经过的步骤，不写入草稿。 */
     simulationState?: 'traversed';
+    /** 已发布版本页展示的进入次数；未读到统计时不传，编辑器也不传。 */
+    enteredCount?: number;
   },
   'journey'
 >;
@@ -110,6 +112,10 @@ export function JourneyCanvasNode({ id, data, selected }: NodeProps<JourneyCanva
           {meta.icon}
         </span>
         <span className={styles.nodeTypeLabel}>{meta.label}</span>
+        {/* 角标直接写出“进入 N 次”，避免被读成消息发送条数；0 也显示，与统计表保持一致。 */}
+        {data.enteredCount !== undefined && (
+          <span className={styles.enteredBadge}>进入 {data.enteredCount} 次</span>
+        )}
       </div>
       <Typography.Text strong className={styles.nodeName ?? ''} ellipsis>
         {node.name}

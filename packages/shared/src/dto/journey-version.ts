@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { journeyDraftDefinitionSchema } from '../journeys/journey-draft.js';
+import { JOURNEY_NODE_TYPES, journeyDraftDefinitionSchema } from '../journeys/journey-draft.js';
 import { segmentRuleSchema } from '../segments/segment-rule.js';
 import {
   JOURNEY_DESCRIPTION_MAX_LENGTH,
@@ -68,8 +68,57 @@ export const journeyVersionParamsSchema = z.object({ id: z.uuid(), versionId: z.
 
 export const journeyVersionListQuerySchema = paginationQuerySchema;
 
+/**
+ * 运行统计：节点指标以步骤记录为唯一来源，版本汇总来自执行记录，两者口径不同但同一次读取。
+ * 条件分支与等待结果只在对应节点类型下给出计数对象，其他类型显式为 null，不用省略字段表达不适用。
+ */
+const branchCountSchema = z
+  .object({ met: z.number().int().min(0), unmet: z.number().int().min(0) })
+  .strict();
+
+const waitOutcomeCountSchema = z
+  .object({ matched: z.number().int().min(0), timeout: z.number().int().min(0) })
+  .strict();
+
+const countSchema = z.number().int().min(0);
+
+export const journeyVersionNodeStatsSchema = z
+  .object({
+    nodeId: z.string().min(1).max(64),
+    name: z.string().min(1).max(120),
+    nodeType: z.enum(JOURNEY_NODE_TYPES),
+    entered: countSchema,
+    completed: countSchema,
+    waiting: countSchema,
+    failed: countSchema,
+    stopped: countSchema,
+    conditionBranch: branchCountSchema.nullable(),
+    waitOutcome: waitOutcomeCountSchema.nullable(),
+  })
+  .strict();
+
+export const journeyVersionStatsSchema = z
+  .object({
+    executionCount: countSchema,
+    audienceCount: countSchema,
+    statusCounts: z
+      .object({
+        running: countSchema,
+        waiting: countSchema,
+        completed: countSchema,
+        failed: countSchema,
+        stopped: countSchema,
+      })
+      .strict(),
+    nodes: z.array(journeyVersionNodeStatsSchema),
+  })
+  .strict();
+
 export const journeyVersionDetailResponseSchema = z
   .object({ data: journeyVersionDetailSchema })
+  .strict();
+export const journeyVersionStatsResponseSchema = z
+  .object({ data: journeyVersionStatsSchema })
   .strict();
 export const journeyVersionListResponseSchema = paginatedListSchema(journeyVersionSummarySchema);
 
@@ -79,3 +128,5 @@ export type JourneyVersionSnapshot = z.infer<typeof journeyVersionSnapshotSchema
 export type JourneyVersionSummary = z.infer<typeof journeyVersionSummarySchema>;
 export type JourneyVersionDetail = z.infer<typeof journeyVersionDetailSchema>;
 export type JourneyVersionListQuery = z.output<typeof journeyVersionListQuerySchema>;
+export type JourneyVersionNodeStats = z.infer<typeof journeyVersionNodeStatsSchema>;
+export type JourneyVersionStats = z.infer<typeof journeyVersionStatsSchema>;

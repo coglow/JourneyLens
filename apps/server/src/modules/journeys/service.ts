@@ -9,6 +9,8 @@ import {
   type JourneyListQuery,
   type JourneySimulation,
   type JourneySimulationResult,
+  type JourneyStatsItem,
+  type JourneyStatsListQuery,
   type JourneyUpdate,
   type SegmentRule,
 } from '@journeylens/shared';
@@ -39,8 +41,21 @@ const journeyListItemSelect = {
   _count: { select: { versions: true } },
 } as const;
 
+// 统计入口只需要所属活动和最新发布版本的标识，不读取快照，避免把大 JSON 带进列表。
+const journeyStatsItemSelect = {
+  id: true,
+  name: true,
+  campaign: { select: { id: true, name: true, status: true } },
+  versions: {
+    orderBy: { versionNumber: 'desc' },
+    take: 1,
+    select: { id: true, versionNumber: true, publishedAt: true },
+  },
+} as const;
+
 type JourneyDetailRecord = Prisma.JourneyGetPayload<{ select: typeof journeyDetailSelect }>;
 type JourneyListItemRecord = Prisma.JourneyGetPayload<{ select: typeof journeyListItemSelect }>;
+type JourneyStatsItemRecord = Prisma.JourneyGetPayload<{ select: typeof journeyStatsItemSelect }>;
 
 function serializeDetail(record: JourneyDetailRecord): JourneyDetail {
   return {
@@ -68,6 +83,21 @@ function serializeListItem(record: JourneyListItemRecord): JourneyListItem {
     // 版本数量只用于判断删除是否可用，不把关联查询结构带进响应。
     versionCount: _count.versions,
     updatedAt: record.updatedAt.toISOString(),
+  };
+}
+
+function serializeStatsItem(record: JourneyStatsItemRecord): JourneyStatsItem {
+  // 查询条件已限定存在发布版本，且 take:1 与条件在同一条查询里取值，因此这里一定有最新版本。
+  const latestVersion = record.versions[0]!;
+  return {
+    id: record.id,
+    name: record.name,
+    campaign: record.campaign,
+    latestVersion: {
+      id: latestVersion.id,
+      versionNumber: latestVersion.versionNumber,
+      publishedAt: latestVersion.publishedAt.toISOString(),
+    },
   };
 }
 
@@ -144,6 +174,36 @@ export class JourneyService {
 
     return {
       data: records.map(serializeListItem),
+      page: { page, pageSize: input.pageSize, total },
+    };
+  }
+
+  /**
+   * 旅程统计入口：跨活动列出已有发布版本的旅程，并带出所属活动与最新发布版本。
+   * 只按旅程名称搜索（活动内旅程列表是名称 + 说明），未发布旅程不出现，执行记录数量不参与筛选。
+   */
+  async listWithPublishedVersions(input: JourneyStatsListQuery) {
+    const where: Prisma.JourneyWhereInput = {
+      versions: { some: {} },
+      ...(input.campaignId === undefined ? {} : { campaignId: input.campaignId }),
+      ...(input.q === undefined
+        ? {}
+        : { name: { contains: escapeLikePattern(input.q), mode: 'insensitive' } }),
+    };
+    const total = await this.prisma.journey.count({ where });
+    // 删除或筛选后页码可能越界，直接落到最后一个有效页；空数据时回到第 1 页。
+    const lastPage = Math.max(1, Math.ceil(total / input.pageSize));
+    const page = Math.min(input.page, lastPage);
+    const records = await this.prisma.journey.findMany({
+      where,
+      skip: (page - 1) * input.pageSize,
+      take: input.pageSize,
+      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+      select: journeyStatsItemSelect,
+    });
+
+    return {
+      data: records.map(serializeStatsItem),
       page: { page, pageSize: input.pageSize, total },
     };
   }

@@ -30,6 +30,7 @@ import {
 import { Link, useLocation, useSearchParams } from 'react-router';
 import { ListFilterBar, listFilterColProps } from '@/components/ListFilterBar';
 import { ListPageLayout } from '@/components/ListPageLayout';
+import { PagedSelect } from '@/components/PagedSelect';
 import { PageHeader } from '@/components/PageHeader';
 import { useListPagination, useSyncListPage } from '@/hooks/use-list-pagination';
 import { getApiErrorMessage, isSessionExpired } from '@/services/api';
@@ -39,7 +40,6 @@ import { getJourney, getJourneys } from '@/services/journeys';
 import { formatDateTime } from '@/utils/format-date-time';
 import { executionQueryKeys } from './execution-queries';
 import { executionStatusBadges, executionStatusLabels } from './execution-status';
-import { PagedSelect } from './components/PagedSelect';
 
 type DateTimeRange = [Dayjs | null, Dayjs | null] | null;
 
