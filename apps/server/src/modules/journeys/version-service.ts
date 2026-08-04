@@ -3,6 +3,7 @@ import {
   canEditCampaign,
   getJourneyDraftWarnings,
   journeyDraftDefinitionSchema,
+  journeyEventHasProductId,
   journeyVersionSnapshotMetaSchema,
   type ExecutionStatus,
   type JourneyVersionDetail,
@@ -179,6 +180,27 @@ export class JourneyVersionService {
       }
       if (getJourneyDraftWarnings(definition.data).length > 0) {
         throw new ApiError(409, 'JOURNEY_DRAFT_INCOMPLETE', '请先补齐流程连接');
+      }
+
+      // 每次实际生成发布版本前，在活动锁内确认目标与开始行为兼容：开启同商品时，
+      // 开始行为必须带商品资料，否则该旅程的参与无法判断目标是否达成。
+      const campaignGoal = await tx.campaign.findUnique({
+        where: { id: located.campaignId },
+        select: { goalEventType: true, goalSameProduct: true },
+      });
+      if (campaignGoal === null) throw new ApiError(404, 'NOT_FOUND', '活动不存在');
+      const startNode = definition.data.nodes.find((node) => node.type === 'start');
+      if (
+        campaignGoal.goalEventType !== null &&
+        campaignGoal.goalSameProduct &&
+        startNode !== undefined &&
+        !journeyEventHasProductId(startNode.entryBehavior)
+      ) {
+        throw new ApiError(
+          409,
+          'CAMPAIGN_GOAL_PRODUCT_REQUIRED',
+          '活动目标要按同一件商品算，但这个旅程的开始步骤没有商品，无法判断是否达成。请把开始步骤换成带商品的类型，或取消“只算同一件商品”。',
+        );
       }
 
       const latest = await tx.journeyVersion.findFirst({

@@ -539,7 +539,7 @@ describe('分群 API', () => {
       data: {
         id: campaignId,
         name: '引用活动',
-        status: 'scheduled',
+        status: 'running',
         createdById: testAccountId,
       },
     });
@@ -583,12 +583,12 @@ describe('分群 API', () => {
       expect(usages.json().data).toEqual([
         {
           journey: { id: '00000000-0000-4000-8202-000000000502', name: '引用旅程二' },
-          campaign: { id: campaignId, name: '引用活动', status: 'scheduled' },
+          campaign: { id: campaignId, name: '引用活动', status: 'running' },
           updatedAt: new Date(testNow.getTime() + 2000).toISOString(),
         },
         {
           journey: { id: '00000000-0000-4000-8202-000000000501', name: '引用旅程一' },
-          campaign: { id: campaignId, name: '引用活动', status: 'scheduled' },
+          campaign: { id: campaignId, name: '引用活动', status: 'running' },
           updatedAt: new Date(testNow.getTime() + 1000).toISOString(),
         },
       ]);

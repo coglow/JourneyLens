@@ -25,6 +25,7 @@ import { PageHeader } from '@/components/PageHeader';
 import { ApiError, getApiErrorMessage, isSessionExpired } from '@/services/api';
 import { getExecutionTrace } from '@/services/executions';
 import { formatDateTime } from '@/utils/format-date-time';
+import { campaignGoalText } from '@/features/campaigns/campaign-goal';
 import { formatWaitDuration } from '@/features/journeys/journey-wait';
 import { executionQueryKeys } from './execution-queries';
 import { executionStatusBadges, executionStatusLabels } from './execution-status';
@@ -49,6 +50,8 @@ function readReturnTo(state: unknown): string {
 function outcomeText(trace: ExecutionTrace): string {
   if (trace.status === 'failed') return trace.failureReason ?? '执行未能继续，请查看失败步骤。';
   if (trace.status === 'stopped') return '活动已停止，尚未结束的步骤已终止。';
+  // 达成目标是“已完成”的一种，但结束原因来自目标事实，不来自结束节点。
+  if (trace.goal?.reachedAt != null) return '目标已达成，已退出旅程。';
   if (trace.status === 'waiting')
     return `正在「${trace.currentNode?.name ?? '等待步骤'}」等待，符合条件后继续。`;
   if (trace.status === 'running') return `正在运行「${trace.currentNode?.name ?? '开始步骤'}」。`;
@@ -99,6 +102,61 @@ export function ExecutionDetailPage() {
   const returnTo = readReturnTo(location.state);
   const active = trace?.status === 'running' || trace?.status === 'waiting';
   const deadline = trace?.steps.find((step) => step.status === 'waiting')?.deadlineAt;
+
+  // 目标证据只读已保存的事实：配置来自活动固定目标，达成时间来自目标行为。
+  const goal = trace?.goal ?? null;
+  const goalEvent = goal?.event ?? null;
+  const goalReached = goal?.reachedAt != null;
+  const goalItems =
+    goal === null
+      ? []
+      : [
+          { key: 'target', label: '目标', children: campaignGoalText(goal) },
+          {
+            key: 'reached',
+            label: '达成情况',
+            children: goal.reachedAt === null ? '尚未达成' : '已达成',
+          },
+          ...(goal.reachedAt === null
+            ? []
+            : [
+                {
+                  key: 'reachedAt',
+                  label: '目标行为接收时间',
+                  children: formatDateTime(goal.reachedAt),
+                },
+              ]),
+          ...(trace?.endedAt == null
+            ? []
+            : [
+                {
+                  key: 'endedAt',
+                  label: '执行结束时间',
+                  children: formatDateTime(trace.endedAt),
+                },
+              ]),
+          ...(goalEvent === null
+            ? []
+            : [
+                {
+                  key: 'eventType',
+                  label: '达成行为',
+                  children: <Tag color="blue">{JOURNEY_EVENT_TYPE_LABELS[goalEvent.type]}</Tag>,
+                },
+                ...journeyEventFields(goalEvent.type).flatMap((field) => {
+                  const value = goalEvent.payload[field.key];
+                  return value == null
+                    ? []
+                    : [
+                        {
+                          key: field.key,
+                          label: field.label,
+                          children: eventValueText(field, value),
+                        },
+                      ];
+                }),
+              ]),
+        ];
 
   return (
     <section aria-label="执行轨迹" className={styles.page}>
@@ -212,7 +270,8 @@ export function ExecutionDetailPage() {
                             {formatDateTime(trace.version.publishedAt)}
                           </Descriptions.Item>
                           <Descriptions.Item label={active ? '当前步骤' : '结束于'}>
-                            {trace.currentNode?.name ?? '尚未开始'}
+                            {/* 目标退出保留原指针；指针为空时说明没有记录位置，不断言从未执行。 */}
+                            {trace.currentNode?.name ?? (goalReached ? '未记录位置' : '尚未开始')}
                           </Descriptions.Item>
                         </Descriptions>
                       }
@@ -238,6 +297,15 @@ export function ExecutionDetailPage() {
                   )}
                 </div>
               </div>
+              {goalItems.length > 0 && (
+                <Descriptions
+                  className={styles.goal ?? ''}
+                  title="活动目标"
+                  size="small"
+                  column={{ xs: 1, sm: 2 }}
+                  items={goalItems}
+                />
+              )}
             </Card>
             <Card styles={{ body: { padding: '0 24px 20px' } }}>
               <Tabs
@@ -252,6 +320,7 @@ export function ExecutionDetailPage() {
                         steps={trace.steps}
                         audienceName={trace.audience.displayName}
                         entryEvidence={trace.entryEvidence}
+                        goalReached={goalReached}
                       />
                     ),
                   },

@@ -32,6 +32,8 @@ const campaign = {
   createdAt: '2026-07-17T08:00:00.000Z',
   updatedAt: '2026-07-17T08:00:00.000Z',
   createdBy: { id: account.id, displayName: account.displayName },
+  goal: null,
+  goalEditable: true,
 };
 
 const firstItem = {

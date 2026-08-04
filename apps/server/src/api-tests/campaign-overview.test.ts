@@ -178,6 +178,7 @@ describe('活动运行概览 API', () => {
           executionCount: 5,
           audienceCount: 2,
           statusCounts: { running: 1, waiting: 1, completed: 1, failed: 1, stopped: 1 },
+          goalReachedCount: null,
         },
       });
       expect(await db.prisma.execution.count()).toBe(executionCountBeforeRead);
@@ -215,6 +216,7 @@ describe('活动运行概览 API', () => {
         executionCount: 0,
         audienceCount: 0,
         statusCounts: { running: 0, waiting: 0, completed: 0, failed: 0, stopped: 0 },
+        goalReachedCount: null,
       });
 
       const invalid = await getOverview(app, cookie, invalidId);

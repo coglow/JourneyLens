@@ -26,7 +26,6 @@ const campaignId = '00000000-0000-4000-8600-000000000001';
 const emptyCampaignId = '00000000-0000-4000-8600-000000000002';
 const unpublishedCampaignId = '00000000-0000-4000-8600-000000000003';
 const draftOnlyCampaignId = '00000000-0000-4000-8600-000000000004';
-const scheduledCampaignId = '00000000-0000-4000-8600-000000000005';
 const journeyId = '00000000-0000-4000-8601-000000000001';
 const unpublishedJourneyId = '00000000-0000-4000-8601-000000000002';
 const draftJourneyId = '00000000-0000-4000-8601-000000000003';
@@ -66,7 +65,7 @@ const completeDefinition = definitionWithBody('已发布正文');
 
 async function seedCampaign(
   id = campaignId,
-  status: 'draft' | 'scheduled' | 'paused' | 'running' | 'stopped' = 'draft',
+  status: 'draft' | 'paused' | 'running' | 'stopped' = 'draft',
   name = '启停验收活动',
 ): Promise<void> {
   await db.prisma.campaign.create({
@@ -321,7 +320,6 @@ describe('活动启停', () => {
     await seedJourney();
     await seedVersion();
     await seedCampaign(emptyCampaignId, 'draft', '草稿活动');
-    await seedCampaign(scheduledCampaignId, 'scheduled', '已排期活动');
 
     const { app } = makeApp(db);
     try {
@@ -352,13 +350,6 @@ describe('活动启停', () => {
       expect(draftStop.json().error).toMatchObject({
         code: 'CAMPAIGN_INVALID_TRANSITION',
         message: '只有进行中或已暂停的活动可以停止',
-      });
-
-      const scheduledStart = await startCampaign(app, cookie, scheduledCampaignId);
-      expect(scheduledStart.statusCode).toBe(409);
-      expect(scheduledStart.json().error).toMatchObject({
-        code: 'CAMPAIGN_INVALID_TRANSITION',
-        message: '当前活动不能启动，请刷新后查看',
       });
     } finally {
       await app.close();
@@ -582,7 +573,6 @@ describe('活动启停', () => {
     await seedJourney();
     await seedVersion();
     await seedCampaign(emptyCampaignId, 'draft', '草稿活动');
-    await seedCampaign(scheduledCampaignId, 'scheduled', '已排期活动');
 
     const { app } = makeApp(db);
     try {
@@ -649,14 +639,6 @@ describe('活动启停', () => {
         code: 'CAMPAIGN_INVALID_TRANSITION',
         message: '当前活动不能恢复，请刷新后查看',
       });
-
-      // 已排期不接受任何新动作。
-      for (const action of [pauseCampaign, resumeCampaign, stopCampaign]) {
-        const response = await action(app, cookie, scheduledCampaignId);
-        expect(response.statusCode).toBe(409);
-        expect(response.json().error.code).toBe('CAMPAIGN_INVALID_TRANSITION');
-      }
-      expect(await statusOf(scheduledCampaignId)).toBe('scheduled');
     } finally {
       await app.close();
     }

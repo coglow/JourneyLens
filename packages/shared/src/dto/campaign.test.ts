@@ -12,6 +12,7 @@ describe('活动运行概览契约', () => {
           executionCount: 3,
           audienceCount: 2,
           statusCounts: { running: 1, waiting: 0, completed: 1, failed: 0, stopped: 1 },
+          goalReachedCount: 0,
         },
       }).data.statusCounts,
     ).toEqual({ running: 1, waiting: 0, completed: 1, failed: 0, stopped: 1 });
@@ -23,6 +24,7 @@ describe('活动运行概览契约', () => {
           executionCount: 0,
           audienceCount: 0,
           statusCounts: { running: 0, waiting: 0, completed: 0, failed: 0, stopped: 0 },
+          goalReachedCount: null,
         },
       }).data.executionCount,
     ).toBe(0);
@@ -35,6 +37,7 @@ describe('活动运行概览契约', () => {
         executionCount: 1,
         audienceCount: 1,
         statusCounts: { running: 1, waiting: 0, completed: 0, failed: 0, stopped: 0 },
+        goalReachedCount: null,
       },
     };
 
@@ -58,5 +61,33 @@ describe('活动运行概览契约', () => {
         },
       }).success,
     ).toBe(false);
+    // 目标达成次数必须明确返回：省略字段不能用 0 或 null 代替。
+    expect(
+      campaignOverviewResponseSchema.safeParse({
+        data: {
+          campaignId,
+          executionCount: 0,
+          audienceCount: 0,
+          statusCounts: { running: 0, waiting: 0, completed: 0, failed: 0, stopped: 0 },
+        },
+      }).success,
+    ).toBe(false);
+  });
+
+  it('未设置目标返回 null，已设置但无人达成返回 0', () => {
+    const base = {
+      campaignId,
+      executionCount: 1,
+      audienceCount: 1,
+      statusCounts: { running: 0, waiting: 0, completed: 1, failed: 0, stopped: 0 },
+    };
+    expect(
+      campaignOverviewResponseSchema.parse({ data: { ...base, goalReachedCount: null } }).data
+        .goalReachedCount,
+    ).toBeNull();
+    expect(
+      campaignOverviewResponseSchema.parse({ data: { ...base, goalReachedCount: 0 } }).data
+        .goalReachedCount,
+    ).toBe(0);
   });
 });

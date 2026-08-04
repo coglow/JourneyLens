@@ -29,6 +29,8 @@ const draftCampaign = {
   createdAt: '2026-07-17T08:00:00.000Z',
   updatedAt: '2026-07-17T08:00:00.000Z',
   createdBy: { id: account.id, displayName: account.displayName },
+  goal: null,
+  goalEditable: true,
 };
 const runningCampaign = {
   ...draftCampaign,
@@ -51,6 +53,7 @@ const emptyOverview = {
   executionCount: 0,
   audienceCount: 0,
   statusCounts: { running: 0, waiting: 0, completed: 0, failed: 0, stopped: 0 },
+  goalReachedCount: null,
 };
 
 function errorBody(code: string, message: string) {
@@ -373,6 +376,38 @@ describe('活动详情启停', () => {
 
     expect(await screen.findByRole('button', { name: '停止活动' })).toBeDefined();
     expect(within(page()).queryByRole('button', { name: '编辑活动' })).toBeNull();
+  });
+
+  it('目标已固定时编辑抽屉只读展示，保存其他资料不提交目标', async () => {
+    const lockedGoalCampaign = {
+      ...pausedCampaign,
+      goal: { eventType: 'purchase_completed', sameProduct: true },
+      goalEditable: false,
+    };
+    const renamed = { ...lockedGoalCampaign, name: '改过名字的活动' };
+    mockDetailSequence([lockedGoalCampaign, renamed]);
+    mock.onPatch(`/campaigns/${campaignId}`).reply(200, { data: renamed });
+    renderDetail();
+
+    // 活动资料同样说明目标行为和商品范围。
+    expect((await screen.findAllByText('完成购买（只算同一件商品）')).length).toBeGreaterThan(0);
+    fireEvent.click(await screen.findByRole('button', { name: '编辑活动' }));
+    const drawer = await screen.findByRole('dialog', { name: '编辑活动' });
+    expect(within(drawer).getByText('已有发布旅程，目标不能修改')).toBeDefined();
+    // 目标已固定时不再提供可编辑的目标控件。
+    expect(within(drawer).queryByLabelText('活动目标')).toBeNull();
+
+    fireEvent.change(within(drawer).getByLabelText('活动名称'), {
+      target: { value: '改过名字的活动' },
+    });
+    fireEvent.click(within(drawer).getByRole('button', { name: '保存修改' }));
+
+    await waitFor(() => expect(mock.history.patch).toHaveLength(1));
+    expect(JSON.parse(String(mock.history.patch[0]?.data))).toEqual({
+      name: '改过名字的活动',
+      description: null,
+      budget: null,
+    });
   });
 
   it('启动成功后，先发出的旧详情读取不会把页面覆盖回草稿', async () => {

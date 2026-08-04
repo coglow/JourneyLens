@@ -14,6 +14,7 @@ const overview = {
   executionCount: 12,
   audienceCount: 5,
   statusCounts: { running: 1, waiting: 2, completed: 6, failed: 1, stopped: 2 },
+  goalReachedCount: 2,
 };
 
 let mock: MockAdapter;
@@ -45,7 +46,7 @@ afterEach(() => {
 describe('活动运行概览', () => {
   it('悬停标题旁的说明图标后才显示统计口径', async () => {
     const overviewHelp =
-      '按最近一次读取的执行记录统计，可刷新查看变化。点击状态数字查看执行记录；已完成表示流程结束。';
+      '按最近一次读取的执行记录统计，可刷新查看变化。点击状态数字查看执行记录；已完成包含流程结束和目标达成后退出。';
     mock.onGet(`/campaigns/${campaignId}/overview`).reply(200, { data: overview });
     renderSection();
 
@@ -116,6 +117,7 @@ describe('活动运行概览', () => {
         executionCount: 0,
         audienceCount: 0,
         statusCounts: { running: 0, waiting: 0, completed: 0, failed: 0, stopped: 0 },
+        goalReachedCount: null,
       },
     });
     renderSection();
@@ -125,5 +127,22 @@ describe('活动运行概览', () => {
     fireEvent.click(screen.getByRole('button', { name: /重\s*试/ }));
 
     expect(await screen.findByText('还没有执行记录')).toBeDefined();
+    // 未设置目标时没有“达成次数”的含义，不能显示成 0 次。
+    expect(screen.queryByText('目标达成次数')).toBeNull();
+  });
+
+  it('有目标时显示达成次数，包括真实的 0', async () => {
+    mock.onGet(`/campaigns/${campaignId}/overview`).reply(200, {
+      data: { ...overview, goalReachedCount: 0 },
+    });
+    renderSection();
+
+    expect(await screen.findByText('目标达成次数')).toBeDefined();
+    fireEvent.mouseEnter(screen.getByRole('button', { name: '目标达成次数说明' }));
+    expect(
+      await screen.findByText(
+        '同一用户多次参与分别计数；这是参与达成次数，不代表订单数或实际转化。',
+      ),
+    ).toBeDefined();
   });
 });

@@ -17,6 +17,7 @@ import {
   type CampaignTransition,
 } from '@/services/campaigns';
 import { formatDateTime } from '@/utils/format-date-time';
+import { campaignGoalText } from './campaign-goal';
 import { campaignQueryKeys } from './campaign-queries';
 import { campaignStatusBadges, campaignStatusLabels } from './campaign-status';
 import { CampaignFormDrawer } from './components/CampaignFormDrawer';
@@ -411,6 +412,9 @@ export function CampaignDetailPage() {
                   <Descriptions column={1} layout="horizontal" colon={false}>
                     <Descriptions.Item label="说明">
                       {campaign.description ?? '未填写'}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="目标">
+                      {campaign.goal === null ? '未设置目标' : campaignGoalText(campaign.goal)}
                     </Descriptions.Item>
                     <Descriptions.Item label="预算">
                       {campaign.budget?.amount ?? '未设置'}

@@ -12,6 +12,15 @@ import {
 import { ApiError } from '../../errors.js';
 import { CampaignService } from './service.js';
 
+function campaignBodyMessage(
+  issues: readonly { path: PropertyKey[]; code: string; message: string }[],
+) {
+  const goalIssue = issues.find(
+    (issue) => issue.path[0] === 'goal' && issue.code !== 'unrecognized_keys',
+  );
+  return goalIssue?.message ?? '请检查活动名称、说明、预算和目标';
+}
+
 export function registerCampaignRoutes(
   app: FastifyInstance,
   prisma: PrismaClient,
@@ -56,7 +65,7 @@ export function registerCampaignRoutes(
 
     const input = campaignUpdateSchema.safeParse(request.body);
     if (!input.success) {
-      throw new ApiError(400, 'BAD_REQUEST', '请检查活动名称、说明和预算');
+      throw new ApiError(400, 'BAD_REQUEST', campaignBodyMessage(input.error.issues));
     }
 
     const campaign = await service.update(params.data.id, input.data);
@@ -95,7 +104,7 @@ export function registerCampaignRoutes(
   app.post('/api/campaigns', async (request, reply) => {
     const input = campaignCreateSchema.safeParse(request.body);
     if (!input.success) {
-      throw new ApiError(400, 'BAD_REQUEST', '请检查活动名称、说明和预算');
+      throw new ApiError(400, 'BAD_REQUEST', campaignBodyMessage(input.error.issues));
     }
 
     const result = await service.create(input.data, request.currentAccount!.id);

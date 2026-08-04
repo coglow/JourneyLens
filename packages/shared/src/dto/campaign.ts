@@ -1,14 +1,7 @@
 import { z } from 'zod';
 import { paginatedListSchema, paginationQuerySchema } from './pagination.js';
 
-export const CAMPAIGN_STATUSES = [
-  'draft',
-  'scheduled',
-  'running',
-  'paused',
-  'ended',
-  'stopped',
-] as const;
+export const CAMPAIGN_STATUSES = ['draft', 'running', 'paused', 'stopped'] as const;
 
 const normalizedNameSchema = z
   .string()
@@ -36,11 +29,47 @@ export const campaignBudgetSchema = z
   .object({ amount: z.string().regex(/^\d{1,12}(?:\.\d{1,2})?$/) })
   .strict();
 
+/** 活动目标只接受这四类行为；其他行为类型不能作为目标。 */
+export const CAMPAIGN_GOAL_EVENT_TYPES = [
+  'purchase_completed',
+  'reservation_created',
+  'registration_completed',
+  'subscription_started',
+] as const;
+
+/** 只有带商品资料的两类行为可以要求“与进入行为同一商品”。 */
+export const CAMPAIGN_GOAL_PRODUCT_EVENT_TYPES = [
+  'purchase_completed',
+  'reservation_created',
+] as const;
+
+export const campaignGoalEventTypeSchema = z.enum(CAMPAIGN_GOAL_EVENT_TYPES, {
+  error: '目标只能选择完成购买、创建预约、完成注册或开通订阅',
+});
+
+/** 活动目标：达成一次即结束该次参与；同商品只能用于商品类目标。 */
+export const campaignGoalSchema = z
+  .object(
+    {
+      eventType: campaignGoalEventTypeSchema,
+      sameProduct: z.boolean({ error: '请确认是否要求同一商品' }),
+    },
+    { error: '活动目标内容无效' },
+  )
+  .strict()
+  .refine(
+    (goal) =>
+      !goal.sameProduct ||
+      (CAMPAIGN_GOAL_PRODUCT_EVENT_TYPES as readonly string[]).includes(goal.eventType),
+    { path: ['sameProduct'], message: '只有完成购买和创建预约可以要求同一商品' },
+  );
+
 export const campaignCreateSchema = z
   .object({
     name: normalizedNameSchema,
     description: normalizedDescriptionSchema,
     budget: campaignBudgetSchema.nullable().optional(),
+    goal: campaignGoalSchema.nullable().optional(),
   })
   .strict();
 
@@ -49,6 +78,8 @@ export const campaignUpdateSchema = z
     name: normalizedNameSchema.optional(),
     description: normalizedOptionalDescriptionSchema,
     budget: campaignBudgetSchema.nullable().optional(),
+    // 省略表示不改目标；null 表示清除；对象表示设置目标。
+    goal: campaignGoalSchema.nullable().optional(),
   })
   .strict()
   .refine((value) => Object.values(value).some((field) => field !== undefined));
@@ -123,6 +154,9 @@ export const campaignDetailSchema = campaignBaseSchema
     budget: campaignBudgetSchema.nullable(),
     createdAt: z.iso.datetime(),
     createdBy: campaignAccountRefSchema,
+    // 未设置目标时为 null；goalEditable 由服务端判断，前端不自行推断。
+    goal: campaignGoalSchema.nullable(),
+    goalEditable: z.boolean(),
   })
   .strict();
 
@@ -148,6 +182,8 @@ export const campaignOverviewResponseSchema = z
         executionCount: z.number().int().nonnegative(),
         audienceCount: z.number().int().nonnegative(),
         statusCounts: campaignOverviewStatusCountsSchema,
+        // null 只表示活动未设置目标；0 表示已设置但还没有已确认的达成。
+        goalReachedCount: z.number().int().nonnegative().nullable(),
       })
       .strict(),
   })
@@ -164,3 +200,5 @@ export type CampaignListQueryInput = z.input<typeof campaignListQuerySchema>;
 export type CampaignListItem = z.infer<typeof campaignListItemSchema>;
 export type CampaignDetail = z.infer<typeof campaignDetailSchema>;
 export type CampaignOverview = z.infer<typeof campaignOverviewResponseSchema>['data'];
+export type CampaignGoal = z.infer<typeof campaignGoalSchema>;
+export type CampaignGoalEventType = z.infer<typeof campaignGoalEventTypeSchema>;

@@ -165,6 +165,7 @@ describe('执行轨迹契约', () => {
         externalId: 'upstream:demo:eligible',
         displayName: '霖铃铃',
       },
+      goal: null,
       entryEvidence: { segment: null, values: [] },
       triggerEvent: {
         id: eventId,
@@ -194,6 +195,19 @@ describe('执行轨迹契约', () => {
       executionTraceSchema.safeParse({
         ...trace,
         entrySnapshot: { email: 'lin@example.com', attributes: { age: 32 } },
+      }).success,
+    ).toBe(false);
+    // 目标证据只接受四类目标行为和对应事实的组合。
+    expect(
+      executionTraceSchema.parse({
+        ...trace,
+        goal: { eventType: 'purchase_completed', sameProduct: true, reachedAt: null, event: null },
+      }).goal,
+    ).toEqual({ eventType: 'purchase_completed', sameProduct: true, reachedAt: null, event: null });
+    expect(
+      executionTraceSchema.safeParse({
+        ...trace,
+        goal: { eventType: 'product_viewed', sameProduct: false, reachedAt: null, event: null },
       }).success,
     ).toBe(false);
     const tooManySteps = Array.from({ length: 31 }, (_, index) => ({

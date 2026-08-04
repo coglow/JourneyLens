@@ -4,6 +4,7 @@ import {
   journeyDraftDefinitionSchema,
   journeyVersionSnapshotSchema,
   type JourneyDraftDefinition,
+  type JourneyEventType,
   type SegmentRule,
 } from '@journeylens/shared';
 import { testAccountId, type TestDatabase } from './test-database.js';
@@ -19,6 +20,7 @@ export interface TestJourneyOptions {
   entrySegment?: TestEntrySegment | null;
   campaignStatus?: 'draft' | 'running' | 'paused' | 'stopped';
   publishedAt?: Date;
+  campaignGoal?: { eventType: JourneyEventType; sameProduct?: boolean };
 }
 
 export interface TestJourney {
@@ -50,6 +52,12 @@ export async function publishTestJourney(
     data: {
       name: `测试活动 ${options.name}`,
       status: options.campaignStatus ?? 'running',
+      ...(options.campaignGoal === undefined
+        ? {}
+        : {
+            goalEventType: options.campaignGoal.eventType,
+            goalSameProduct: options.campaignGoal.sameProduct ?? false,
+          }),
       createdById: testAccountId,
     },
     select: { id: true },

@@ -216,14 +216,14 @@ describe('活动 API', () => {
           id: '00000000-0000-4000-8000-000000000102',
           name: '夏季活动',
           description: '带说明的活动',
-          status: 'scheduled',
+          status: 'running',
           createdById: testAccountId,
         },
         {
           id: '00000000-0000-4000-8000-000000000103',
           name: '秋季活动',
           description: null,
-          status: 'scheduled',
+          status: 'running',
           createdById: testAccountId,
         },
         {
@@ -256,7 +256,7 @@ describe('活动 API', () => {
 
       const filtered = await app.inject({
         method: 'GET',
-        url: '/api/campaigns?status=scheduled',
+        url: '/api/campaigns?status=running',
         headers: { cookie },
       });
       expect(filtered.json().page.total).toBe(2);
@@ -531,7 +531,7 @@ describe('活动 API', () => {
         description: '暂停期间补充说明',
       });
 
-      for (const status of ['running', 'stopped', 'scheduled', 'ended'] as const) {
+      for (const status of ['running', 'stopped'] as const) {
         await db.prisma.campaign.update({ where: { id }, data: { status } });
         const rejected = await patchCampaign(app, cookie, id, { name: `${status} 改名` });
         expect(rejected.statusCode).toBe(409);
@@ -577,14 +577,14 @@ describe('活动 API', () => {
       });
       expect(unauthenticated.statusCode).toBe(401);
 
-      const scheduled = await postCampaign(app, cookie, { name: '已排期活动' });
-      const scheduledId = scheduled.json().data.id as string;
+      const stopped = await postCampaign(app, cookie, { name: '已停止活动' });
+      const stoppedId = stopped.json().data.id as string;
       await db.prisma.campaign.update({
-        where: { id: scheduledId },
-        data: { status: 'scheduled' },
+        where: { id: stoppedId },
+        data: { status: 'stopped' },
       });
       // 活动存在但不是草稿：返回状态不允许，而不是笼统的“不存在”。
-      const notDraft = await deleteCampaign(app, cookie, scheduledId);
+      const notDraft = await deleteCampaign(app, cookie, stoppedId);
       expect(notDraft.statusCode).toBe(409);
       expect(notDraft.json().error).toMatchObject({
         code: 'CAMPAIGN_NOT_DRAFT',

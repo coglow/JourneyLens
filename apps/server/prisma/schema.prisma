@@ -14,10 +14,8 @@ enum AccountStatus {
 
 enum CampaignStatus {
   draft
-  scheduled
   running
   paused
-  ended
   stopped
 }
 
@@ -90,17 +88,21 @@ model Session {
 }
 
 model Campaign {
-  id          String          @id @default(uuid()) @db.Uuid
-  name        String          @db.VarChar(180)
-  description String?         @db.Text
-  budget      Decimal?        @db.Decimal(14, 2)
-  status      CampaignStatus  @default(draft)
-  createdBy   OperatorAccount @relation(fields: [createdById], references: [id], onDelete: Restrict)
-  createdById String          @map("created_by") @db.Uuid
-  createdAt   DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  journeys    Journey[]
-  executions  Execution[]
+  id              String            @id @default(uuid()) @db.Uuid
+  name            String            @db.VarChar(180)
+  description     String?           @db.Text
+  budget          Decimal?          @db.Decimal(14, 2)
+  status          CampaignStatus    @default(draft)
+  /// 活动目标行为：空值表示不设置目标；目标首次发布后固定，不随旅程版本变化。
+  goalEventType   JourneyEventType? @map("goal_event_type")
+  /// 是否要求目标行为与进入行为同一商品；只有购买和预约目标可以开启。
+  goalSameProduct Boolean           @default(false) @map("goal_same_product")
+  createdBy       OperatorAccount   @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  createdById     String            @map("created_by") @db.Uuid
+  createdAt       DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  journeys        Journey[]
+  executions      Execution[]
 
   @@index([createdAt(sort: Desc), id(sort: Desc)])
   @@map("campaigns")
@@ -210,12 +212,12 @@ model Event {
   audienceSnapshot Json             @map("audience_snapshot")
   receivedAt       DateTime         @map("received_at") @db.Timestamptz(6)
   executions       Execution[]      @relation("ExecutionTriggerEvent")
+  goalExecutions   Execution[]      @relation("ExecutionGoalEvent")
   matchedSteps     ExecutionStep[]  @relation("StepMatchedEvent")
 
   @@index([audienceUserId, type, receivedAt, id])
   @@map("events")
 }
-
 
 model Execution {
   id               String          @id @default(uuid()) @db.Uuid
@@ -235,10 +237,13 @@ model Execution {
   createdAt        DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
   startedAt        DateTime        @map("started_at") @db.Timestamptz(6)
   endedAt          DateTime?       @map("ended_at") @db.Timestamptz(6)
+  /// 用于确认目标的那个行为的接收时间；与 goalEventId 同空或同有。
+  goalReachedAt    DateTime?       @map("goal_reached_at") @db.Timestamptz(6)
+  goalEvent        Event?          @relation("ExecutionGoalEvent", fields: [goalEventId], references: [id], onDelete: Restrict)
+  goalEventId      String?         @map("goal_event_id") @db.Uuid
   steps            ExecutionStep[]
 
   @@unique([journeyId, triggerEventId])
-
   @@index([status, createdAt, id])
   @@index([campaignId, createdAt(sort: Desc), id(sort: Desc)])
   @@index([journeyId, createdAt(sort: Desc), id(sort: Desc)])
@@ -247,7 +252,6 @@ model Execution {
   @@index([endedAt])
   @@map("executions")
 }
-
 
 model ExecutionStep {
   id             String              @id @default(uuid()) @db.Uuid
@@ -265,10 +269,8 @@ model ExecutionStep {
   matchedEvent   Event?              @relation("StepMatchedEvent", fields: [matchedEventId], references: [id], onDelete: Restrict)
   matchedEventId String?             @map("matched_event_id") @db.Uuid
 
-
   @@unique([executionId, nodeId])
   @@unique([executionId, order])
-
   @@unique([executionId, matchedEventId])
   @@map("execution_steps")
 }

@@ -7,7 +7,7 @@ import {
 } from '../journeys/journey-condition.js';
 import { JOURNEY_EVENT_TYPES } from '../journeys/journey-events.js';
 import { segmentRuleSchema } from '../segments/segment-rule.js';
-import { campaignStatusSchema } from './campaign.js';
+import { campaignGoalEventTypeSchema, campaignStatusSchema } from './campaign.js';
 import { eventPayloadSchema } from './event.js';
 import { paginatedListSchema, paginationQuerySchema } from './pagination.js';
 
@@ -236,6 +236,27 @@ export const executionEntryEvidenceSchema = z
   })
   .strict();
 
+/**
+ * 活动目标证据：配置来自活动固定目标，事实来自执行记录。
+ * 未达成时 reachedAt 与 event 同为 null，不根据结束说明反推达成。
+ */
+export const executionGoalEvidenceSchema = z
+  .object({
+    eventType: campaignGoalEventTypeSchema,
+    sameProduct: z.boolean(),
+    reachedAt: isoDateTimeSchema.nullable(),
+    event: z
+      .object({
+        id: z.uuid(),
+        type: eventTypeSchema,
+        receivedAt: isoDateTimeSchema,
+        payload: eventPayloadSchema,
+      })
+      .strict()
+      .nullable(),
+  })
+  .strict();
+
 export const executionTraceSchema = z
   .object({
     id: z.uuid(),
@@ -261,6 +282,7 @@ export const executionTraceSchema = z
       })
       .strict(),
     audience: executionAudienceRefSchema,
+    goal: executionGoalEvidenceSchema.nullable(),
     entryEvidence: executionEntryEvidenceSchema,
     triggerEvent: z
       .object({
@@ -301,5 +323,6 @@ export type ExecutionListQuery = z.output<typeof executionListQuerySchema>;
 export type ExecutionListQueryInput = z.input<typeof executionListQuerySchema>;
 export type ExecutionListItem = z.infer<typeof executionListItemSchema>;
 export type ExecutionStepOutput = z.infer<typeof executionStepOutputSchema>;
+export type ExecutionGoalEvidence = z.infer<typeof executionGoalEvidenceSchema>;
 export type ExecutionTraceStep = z.infer<typeof executionTraceStepSchema>;
 export type ExecutionTrace = z.infer<typeof executionTraceSchema>;

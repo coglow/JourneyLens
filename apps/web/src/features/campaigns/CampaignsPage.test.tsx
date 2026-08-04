@@ -27,6 +27,8 @@ const campaign = {
   createdAt: '2026-07-17T08:00:00.000Z',
   updatedAt: '2026-07-17T08:00:00.000Z',
   createdBy: { id: account.id, displayName: account.displayName },
+  goal: null,
+  goalEditable: true,
 };
 const summary = {
   id: campaign.id,
@@ -49,6 +51,7 @@ const emptyOverview = {
   executionCount: 0,
   audienceCount: 0,
   statusCounts: { running: 0, waiting: 0, completed: 0, failed: 0, stopped: 0 },
+  goalReachedCount: null,
 };
 
 function listBody(
@@ -121,11 +124,11 @@ describe('活动列表与创建', () => {
       name: '有旅程的草稿',
       journeyCount: 1,
     };
-    const scheduled = {
+    const stopped = {
       ...summary,
       id: '2d4f4d57-9d59-4ed5-a2fa-d71733cebb62',
-      name: '已排期活动',
-      status: 'scheduled',
+      name: '已停止活动',
+      status: 'stopped',
     };
     const paused = {
       ...summary,
@@ -135,19 +138,19 @@ describe('活动列表与创建', () => {
     };
     const deletable = { ...summary, name: '可删除活动' };
     mock.onGet('/userinfo').reply(200, { data: account });
-    mock.onGet('/campaigns').reply(200, listBody([linkedDraft, scheduled, paused, deletable]));
+    mock.onGet('/campaigns').reply(200, listBody([linkedDraft, stopped, paused, deletable]));
     renderApp();
 
     const linkedRow = await screen.findByRole('row', { name: /有旅程的草稿/ });
-    const scheduledRow = screen.getByRole('row', { name: /已排期活动/ });
+    const stoppedRow = screen.getByRole('row', { name: /已停止活动/ });
     const pausedRow = screen.getByRole('row', { name: /已暂停活动/ });
     const deletableRow = screen.getByRole('row', { name: /可删除活动/ });
     expect(within(linkedRow).getByRole('button', { name: '删除' }).hasAttribute('disabled')).toBe(
       true,
     );
-    expect(
-      within(scheduledRow).getByRole('button', { name: '删除' }).hasAttribute('disabled'),
-    ).toBe(true);
+    expect(within(stoppedRow).getByRole('button', { name: '删除' }).hasAttribute('disabled')).toBe(
+      true,
+    );
     expect(
       within(deletableRow).getByRole('button', { name: '删除' }).hasAttribute('disabled'),
     ).toBe(false);
@@ -215,6 +218,7 @@ describe('活动列表与创建', () => {
     expect(JSON.parse(String(mock.history.post[0]?.data))).toEqual({
       name: '春季活动',
       description: null,
+      goal: null,
     });
     expect(listParams()).toEqual([{}, {}]);
     expect(mock.history.get.map((request) => request.url)).toEqual([
@@ -253,8 +257,45 @@ describe('活动列表与创建', () => {
       name: '带预算活动',
       description: '预算说明',
       budget: { amount: '100.25' },
+      goal: null,
     });
   }, 10_000);
+
+  it('新建活动可选择目标并选择是否要求同一商品', async () => {
+    const goalCampaign = {
+      ...campaign,
+      name: '目标活动',
+      goal: { eventType: 'purchase_completed', sameProduct: true },
+    };
+    mock.onGet('/userinfo').reply(200, { data: account });
+    mock.onGet('/campaigns').replyOnce(200, listBody());
+    mock.onPost('/campaigns').replyOnce(201, { data: goalCampaign });
+    mock.onGet('/campaigns').replyOnce(200, listBody([{ ...summary, name: '目标活动' }]));
+    renderApp('/campaigns');
+
+    await screen.findByText('暂无活动');
+    fireEvent.click(screen.getByRole('button', { name: /新建活动/ }));
+    fireEvent.change(await screen.findByLabelText('活动名称'), { target: { value: '目标活动' } });
+    // 默认明确为“不设置目标”，不自动代选任何目标。
+    expect(screen.getByText('不设置目标')).toBeTruthy();
+
+    fireEvent.mouseDown(screen.getByLabelText('活动目标'));
+    fireEvent.click(await screen.findByTitle('完成注册'));
+    // 注册目标没有商品资料，不提供同商品选项。
+    expect(screen.queryByRole('checkbox')).toBeNull();
+
+    fireEvent.mouseDown(screen.getByLabelText('活动目标'));
+    fireEvent.click(await screen.findByTitle('完成购买'));
+    fireEvent.click(await screen.findByRole('checkbox', { name: '只算同一件商品' }));
+    fireEvent.click(screen.getByRole('button', { name: '创建活动' }));
+
+    expect(await screen.findByRole('link', { name: '目标活动' })).toBeTruthy();
+    expect(JSON.parse(String(mock.history.post[0]?.data))).toEqual({
+      name: '目标活动',
+      description: null,
+      goal: { eventType: 'purchase_completed', sameProduct: true },
+    });
+  }, 15_000);
 
   it('可输入页码跳转、选择每页条数，筛选和搜索回到第一页', async () => {
     mock.onGet('/userinfo').reply(200, { data: account });
@@ -291,19 +332,20 @@ describe('活动列表与创建', () => {
     );
 
     fireEvent.mouseDown(screen.getByRole('combobox', { name: '状态' }));
+    expect(await screen.findByText('已停止')).toBeTruthy();
     // 虚拟列表只给可见选项生成 role，按选项文本点击实际渲染的条目。
-    fireEvent.click(await screen.findByText('已结束'));
-    expect(listParams()).not.toContainEqual({ q: 'spring', status: 'ended', pageSize: 20 });
+    fireEvent.click(screen.getByText('已停止'));
+    expect(listParams()).not.toContainEqual({ q: 'spring', status: 'stopped', pageSize: 20 });
     fireEvent.click(screen.getByRole('button', { name: /^查\s*询$/ }));
     await waitFor(() =>
-      expect(listParams()).toContainEqual({ q: 'spring', status: 'ended', pageSize: 20 }),
+      expect(listParams()).toContainEqual({ q: 'spring', status: 'stopped', pageSize: 20 }),
     );
 
     fireEvent.click(screen.getByRole('listitem', { name: '2' }));
     await waitFor(() =>
       expect(listParams()).toContainEqual({
         q: 'spring',
-        status: 'ended',
+        status: 'stopped',
         page: 2,
         pageSize: 20,
       }),
@@ -312,16 +354,16 @@ describe('活动列表与创建', () => {
     fireEvent.mouseDown(screen.getByRole('combobox', { name: '每页条数' }));
     fireEvent.click(await screen.findByRole('option', { name: '50 条/页' }));
     await waitFor(() =>
-      expect(listParams()).toContainEqual({ q: 'spring', status: 'ended', pageSize: 50 }),
+      expect(listParams()).toContainEqual({ q: 'spring', status: 'stopped', pageSize: 50 }),
     );
 
     fireEvent.change(screen.getByLabelText('关键词'), {
       target: { value: 'autumn' },
     });
-    expect(listParams()).not.toContainEqual({ q: 'autumn', status: 'ended', pageSize: 50 });
+    expect(listParams()).not.toContainEqual({ q: 'autumn', status: 'stopped', pageSize: 50 });
     fireEvent.click(screen.getByRole('button', { name: /^查\s*询$/ }));
     await waitFor(() =>
-      expect(listParams()).toContainEqual({ q: 'autumn', status: 'ended', pageSize: 50 }),
+      expect(listParams()).toContainEqual({ q: 'autumn', status: 'stopped', pageSize: 50 }),
     );
 
     fireEvent.click(screen.getByRole('button', { name: /^重\s*置$/ }));
@@ -616,6 +658,7 @@ describe('活动列表与创建', () => {
       name: '修改后的活动',
       description: null,
       budget: null,
+      goal: null,
     });
     expect(detailRequests(campaign.id)).toHaveLength(2);
     expect(listParams()).toHaveLength(0);

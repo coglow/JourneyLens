@@ -90,7 +90,7 @@ const firstDraft = draftWithBody('第一版正文');
 
 async function seedCampaign(
   id = campaignId,
-  status: 'draft' | 'scheduled' = 'draft',
+  status: 'draft' | 'running' = 'draft',
   name = '版本发布活动',
 ): Promise<void> {
   await db.prisma.campaign.create({
@@ -415,7 +415,7 @@ describe('旅程发布与版本冻结', () => {
       const cookie = await signedInCookie(app);
       const { id, revision } = await seedSavedJourney(app, cookie);
 
-      for (const status of ['scheduled', 'running', 'stopped'] as const) {
+      for (const status of ['running', 'stopped'] as const) {
         await db.prisma.campaign.update({ where: { id: campaignId }, data: { status } });
         const blocked = await publish(app, cookie, id, { revision, segmentRevision: 3 });
         expect(blocked.statusCode).toBe(409);

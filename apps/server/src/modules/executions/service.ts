@@ -1,5 +1,5 @@
 import type { Prisma, PrismaClient } from '@prisma/client';
-import { executionEntryEvidenceSchema } from '@journeylens/shared';
+import { campaignGoalEventTypeSchema, executionEntryEvidenceSchema } from '@journeylens/shared';
 import type {
   AudienceFieldKey,
   ExecutionListItem,
@@ -21,6 +21,7 @@ const executionListSelect = {
   createdAt: true,
   startedAt: true,
   endedAt: true,
+  goalReachedAt: true,
   audienceUser: { select: { externalId: true, displayName: true } },
   campaign: { select: { id: true, name: true } },
   journey: { select: { id: true, name: true } },
@@ -35,10 +36,14 @@ const executionTraceSelect = {
   createdAt: true,
   startedAt: true,
   endedAt: true,
+  goalReachedAt: true,
   audienceUser: {
     select: { externalId: true, displayName: true },
   },
-  campaign: { select: { id: true, name: true, status: true } },
+  campaign: {
+    select: { id: true, name: true, status: true, goalEventType: true, goalSameProduct: true },
+  },
+  goalEvent: { select: { id: true, type: true, receivedAt: true, payload: true } },
   journey: { select: { id: true, name: true } },
   journeyVersion: {
     select: { id: true, versionNumber: true, publishedAt: true, snapshot: true },
@@ -98,8 +103,11 @@ function terminalResult(
   snapshot: JourneyVersionSnapshot,
   currentNodeId: string | null,
   failureReason: string | null,
+  goalReachedAt: Date | null,
 ): string | null {
   if (status === 'completed') {
+    // 达成目标同样是“已完成”，但结束原因不同，优先读取目标事实。
+    if (goalReachedAt !== null) return '目标已达成，已退出旅程';
     const node = resolveNode(snapshot, currentNodeId);
     if (node?.type === 'end' && node.note !== null) return node.note.slice(0, 600);
     return '已到达结束步骤';
@@ -130,7 +138,13 @@ function serializeListItem(record: ExecutionListRecord): ExecutionListItem {
         : null,
     result: active
       ? null
-      : terminalResult(record.status, snapshot, record.currentNodeId, record.failureReason),
+      : terminalResult(
+          record.status,
+          snapshot,
+          record.currentNodeId,
+          record.failureReason,
+          record.goalReachedAt,
+        ),
     createdAt: record.createdAt.toISOString(),
     startedAt: record.startedAt.toISOString(),
     endedAt: record.endedAt?.toISOString() ?? null,
@@ -196,7 +210,31 @@ function serializeTrace(record: ExecutionTraceRecord): ExecutionTrace {
     createdAt: record.createdAt.toISOString(),
     startedAt: record.startedAt.toISOString(),
     endedAt: record.endedAt?.toISOString() ?? null,
-    campaign: record.campaign,
+    campaign: {
+      id: record.campaign.id,
+      name: record.campaign.name,
+      status: record.campaign.status,
+    },
+    goal:
+      record.campaign.goalEventType === null
+        ? null
+        : {
+            // 目标类型受数据库约束限制在四类内，解析一次同时收窄类型。
+            eventType: campaignGoalEventTypeSchema.parse(record.campaign.goalEventType),
+            sameProduct: record.campaign.goalSameProduct,
+            // reachedAt 是目标行为接收时间，不是确认退出的时刻；endedAt 表达后者。
+            reachedAt: record.goalReachedAt?.toISOString() ?? null,
+            event:
+              record.goalEvent === null
+                ? null
+                : {
+                    id: record.goalEvent.id,
+                    type: record.goalEvent.type,
+                    receivedAt: record.goalEvent.receivedAt.toISOString(),
+                    payload: record.goalEvent
+                      .payload as unknown as ExecutionTrace['triggerEvent']['payload'],
+                  },
+          },
     journey: record.journey,
     version: {
       id: record.journeyVersion.id,

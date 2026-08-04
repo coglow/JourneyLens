@@ -102,7 +102,7 @@ const draftDefinition = {
 async function seedCampaign(
   id: string,
   name: string,
-  status: 'draft' | 'scheduled' | 'paused' | 'running' | 'stopped' = 'draft',
+  status: 'draft' | 'paused' | 'running' | 'stopped' = 'draft',
 ): Promise<void> {
   await db.prisma.campaign.create({
     data: { id, name, status, createdById: testAccountId, createdAt: testNow, updatedAt: testNow },
@@ -771,7 +771,7 @@ describe('旅程 API', () => {
   });
 
   it('非草稿活动的旅程只读，不能创建、修改或删除', async () => {
-    await seedCampaign(campaignAId, '已排期活动', 'scheduled');
+    await seedCampaign(campaignAId, '进行中活动', 'running');
     const journeyId = '00000000-0000-4000-8202-000000000301';
     await db.prisma.journey.create({
       data: {
@@ -880,7 +880,7 @@ describe('旅程 API', () => {
 
   it('分群引用列表返回旅程和所属活动，支持分页且不隐藏非草稿活动', async () => {
     await seedCampaign(campaignAId, '草稿活动');
-    await seedCampaign(campaignBId, '已排期活动', 'scheduled');
+    await seedCampaign(campaignBId, '进行中活动', 'running');
     await seedSegment(segmentAId, '被引用分群');
     await seedSegment(segmentBId, '另一分群');
     await seedSegment(segmentCId, '未被引用分群');
@@ -910,7 +910,7 @@ describe('旅程 API', () => {
           id: '00000000-0000-4000-8202-000000000403',
           campaignId: campaignBId,
           segmentId: segmentAId,
-          name: '排期活动旅程',
+          name: '进行中活动旅程',
           createdById: testAccountId,
           updatedById: testAccountId,
           createdAt: testNow,
@@ -939,13 +939,13 @@ describe('旅程 API', () => {
       expect(usages.statusCode).toBe(200);
       expect(usages.json().page).toEqual({ page: 1, pageSize: 10, total: 3 });
       expect(usages.json().data[0]).toEqual({
-        journey: { id: '00000000-0000-4000-8202-000000000403', name: '排期活动旅程' },
-        campaign: { id: campaignBId, name: '已排期活动', status: 'scheduled' },
+        journey: { id: '00000000-0000-4000-8202-000000000403', name: '进行中活动旅程' },
+        campaign: { id: campaignBId, name: '进行中活动', status: 'running' },
         updatedAt: new Date(testNow.getTime() + 3000).toISOString(),
       });
       expect(
         usages.json().data.map((item: { journey: { name: string } }) => item.journey.name),
-      ).toEqual(['排期活动旅程', '旅程二', '旅程一']);
+      ).toEqual(['进行中活动旅程', '旅程二', '旅程一']);
 
       const paged = await app.inject({
         method: 'GET',
@@ -1397,7 +1397,7 @@ describe('旅程 API', () => {
   });
 
   it('只读活动、旅程不存在和无效链接都不能保存草稿', async () => {
-    await seedCampaign(campaignAId, '已排期编排活动', 'scheduled');
+    await seedCampaign(campaignAId, '进行中编排活动', 'running');
     const journeyId = '00000000-0000-4000-8202-000000000501';
     await db.prisma.journey.create({
       data: {

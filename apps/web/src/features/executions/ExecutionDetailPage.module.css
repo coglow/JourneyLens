@@ -110,6 +110,11 @@
 .trigger {
   padding: 12px 0;
 }
+.goal {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+}
 .eventId {
   padding-top: 16px;
   border-top: 1px solid var(--ant-color-border-secondary, #f0f0f0);

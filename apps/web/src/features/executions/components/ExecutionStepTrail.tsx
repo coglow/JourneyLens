@@ -103,8 +103,10 @@ function conditionActual(output: ConditionOutput): string {
   return `实际：${optionLabel(field, output.evidence.actual.value)}`;
 }
 
-function stepSummary(step: ExecutionTraceStep): string {
-  if (step.status === 'stopped') return '活动停止，本步骤已终止';
+function stepSummary(step: ExecutionTraceStep, goalReached: boolean): string {
+  // 同样是已停止的等待，目标退出和活动停止是两种事实。
+  if (step.status === 'stopped')
+    return goalReached ? '目标已达成，等待已结束' : '活动停止，本步骤已终止';
   if (step.status === 'failed') return step.failureReason ?? '本步骤未能完成';
   const output = step.output;
   switch (output.kind) {
@@ -143,7 +145,11 @@ function stepTime(step: ExecutionTraceStep): string {
   return end === null || end === start ? start : `${start} — ${end}`;
 }
 
-function stepDetails(step: ExecutionTraceStep, audienceName: string): string[] {
+function stepDetails(
+  step: ExecutionTraceStep,
+  audienceName: string,
+  goalReached: boolean,
+): string[] {
   const output = step.output;
   const details: string[] = [];
 
@@ -164,7 +170,9 @@ function stepDetails(step: ExecutionTraceStep, audienceName: string): string[] {
     details.push(`等待时长：${formatWaitDuration(output.waitSeconds)}`);
     if (step.deadlineAt !== null) details.push(`截止时间：${formatDateTime(step.deadlineAt)}`);
     if (step.status === 'waiting') details.push('正在等待到期，系统会继续检查');
-    if (step.status === 'stopped') details.push('活动停止，等待已终止');
+    if (step.status === 'stopped') {
+      details.push(goalReached ? '目标已达成，等待已结束' : '活动停止，等待已终止');
+    }
   }
 
   if (output.kind === 'wait_for_event') {
@@ -186,7 +194,7 @@ function stepDetails(step: ExecutionTraceStep, audienceName: string): string[] {
       );
     }
     if (step.status === 'stopped') {
-      details.push('活动停止，等待已终止');
+      details.push(goalReached ? '目标已达成，等待已结束' : '活动停止，等待已终止');
     } else if (step.status === 'waiting' || output.outcome === null) {
       details.push('正在等待匹配行为或到期');
     } else if (output.outcome === 'matched') {
@@ -222,6 +230,8 @@ type ExecutionStepTrailProps = {
   steps: ExecutionTraceStep[];
   audienceName: string;
   entryEvidence: ExecutionTrace['entryEvidence'];
+  /** 本次是否因达成活动目标退出，用于区分等待终止的原因。 */
+  goalReached: boolean;
 };
 
 const statusIcons = {
@@ -236,14 +246,20 @@ export function ExecutionStepTrail({
   steps,
   audienceName,
   entryEvidence,
+  goalReached,
 }: ExecutionStepTrailProps) {
   const [expandedKeys, setExpandedKeys] = useState<string[]>();
   const attentionStep =
     steps.find((step) => step.status === 'failed') ??
     steps.find((step) => step.status === 'waiting');
   if (steps.length === 0) {
+    // 首个节点执行前就达成目标时允许没有步骤，此时不能再提示正在处理。
     return (
-      <Typography.Text type="secondary">后台尚未开始处理这次执行，页面会自动刷新。</Typography.Text>
+      <Typography.Text type="secondary">
+        {goalReached
+          ? '本次尚未执行任何步骤，目标达成后已退出旅程。'
+          : '后台尚未开始处理这次执行，页面会自动刷新。'}
+      </Typography.Text>
     );
   }
 
@@ -268,7 +284,7 @@ export function ExecutionStepTrail({
               <span className={styles.stepName}>
                 {step.order}. {step.nodeName}
               </span>
-              <span className={styles.stepSummary}>{stepSummary(step)}</span>
+              <span className={styles.stepSummary}>{stepSummary(step, goalReached)}</span>
               <span className={styles.stepTime}>{stepTime(step)}</span>
             </div>
           ),
@@ -288,7 +304,7 @@ export function ExecutionStepTrail({
                   </Typography.Text>
                 )}
               </div>
-              {stepDetails(step, audienceName).map((detail) => (
+              {stepDetails(step, audienceName, goalReached).map((detail) => (
                 <Typography.Text key={detail} className={styles.breakable ?? ''}>
                   {detail}
                 </Typography.Text>

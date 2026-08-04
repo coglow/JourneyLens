@@ -10,6 +10,7 @@ import {
   type EventCandidate,
 } from '../journeys/event-matching.js';
 import { lockCampaignForExecution } from '../campaigns/campaign-lock.js';
+import { completeExecutionByGoal, findGoalEvent } from './goal.js';
 import type {
   EventSummary,
   ExecutionStepOutput,
@@ -520,6 +521,8 @@ async function advanceOneStep(
           currentNodeId: true,
           audienceUserId: true,
           triggerEventId: true,
+          startedAt: true,
+          campaign: { select: { goalEventType: true, goalSameProduct: true } },
           journeyVersion: { select: { snapshot: true } },
           audienceUser: { select: { displayName: true, email: true, attributes: true } },
           triggerEvent: {
@@ -532,6 +535,29 @@ async function advanceOneStep(
       if (execution.status === 'completed') return 'completed';
       if (execution.status === 'failed') return 'failed';
       if (execution.status === 'stopped') return 'stopped';
+
+      // 目标检查先于指针校验：指针为空但目标已可确认时仍记录达成并退出，
+      // 未命中或无目标时才继续原有“指针缺失即失败”的处理。
+      if (execution.campaign.goalEventType !== null) {
+        const goalEvent = await findGoalEvent(tx, {
+          audienceUserId: execution.audienceUserId,
+          entryEvent: {
+            id: execution.triggerEvent.id,
+            type: execution.triggerEvent.type,
+            payload: execution.triggerEvent.payload as Record<string, unknown>,
+          },
+          startedAt: execution.startedAt,
+          goal: {
+            eventType: execution.campaign.goalEventType,
+            sameProduct: execution.campaign.goalSameProduct,
+          },
+        });
+        if (goalEvent !== undefined) {
+          // 结束时间在完成目标判断后重新取时，表示实际确认退出的时刻；行为接收时间单独保留。
+          await completeExecutionByGoal(tx, { executionId, event: goalEvent, endedAt: readNow() });
+          return 'completed';
+        }
+      }
 
       // 每步拿到锁并读完运行资料后重新取时，前序步骤耗时和锁等待不占用新步骤的等待时长。
       const now = readNow();

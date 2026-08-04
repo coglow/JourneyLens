@@ -30,8 +30,9 @@ import styles from './CampaignOverviewSection.module.css';
 type Props = { campaignId: string };
 
 const overviewHelp =
-  '按最近一次读取的执行记录统计，可刷新查看变化。点击状态数字查看执行记录；已完成表示流程结束。';
+  '按最近一次读取的执行记录统计，可刷新查看变化。点击状态数字查看执行记录；已完成包含流程结束和目标达成后退出。';
 const audienceHelp = '同一用户多次进入只计一人';
+const goalHelp = '同一用户多次参与分别计数；这是参与达成次数，不代表订单数或实际转化。';
 
 function executionsPath(campaignId: string, status?: ExecutionStatus): string {
   const params = new URLSearchParams({ campaignId });
@@ -58,6 +59,8 @@ export function CampaignOverviewSection({ campaignId }: Props) {
   if (notFound || sessionExpired) return null;
 
   const retry = <Button onClick={() => void query.refetch()}>重试</Button>;
+  // null 表示活动未设置目标，与“有目标但还没有人达成”的 0 区分开。
+  const goalReachedCount = query.data?.goalReachedCount ?? null;
 
   return (
     <Card
@@ -109,7 +112,7 @@ export function CampaignOverviewSection({ campaignId }: Props) {
           )}
 
           <Row gutter={[16, 16]}>
-            <Col xs={24} sm={12}>
+            <Col xs={24} sm={goalReachedCount === null ? 12 : 8}>
               <Link
                 className={styles.metricLink}
                 to={executionsPath(campaignId)}
@@ -122,7 +125,7 @@ export function CampaignOverviewSection({ campaignId }: Props) {
                 />
               </Link>
             </Col>
-            <Col xs={24} sm={12}>
+            <Col xs={24} sm={goalReachedCount === null ? 12 : 8}>
               <Statistic
                 title={
                   <Flex align="center" gap={4}>
@@ -140,6 +143,27 @@ export function CampaignOverviewSection({ campaignId }: Props) {
                 value={query.data.audienceCount}
               />
             </Col>
+            {/* 未设置目标时不显示达成次数，不用 0 表示“没有这个含义”。 */}
+            {goalReachedCount !== null && (
+              <Col xs={24} sm={8}>
+                <Statistic
+                  title={
+                    <Flex align="center" gap={4}>
+                      <span>目标达成次数</span>
+                      <Tooltip title={goalHelp} placement="right" trigger={['hover', 'focus']}>
+                        <Button
+                          type="text"
+                          size="small"
+                          aria-label="目标达成次数说明"
+                          icon={<InfoCircleOutlined aria-hidden="true" />}
+                        />
+                      </Tooltip>
+                    </Flex>
+                  }
+                  value={goalReachedCount}
+                />
+              </Col>
+            )}
           </Row>
 
           <Divider />

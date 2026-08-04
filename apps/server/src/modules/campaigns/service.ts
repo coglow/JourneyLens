@@ -1,7 +1,9 @@
 import { Prisma, type PrismaClient } from '@prisma/client';
 import {
+  campaignGoalEventTypeSchema,
   EDITABLE_CAMPAIGN_STATUSES,
   type CampaignCreate,
+  type CampaignGoal,
   type CampaignListQuery,
   type CampaignUpdate,
 } from '@journeylens/shared';
@@ -14,17 +16,41 @@ const campaignDetailSelect = {
   description: true,
   budget: true,
   status: true,
+  goalEventType: true,
+  goalSameProduct: true,
   createdAt: true,
   updatedAt: true,
   createdBy: { select: { id: true, displayName: true } },
+  // 目标是否可编辑取决于“是否已有发布版本”，随详情一起读取，避免前端自行推断。
+  journeys: { select: { _count: { select: { versions: true } } } },
 } as const;
 
 type CampaignRecord = Prisma.CampaignGetPayload<{ select: typeof campaignDetailSelect }>;
 
 function serializeCampaign(campaign: CampaignRecord) {
+  const { journeys, goalEventType, goalSameProduct, ...rest } = campaign;
+  const published = journeys.some((journey) => journey._count.versions > 0);
   return {
-    ...campaign,
+    ...rest,
     budget: campaign.budget === null ? null : { amount: campaign.budget.toFixed(2) },
+    // 目标类型受数据库约束限制在四类内，解析一次同时收窄类型。
+    goal:
+      goalEventType === null
+        ? null
+        : {
+            eventType: campaignGoalEventTypeSchema.parse(goalEventType),
+            sameProduct: goalSameProduct,
+          },
+    // 首次发布任一旅程后目标固定，包括原本未设置目标的活动。
+    goalEditable: campaign.status === 'draft' && !published,
+  };
+}
+
+/** 把请求里的目标转换成可直接写入的列；null 表示清除目标。 */
+function goalColumns(goal: CampaignGoal | null) {
+  return {
+    goalEventType: goal === null ? null : goal.eventType,
+    goalSameProduct: goal === null ? false : goal.sameProduct,
   };
 }
 
@@ -52,6 +78,7 @@ export class CampaignService {
           input.budget === undefined || input.budget === null
             ? null
             : new Prisma.Decimal(input.budget.amount),
+        ...goalColumns(input.goal ?? null),
         createdById: accountId,
       },
       select: campaignDetailSelect,
@@ -126,6 +153,7 @@ export class CampaignService {
     const rows = await this.prisma.$queryRaw<
       Array<{
         campaignId: string;
+        goalEventType: string | null;
         executionCount: bigint;
         audienceCount: bigint;
         running: bigint;
@@ -133,17 +161,20 @@ export class CampaignService {
         completed: bigint;
         failed: bigint;
         stopped: bigint;
+        goalReachedCount: bigint;
       }>
     >`
       SELECT
         campaign.id AS "campaignId",
+        campaign.goal_event_type AS "goalEventType",
         COUNT(execution.id) AS "executionCount",
         COUNT(DISTINCT execution.audience_user_id) AS "audienceCount",
         COUNT(execution.id) FILTER (WHERE execution.status = 'running') AS "running",
         COUNT(execution.id) FILTER (WHERE execution.status = 'waiting') AS "waiting",
         COUNT(execution.id) FILTER (WHERE execution.status = 'completed') AS "completed",
         COUNT(execution.id) FILTER (WHERE execution.status = 'failed') AS "failed",
-        COUNT(execution.id) FILTER (WHERE execution.status = 'stopped') AS "stopped"
+        COUNT(execution.id) FILTER (WHERE execution.status = 'stopped') AS "stopped",
+        COUNT(execution.id) FILTER (WHERE execution.goal_reached_at IS NOT NULL) AS "goalReachedCount"
       FROM campaigns AS campaign
       LEFT JOIN executions AS execution ON execution.campaign_id = campaign.id
       WHERE campaign.id = ${id}::uuid
@@ -165,6 +196,8 @@ export class CampaignService {
         failed: Number(row.failed),
         stopped: Number(row.stopped),
       },
+      // 未设置目标时没有“达成次数”的含义，返回 null 而不是 0。
+      goalReachedCount: row.goalEventType === null ? null : Number(row.goalReachedCount),
     };
   }
 
@@ -174,6 +207,34 @@ export class CampaignService {
     if (input.description !== undefined) data.description = input.description;
     if (input.budget !== undefined) {
       data.budget = input.budget === null ? null : new Prisma.Decimal(input.budget.amount);
+    }
+
+    // 目标修改必须先拿活动排他锁再确认是否已发布：与发布串行，避免先检查未发布、
+    // 再在事务外写入目标，导致已发布活动仍被改成另一套统计定义。
+    if (input.goal !== undefined) {
+      return this.prisma.$transaction(async (tx) => {
+        const status = await lockCampaignForTransition(tx, id);
+        if (status === null) throw campaignMissing();
+        if (!(EDITABLE_CAMPAIGN_STATUSES as readonly string[]).includes(status)) {
+          throw new ApiError(409, 'CAMPAIGN_NOT_EDITABLE', '只有草稿或已暂停的活动可以修改');
+        }
+        // 目标只在“草稿且尚无发布版本”时可改：暂停、停止和已发布都视为固定。
+        if (
+          status !== 'draft' ||
+          (await tx.journeyVersion.findFirst({
+            where: { journey: { campaignId: id } },
+            select: { id: true },
+          })) !== null
+        ) {
+          throw new ApiError(409, 'CAMPAIGN_GOAL_LOCKED', '活动已有发布旅程，目标不能修改');
+        }
+        const updated = await tx.campaign.update({
+          where: { id },
+          data: { ...data, ...goalColumns(input.goal ?? null) },
+          select: campaignDetailSelect,
+        });
+        return serializeCampaign(updated);
+      });
     }
 
     // 可编辑状态同时作为更新条件：恢复或停止持有同一行的排他锁，晚到的修改会等锁释放后

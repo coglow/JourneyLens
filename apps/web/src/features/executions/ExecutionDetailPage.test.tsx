@@ -26,6 +26,7 @@ const versionId = '22222222-2222-4222-8222-222222222222';
 const audienceId = '33333333-3333-4333-8333-333333333333';
 const eventId = '44444444-4444-4444-8444-444444444444';
 const matchedEventId = '55555555-5555-4555-8555-555555555555';
+const goalEventId = '66666666-6666-4666-8666-666666666666';
 
 const baseStep = {
   order: 1,
@@ -55,6 +56,7 @@ const completedTrace = {
     externalId: 'upstream:demo:eligible',
     displayName: '霖铃铃',
   },
+  goal: null,
   entryEvidence: {
     segment: {
       name: '黄金会员',
@@ -169,6 +171,38 @@ const waitingTrace = {
       ...completedTrace.steps[3]!,
       status: 'waiting',
       endedAt: null,
+      matchedEventId: null,
+      output: {
+        kind: 'wait_for_event',
+        eventType: 'purchase_completed',
+        waitSeconds: 60,
+        sameProduct: true,
+        outcome: null,
+        matchedEventId: null,
+      },
+    },
+  ],
+};
+
+const goalTrace = {
+  ...completedTrace,
+  goal: {
+    eventType: 'purchase_completed',
+    sameProduct: true,
+    reachedAt: '2026-07-30T08:00:09.000Z',
+    event: {
+      id: goalEventId,
+      type: 'purchase_completed',
+      receivedAt: '2026-07-30T08:00:09.000Z',
+      payload: { productId: 'product-1', productName: '演示无线耳机', amount: 299 },
+    },
+  },
+  steps: [
+    ...completedTrace.steps.slice(0, 3),
+    {
+      ...completedTrace.steps[3]!,
+      status: 'stopped',
+      endedAt: '2026-07-30T08:00:12.000Z',
       matchedEventId: null,
       output: {
         kind: 'wait_for_event',
@@ -310,6 +344,72 @@ describe('执行轨迹详情', () => {
     fireEvent.click(screen.getByRole('button', { name: /4\. 等待同商品购买/ }));
     expect(await screen.findByText('活动停止，等待已终止')).toBeTruthy();
     expect(screen.queryByText('正在等待匹配行为或到期')).toBeNull();
+  });
+
+  it('达成目标时展示目标证据、结束原因和目标行为接收时间', async () => {
+    mock.onGet(`/executions/${executionId}/trace`).reply(200, { data: goalTrace });
+    renderApp();
+
+    expect(await screen.findByText('目标已达成，已退出旅程。')).toBeTruthy();
+    expect(screen.getByText('活动目标')).toBeTruthy();
+    expect(screen.getByText('完成购买（只算同一件商品）')).toBeTruthy();
+    expect(screen.getByText('目标行为接收时间')).toBeTruthy();
+    expect(screen.getByText('执行结束时间')).toBeTruthy();
+    expect(screen.getByText('已达成')).toBeTruthy();
+    expect(screen.getAllByText('演示无线耳机').length).toBeGreaterThan(0);
+
+    // 同一个已停止的等待步骤，达成退出的文案不能写成活动停止。
+    fireEvent.click(screen.getByRole('button', { name: /4\. 等待同商品购买/ }));
+    expect(screen.getAllByText('目标已达成，等待已结束').length).toBeGreaterThan(0);
+    expect(screen.queryByText('活动停止，等待已终止')).toBeNull();
+    expect(screen.queryByText('正在等待匹配行为或到期')).toBeNull();
+  });
+
+  it('已设置目标但尚未达成时展示目标配置，不展示达成证据', async () => {
+    mock.onGet(`/executions/${executionId}/trace`).reply(200, {
+      data: {
+        ...waitingTrace,
+        goal: {
+          eventType: 'purchase_completed',
+          sameProduct: true,
+          reachedAt: null,
+          event: null,
+        },
+      },
+    });
+    renderApp();
+
+    expect(await screen.findByText('尚未达成')).toBeTruthy();
+    expect(screen.getByText('完成购买（只算同一件商品）')).toBeTruthy();
+    expect(screen.queryByText('目标行为接收时间')).toBeNull();
+    expect(screen.queryByText('执行结束时间')).toBeNull();
+    expect(screen.queryByText('达成行为')).toBeNull();
+    expect(screen.getByText('每 3 秒自动刷新')).toBeTruthy();
+  });
+
+  it('首个节点前达成目标时说明未执行节点，并展示未记录位置', async () => {
+    mock.onGet(`/executions/${executionId}/trace`).reply(200, {
+      data: { ...goalTrace, steps: [], currentNode: null },
+    });
+    renderApp();
+
+    expect(await screen.findByText('目标已达成，已退出旅程。')).toBeTruthy();
+    expect(screen.getByText('本次尚未执行任何步骤，目标达成后已退出旅程。')).toBeTruthy();
+    expect(screen.queryByText('后台尚未开始处理这次执行，页面会自动刷新。')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '执行信息' }));
+    expect(await screen.findByText('未记录位置')).toBeTruthy();
+  });
+
+  it('未设置目标时不展示目标区域', async () => {
+    mock.onGet(`/executions/${executionId}/trace`).reply(200, { data: completedTrace });
+    renderApp();
+
+    expect(await screen.findByRole('heading', { name: /霖铃铃的执行轨迹/ })).toBeTruthy();
+    expect(screen.queryByText('活动目标')).toBeNull();
+    expect(screen.queryByText('目标行为接收时间')).toBeNull();
+    // 正常结束仍展示原有结束说明。
+    expect(screen.getAllByText(/用户在等待窗口内完成了同商品购买/).length).toBeGreaterThan(0);
   });
 
   it('执行不存在时明确提示，不展示虚构轨迹', async () => {
