@@ -5,10 +5,16 @@ const DEFAULT_TIMEOUT_MS = 15_000;
 
 interface ApiErrorOptions extends ErrorOptions {
   requestId?: string;
+  /** 服务端给出的补充说明，面向运营，逐条展示。 */
+  details?: readonly string[];
+  /** 服务端要求的等待秒数（响应头 Retry-After）；限流类失败用它决定何时可重试。 */
+  retryAfterSeconds?: number;
 }
 
 export class ApiError extends Error {
   readonly requestId: string | undefined;
+  readonly details: readonly string[] | undefined;
+  readonly retryAfterSeconds: number | undefined;
 
   constructor(
     readonly status: number | undefined,
@@ -19,6 +25,8 @@ export class ApiError extends Error {
     super(message, options);
     this.name = 'ApiError';
     this.requestId = options?.requestId;
+    this.details = options?.details;
+    this.retryAfterSeconds = options?.retryAfterSeconds;
   }
 }
 
@@ -47,12 +55,15 @@ function toApiError(error: unknown): ApiError {
     if (error.response !== undefined) {
       const parsed = apiErrorResponseSchema.safeParse(error.response.data);
       if (parsed.success) {
-        return new ApiError(
-          error.response.status,
-          parsed.data.error.code,
-          parsed.data.error.message,
-          { requestId: parsed.data.error.requestId },
-        );
+        const { code, message, requestId, details } = parsed.data.error;
+        const retryAfterSeconds = Number(error.response.headers['retry-after']);
+        return new ApiError(error.response.status, code, message, {
+          requestId,
+          ...(details === undefined ? {} : { details }),
+          ...(Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+            ? { retryAfterSeconds }
+            : {}),
+        });
       }
       return new ApiError(
         error.response.status,

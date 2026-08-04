@@ -1,11 +1,12 @@
 import { vi } from 'vitest';
-import { buildApp, type AppLoggerOption } from '../app.js';
+import { buildApp, type AiDraftOption, type AppLoggerOption } from '../app.js';
 import { testNow, type TestDatabase } from './test-database.js';
 
 export function makeApp(
   db: TestDatabase,
   logger: AppLoggerOption = false,
   now: () => Date = () => testNow,
+  aiDraft?: AiDraftOption,
 ) {
   const verifyPassword = vi.fn(async (hash: string, password: string) => {
     return hash === 'stored-argon2-hash' && password === 'correct-password';
@@ -15,6 +16,7 @@ export function makeApp(
     verifyPassword,
     now,
     logger,
+    ...(aiDraft === undefined ? {} : { aiDraft }),
   });
   return { app, verifyPassword };
 }

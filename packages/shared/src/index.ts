@@ -5,6 +5,7 @@ export {
   JOURNEY_EVENT_TYPE_LABELS,
   journeyEventField,
   journeyEventFields,
+  journeyEventOperators,
   journeyEventHasProductId,
 } from './journeys/journey-events.js';
 export type {
@@ -24,6 +25,7 @@ export * from './dto/event.js';
 export * from './dto/event-query.js';
 export * from './dto/execution.js';
 export * from './dto/journey.js';
+export * from './dto/journey-ai-draft.js';
 export * from './dto/journey-version.js';
 export * from './dto/journey-simulation.js';
 export * from './dto/pagination.js';

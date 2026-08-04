@@ -1,0 +1,144 @@
+.page {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--ant-color-bg-container, #fff);
+}
+.header {
+  display: flex;
+  min-height: 64px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 24px;
+  border-bottom: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+}
+.heading {
+  min-width: 0;
+}
+.title {
+  margin: 0 !important;
+  padding-left: 20px;
+  border-left: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+  white-space: nowrap;
+  font-size: 22px !important;
+}
+.journeyName {
+  max-width: 340px;
+}
+.replaceHint {
+  white-space: nowrap;
+  font-size: 12px;
+}
+.confirmText {
+  max-width: 320px;
+  line-height: 1.7;
+}
+.fullWidth {
+  width: 100%;
+}
+.workspace {
+  display: grid;
+  min-height: 0;
+  flex: 1;
+  grid-template-columns: 320px minmax(0, 1fr);
+}
+/* 长描述与补答只滚动输入区，生成和应用操作始终可见。 */
+.inputPanel {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  border-right: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+}
+.inputBody {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 24px;
+  overflow: auto;
+  padding: 24px;
+}
+.panelTitle {
+  margin: 0 !important;
+}
+.inputFooter {
+  flex: 0 0 auto;
+  padding: 18px 24px 24px;
+}
+
+.answers {
+  margin-top: 4px;
+}
+.resultPanel {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+.emptyResult {
+  display: grid;
+  min-height: 0;
+  flex: 1;
+  place-items: center;
+  background: #fafbfe;
+}
+@media (max-width: 1100px) {
+  .journeyName {
+    max-width: 220px;
+  }
+  .replaceHint {
+    display: none;
+  }
+  .header {
+    padding-inline: 16px;
+  }
+}
+@media (max-width: 800px) {
+  .page {
+    position: relative;
+    min-height: 100vh;
+    overflow: visible;
+  }
+  .header {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    flex-wrap: wrap;
+    background: var(--ant-color-bg-container, #fff);
+  }
+  .heading {
+    flex-wrap: wrap;
+    column-gap: 12px !important;
+    row-gap: 4px !important;
+  }
+  .journeyName {
+    max-width: 55vw;
+  }
+  .workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .inputPanel {
+    border-right: 0;
+    border-bottom: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+  }
+  .inputBody {
+    overflow: visible;
+  }
+  .resultPanel {
+    min-height: 700px;
+  }
+}
+
+/* 校验失败的具体条目：保持可读的缩进与行距，不挤压重试按钮。 */
+.errorDetails {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.6;
+}

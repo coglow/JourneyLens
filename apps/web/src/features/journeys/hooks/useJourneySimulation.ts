@@ -20,6 +20,8 @@ import { simulateJourney } from '@/services/journeys';
 
 type Options = {
   journeyId: string;
+  /** 离开模拟页时停止播放，并忽略仍在返回途中的结果。 */
+  active: boolean;
   /** 当前画布用于清除不再对应的模拟结果；位置和布局变化不影响结果。 */
   definition: JourneyDraftDefinition;
   /** 通过保存校验后的规范化画布；未通过时为 null，不能发起模拟。 */
@@ -80,6 +82,7 @@ export type JourneySimulationController = ReturnType<typeof useJourneySimulation
 /** 临时资料留在本页状态；保存旅程草稿与模拟输入各自独立。 */
 export function useJourneySimulation({
   journeyId,
+  active,
   definition,
   normalizedDefinition,
   warnings,
@@ -88,16 +91,24 @@ export function useJourneySimulation({
   const [scenario, setScenario] = useState<JourneySimulationScenario>(() =>
     createDefaultSimulationScenario(startBehavior),
   );
-  const [run, setRun] = useState<{ key: string; result: JourneySimulationResult } | null>(null);
+  const [run, setRun] = useState<{
+    key: string;
+    result: JourneySimulationResult;
+    visibleStepCount: number;
+  } | null>(null);
   const [stale, setStale] = useState(false);
   const [error, setError] = useState<string>();
   const requestRef = useRef(0);
+  const playbackRef = useRef<{
+    timer: ReturnType<typeof setTimeout>;
+    resolve: () => void;
+  } | null>(null);
   const journeyIdRef = useRef(journeyId);
   const previousStartBehaviorRef = useRef(startBehavior);
   const scenarioTouchedRef = useRef(false);
   const {
     mutateAsync: runSimulation,
-    isPending: pending,
+    isPending: requestPending,
     reset: resetSimulation,
   } = useMutation({
     mutationFn: ({
@@ -140,7 +151,22 @@ export function useJourneySimulation({
     requestRef.current += 1;
     resetSimulation();
     setError(undefined);
-  }, [key, journeyId, resetSimulation]);
+    if (!active) {
+      // 完整结果仍可返回查看；离开时尚未播完的结果清除，下次重新开始。
+      setRun((current) =>
+        current !== null && current.visibleStepCount < current.result.steps.length ? null : current,
+      );
+    }
+    return () => {
+      requestRef.current += 1;
+      if (playbackRef.current !== null) {
+        clearTimeout(playbackRef.current.timer);
+        // 唤醒等待中的 start，让它按请求序号退出，不再展示或提示完成。
+        playbackRef.current.resolve();
+        playbackRef.current = null;
+      }
+    };
+  }, [active, key, journeyId, resetSimulation]);
 
   const updateScenario: Dispatch<SetStateAction<JourneySimulationScenario>> = useCallback(
     (next) => {
@@ -156,8 +182,14 @@ export function useJourneySimulation({
     setStale(true);
   }, [key, run]);
 
-  const start = useCallback(async (): Promise<void> => {
+  const currentRun = run !== null && run.key === key ? run : null;
+  const pending =
+    requestPending ||
+    (currentRun !== null && currentRun.visibleStepCount < currentRun.result.steps.length);
+
+  const start = useCallback(async (): Promise<JourneySimulationResult | undefined> => {
     if (
+      !active ||
       normalizedDefinition === null ||
       warnings.length > 0 ||
       !scenarioValidation.success ||
@@ -169,6 +201,8 @@ export function useJourneySimulation({
     const requestId = requestRef.current + 1;
     requestRef.current = requestId;
     const requestKey = key;
+    // 结果同时驱动画布高亮；新一轮开始时一起清除，避免把上次路径当成本次结果。
+    setRun(null);
     setError(undefined);
     setStale(false);
     try {
@@ -177,13 +211,31 @@ export function useJourneySimulation({
         input: { draftDefinition: normalizedDefinition, scenario: scenarioValidation.data },
       });
       if (requestRef.current !== requestId) return;
-      setRun({ key: requestKey, result });
+      // 一次计算完整业务结果，只把展示过程按固定半秒推进；不改变旅程里的等待时长。
+      setRun({ key: requestKey, result, visibleStepCount: Math.min(1, result.steps.length) });
+      for (
+        let visibleStepCount = 2;
+        visibleStepCount <= result.steps.length;
+        visibleStepCount += 1
+      ) {
+        await new Promise<void>((resolve) => {
+          const timer = setTimeout(() => {
+            playbackRef.current = null;
+            resolve();
+          }, 500);
+          playbackRef.current = { timer, resolve };
+        });
+        if (requestRef.current !== requestId) return;
+        setRun({ key: requestKey, result, visibleStepCount });
+      }
+      return result;
     } catch (cause) {
       if (requestRef.current !== requestId) return;
       if (isSessionExpired(cause)) return;
       setError(getApiErrorMessage(cause));
     }
   }, [
+    active,
     journeyId,
     key,
     normalizedDefinition,
@@ -204,7 +256,8 @@ export function useJourneySimulation({
     setScenario: updateScenario,
     scenarioErrors,
     resetScenario,
-    result: run !== null && run.key === key ? run.result : null,
+    result: currentRun?.result ?? null,
+    visibleStepCount: currentRun?.visibleStepCount ?? 0,
     pending,
     error,
     stale,

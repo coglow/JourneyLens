@@ -29,12 +29,9 @@ export class LoginRateLimiter {
       this.attempts.set(key, window);
     }
     if (window.count >= MAX_ATTEMPTS) {
-      throw new ApiError(
-        429,
-        'RATE_LIMITED',
-        '登录尝试过多，请稍后再试',
-        Math.ceil((window.resetAt - now) / 1000),
-      );
+      throw new ApiError(429, 'RATE_LIMITED', '登录尝试过多，请稍后再试', {
+        retryAfterSeconds: Math.ceil((window.resetAt - now) / 1000),
+      });
     }
     window.count += 1;
   }

@@ -82,6 +82,7 @@ export function JourneyCanvasNode({ id, data, selected }: NodeProps<JourneyCanva
   const condition = node.type === 'condition';
   const eventWait = node.type === 'wait_for_event';
   const traversed = data.simulationState === 'traversed';
+  const summary = getNodeSummary(node);
   // 连接点方向随草稿布局方向变化，确保重开时和保存坐标一致。
   const horizontal = data.layoutDirection === 'horizontal';
   const updateNodeInternals = useUpdateNodeInternals();
@@ -121,7 +122,7 @@ export function JourneyCanvasNode({ id, data, selected }: NodeProps<JourneyCanva
         {node.name}
       </Typography.Text>
       <Typography.Text className={styles.nodeSummary ?? ''} type="secondary" ellipsis>
-        {getNodeSummary(node)}
+        {summary}
       </Typography.Text>
       {condition || eventWait ? (
         <>

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Modal } from 'antd';
-import { useBlocker } from 'react-router';
 import {
   canEditCampaign,
   journeyDraftDefinitionSchema,
@@ -21,10 +20,6 @@ import { formatSavedAt } from '@/utils/format-date-time';
 
 const AUTOSAVE_DEBOUNCE_MS = 800;
 
-/**
- * 保存基准和本地草稿都按共享校验输出后的结果序列化，
- * 避免字段顺序或首尾空格被去掉后造成“保存了仍显示未保存”。
- */
 function definitionSnapshot(definition: JourneyDraftDefinition): string {
   const parsed = journeyDraftDefinitionSchema.safeParse(definition);
   return JSON.stringify(parsed.success ? parsed.data : definition);
@@ -35,8 +30,19 @@ type Options = {
   definition: JourneyDraftDefinition;
   parsedDefinition: ReturnType<typeof journeyDraftDefinitionSchema.safeParse>;
   dragging: boolean;
+  /** 起草页打开期间暂停原画布自动保存，避免与候选应用并行写入。 */
+  paused?: boolean;
   onAcceptDefinition: (definition: JourneyDraftDefinition) => void;
 };
+
+/** 候选应用的结果：只有 applied 表示服务器已确认保存。 */
+export type ApplyDraftResult =
+  | { status: 'applied' }
+  | { status: 'conflict' }
+  | { status: 'read-only' }
+  | { status: 'missing' }
+  | { status: 'unconfirmed' }
+  | { status: 'failed'; message: string };
 
 /** 统一读取、保存基准、自动保存与冲突处理；保存成功不重建画布或撤销历史。 */
 export function useJourneyDraftPersistence({
@@ -44,6 +50,7 @@ export function useJourneyDraftPersistence({
   definition: currentDefinition,
   parsedDefinition,
   dragging,
+  paused = false,
   onAcceptDefinition,
 }: Options) {
   const queryClient = useQueryClient();
@@ -55,10 +62,10 @@ export function useJourneyDraftPersistence({
   const [conflict, setConflict] = useState(false);
   const [serverReadOnly, setServerReadOnly] = useState(false);
   const [journeyMissing, setJourneyMissing] = useState(false);
+  // 保存结果未确认（超时或断网）时不再自动写入，先由运营读取最新内容。
+  const [unconfirmedSave, setUnconfirmedSave] = useState(false);
   const [lastSaveSource, setLastSaveSource] = useState<'auto' | 'manual'>();
   const revision = useRef<number | undefined>(undefined);
-  const allowNavigation = useRef(false);
-  const promptOpen = useRef(false);
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   // 失败时记下当时的业务内容；内容变化前不再自动重试，避免反复失败请求。
   const failedSnapshot = useRef<string | undefined>(undefined);
@@ -69,11 +76,6 @@ export function useJourneyDraftPersistence({
   const saveGeneration = useRef(0);
   const idRef = useRef(id);
   idRef.current = id;
-
-  useEffect(() => {
-    // 放行只属于当前跳转；进入另一条旅程后重新启用离开保护。
-    allowNavigation.current = false;
-  }, [id]);
 
   const cancelAutosave = useCallback((): void => {
     if (autosaveTimer.current !== undefined) {
@@ -100,6 +102,7 @@ export function useJourneyDraftPersistence({
       setConflict(false);
       setServerReadOnly(false);
       setJourneyMissing(false);
+      setUnconfirmedSave(false);
       setLastSaveSource(undefined);
       failedSnapshot.current = undefined;
       saveGeneration.current += 1;
@@ -132,63 +135,35 @@ export function useJourneyDraftPersistence({
     initializedId !== id;
   // 保存期间仍允许编辑，只是不允许再发第二个保存请求。
   const canEdit = !readOnly;
-  // 只有编排页与模拟页渲染同一个编辑器实例，两者之间切换不卸载画布状态。
-  // 其它旅程子路径（如已发布版本）是独立页面，离开即卸载编辑器，必须走放弃确认。
-  const sharedEditorPaths = [`/journeys/${id}/editor`, `/journeys/${id}/simulation`];
-  const blocker = useBlocker(
-    ({ currentLocation, nextLocation }) =>
-      (dirty || saving.isPending) &&
-      !allowNavigation.current &&
-      nextLocation.pathname !== currentLocation.pathname &&
-      !(
-        sharedEditorPaths.includes(currentLocation.pathname) &&
-        sharedEditorPaths.includes(nextLocation.pathname)
-      ),
-  );
-  useEffect(() => {
-    // 保存请求未结束时也不能直接离开，否则离开后无法确认最新内容。
-    if (!dirty && !saving.isPending) return;
-    const warnBeforeLeave = (event: BeforeUnloadEvent) => event.preventDefault();
-    window.addEventListener('beforeunload', warnBeforeLeave);
-    return () => window.removeEventListener('beforeunload', warnBeforeLeave);
-  }, [dirty, saving.isPending]);
+  // 待核实状态只由保存层持有；修改起草输入不能解除它，确认旅程已删除后则允许离开。
+  const mustVerify = !journeyMissing && (conflict || unconfirmedSave);
 
-  useEffect(() => {
-    if (blocker.state !== 'blocked') {
-      promptOpen.current = false;
-      return;
+  /** 两种保存共用业务错误分类和状态更新，候选保存的结果不确定处理仍留在应用流程中。 */
+  function handleSaveError(error: unknown): Exclude<ApplyDraftResult, { status: 'applied' }> {
+    if (error instanceof ApiError && error.code === 'JOURNEY_REVISION_CONFLICT') {
+      setConflict(true);
+      setSaveError('旅程已在其他页面修改，你的内容仍保留在本页。读取最新内容前会先确认。');
+      return { status: 'conflict' };
     }
-    if (promptOpen.current) return;
-    promptOpen.current = true;
-    const blockedNavigation = blocker;
-    const pendingOnly = saving.isPending && !dirty;
-    const returnFocus =
-      document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    let leaveConfirmed = false;
-    Modal.confirm({
-      title: pendingOnly ? '保存尚未完成，仍要离开？' : '放弃未保存的修改？',
-      content: pendingOnly
-        ? '保存请求还没有结束，离开后可能无法确认最新内容。'
-        : '当前修改还没有保存，离开后将无法恢复。',
-      okText: '放弃修改',
-      cancelText: '继续编辑',
-      okButtonProps: { danger: true },
-      focusable: { autoFocusButton: 'cancel', focusTriggerAfterClose: false },
-      onOk: () => {
-        leaveConfirmed = true;
-        allowNavigation.current = true;
-        blockedNavigation.proceed();
-      },
-      onCancel: () => blockedNavigation.reset(),
-      afterClose: () => {
-        if (!leaveConfirmed && returnFocus?.isConnected) returnFocus.focus();
-      },
-    });
-  }, [blocker, dirty, saving.isPending]);
+    if (error instanceof ApiError && error.code === 'CAMPAIGN_NOT_EDITABLE') {
+      setServerReadOnly(true);
+      setSaveError('活动已不能编辑，当前编排无法保存。');
+      return { status: 'read-only' };
+    }
+    if (error instanceof ApiError && error.status === 404) {
+      setJourneyMissing(true);
+      setSaveError('旅程已不存在，当前编排无法保存。');
+      return { status: 'missing' };
+    }
+    const message = getWriteErrorMessage(error);
+    setSaveError(message);
+    return { status: 'failed', message };
+  }
+
   /** 自动保存和手动保存共用同一条请求流程，保存成功后不重置历史和选中状态。 */
   async function persistDraft(source: 'auto' | 'manual'): Promise<void> {
     if (revision.current === undefined || savingInFlight.current || saving.isPending) return;
-    if (!parsedDefinition.success || !canEdit || conflict || !dirty) return;
+    if (!parsedDefinition.success || !canEdit || conflict || unconfirmedSave || !dirty) return;
 
     const sentDefinition = parsedDefinition.data;
     const sentSnapshot = JSON.stringify(sentDefinition);
@@ -220,19 +195,9 @@ export function useJourneyDraftPersistence({
       if (saveGeneration.current !== requestGeneration || idRef.current !== requestJourneyId)
         return;
       if (isSessionExpired(error)) return;
-      if (error instanceof ApiError && error.code === 'JOURNEY_REVISION_CONFLICT') {
-        setConflict(true);
-        setSaveError('旅程已在其他页面修改，你的内容仍保留在本页。读取最新内容前会先确认。');
-      } else if (error instanceof ApiError && error.code === 'CAMPAIGN_NOT_EDITABLE') {
-        setServerReadOnly(true);
-        setSaveError('活动已不能编辑，当前编排无法保存。');
-      } else if (error instanceof ApiError && error.status === 404) {
-        setJourneyMissing(true);
-        setSaveError('旅程已不存在，当前编排无法保存。');
-      } else {
+      if (handleSaveError(error).status === 'failed') {
         // 普通失败后暂停自动保存，等业务内容再次变化或用户手动保存时再试。
         failedSnapshot.current = sentSnapshot;
-        setSaveError(getWriteErrorMessage(error));
       }
     } finally {
       savingInFlight.current = false;
@@ -242,8 +207,67 @@ export function useJourneyDraftPersistence({
   const persistDraftRef = useRef(persistDraft);
   persistDraftRef.current = persistDraft;
 
+  /**
+   * 以候选整体替换并保存草稿：原画布可能有未保存内容或暂不合法的配置，
+   * 因此不复用 persistDraft 的画布校验，但共用保存请求、修订号和错误处理。
+   */
+  async function applyDraft(nextDefinition: JourneyDraftDefinition): Promise<ApplyDraftResult> {
+    if (revision.current === undefined) {
+      return { status: 'failed', message: '旅程尚未读取完成，请稍后再试' };
+    }
+    if (savingInFlight.current || saving.isPending) {
+      return { status: 'failed', message: '正在保存，请稍后再试' };
+    }
+    if (unconfirmedSave) return { status: 'unconfirmed' };
+    if (conflict) return { status: 'conflict' };
+
+    cancelAutosave();
+    setSaveError(undefined);
+    failedSnapshot.current = undefined;
+    saveSource.current = 'manual';
+    const requestGeneration = saveGeneration.current;
+    const requestJourneyId = id;
+
+    savingInFlight.current = true;
+    try {
+      const saved = await saving.mutateAsync(nextDefinition);
+      if (saveGeneration.current !== requestGeneration || idRef.current !== requestJourneyId) {
+        return { status: 'failed', message: '旅程已更新，请重新确认候选内容' };
+      }
+      queryClient.setQueryData(queryKey, saved);
+      void queryClient.invalidateQueries({ queryKey: journeyQueryKeys.lists });
+      // 应用后以服务器返回内容作为新基准：重置画布、撤销历史和选择，避免旧快照与候选混用。
+      acceptJourney(saved);
+      return { status: 'applied' };
+    } catch (error) {
+      if (saveGeneration.current !== requestGeneration || idRef.current !== requestJourneyId) {
+        return { status: 'failed', message: '旅程已更新，请重新确认候选内容' };
+      }
+      if (isSessionExpired(error)) return { status: 'failed', message: '登录已失效，请重新登录' };
+      if (
+        error instanceof ApiError &&
+        (error.code === 'TIMEOUT' || error.code === 'NETWORK_ERROR')
+      ) {
+        // 写入结果不确定：保留候选，先停止自动保存，等运营读取最新内容后再继续。
+        setUnconfirmedSave(true);
+        setSaveError('本次保存结果未确认，请读取最新内容核实');
+        return { status: 'unconfirmed' };
+      }
+      return handleSaveError(error);
+    } finally {
+      savingInFlight.current = false;
+    }
+  }
+
+  // 起草页打开时取消待触发的计时，返回编排后按原有规则恢复。
+  useEffect(() => {
+    if (!paused) return;
+    cancelAutosave();
+  }, [cancelAutosave, paused]);
+
   // 停手 800ms 后再保存；保存请求期间不排队第二个请求，结束后仍有修改会重新计时。
   useEffect(() => {
+    if (paused || unconfirmedSave) return;
     if (initializedId !== id || !dirty || !parsedDefinition.success) return;
     if (!canEdit || conflict || dragging || saving.isPending) return;
     if (failedSnapshot.current === currentSnapshot) return;
@@ -266,25 +290,38 @@ export function useJourneyDraftPersistence({
     id,
     initializedId,
     parsedDefinition.success,
+    paused,
     saving.isPending,
+    unconfirmedSave,
   ]);
 
-  function readLatestAfterConfirm(): void {
-    Modal.confirm({
-      title: '读取最新旅程？',
-      content: '读取后会放弃本页尚未保存的修改。',
-      okText: '读取最新内容',
-      cancelText: '继续编辑',
-      okButtonProps: { danger: true },
-      onOk: async () => {
-        try {
-          const latest = await getJourney(id);
-          queryClient.setQueryData(queryKey, latest);
-          acceptJourney(latest);
-        } catch (error) {
-          if (!isSessionExpired(error)) setSaveError(getApiErrorMessage(error));
-        }
-      },
+  function readLatestAfterConfirm(): Promise<boolean> {
+    return new Promise((resolve) => {
+      Modal.confirm({
+        title: '读取最新旅程？',
+        content: '读取后会放弃本页尚未保存的修改。',
+        okText: '读取最新内容',
+        cancelText: '继续编辑',
+        okButtonProps: { danger: true },
+        onOk: async () => {
+          try {
+            const latest = await getJourney(id);
+            queryClient.setQueryData(queryKey, latest);
+            acceptJourney(latest);
+            resolve(true);
+          } catch (error) {
+            if (error instanceof ApiError && error.status === 404) {
+              // 已删除的旅程无法再读取成功：保留本页内容和提示，但不把运营困在起草页。
+              setJourneyMissing(true);
+              setSaveError('旅程已不存在，当前内容无法保存。');
+            } else if (!isSessionExpired(error)) {
+              setSaveError(getApiErrorMessage(error));
+            }
+            resolve(false);
+          }
+        },
+        onCancel: () => resolve(false),
+      });
     });
   }
 
@@ -310,10 +347,10 @@ export function useJourneyDraftPersistence({
               ? `${lastSaveSource === 'auto' ? '已自动保存' : '草稿已保存'} · ${formatSavedAt(journey.updatedAt)}`
               : '尚未保存';
 
-  /** 编辑器产生新操作时清掉上一次失败提示；冲突需要保留直到重新读取。 */
+  /** 编辑器产生新操作时清掉普通失败提示；冲突和结果未确认需保留到重新读取。 */
   const clearSaveError = useCallback(() => {
-    if (!conflict) setSaveError(undefined);
-  }, [conflict]);
+    if (!conflict && !unconfirmedSave) setSaveError(undefined);
+  }, [conflict, unconfirmedSave]);
 
   return {
     query,
@@ -322,6 +359,7 @@ export function useJourneyDraftPersistence({
     dirty,
     canEdit,
     conflict,
+    mustVerify,
     serverReadOnly,
     journeyMissing,
     saveError,
@@ -332,6 +370,7 @@ export function useJourneyDraftPersistence({
     cancelAutosave,
     clearSaveError,
     readLatestAfterConfirm,
+    applyDraft,
     saveDraft: () => void persistDraftRef.current('manual'),
   };
 }

@@ -1,6 +1,17 @@
 import { useState } from 'react';
 import { UserOutlined } from '@ant-design/icons';
-import { Alert, Avatar, Button, Collapse, Descriptions, Flex, Modal, Typography } from 'antd';
+import {
+  Alert,
+  Avatar,
+  Button,
+  Collapse,
+  Descriptions,
+  Flex,
+  message,
+  Modal,
+  Spin,
+  Typography,
+} from 'antd';
 import {
   AUDIENCE_FIELDS,
   JOURNEY_EVENT_TYPE_LABELS,
@@ -155,7 +166,15 @@ export function JourneySimulationPanel({
   onLocate,
 }: Props) {
   const [editorOpen, setEditorOpen] = useState(false);
+  const [messageApi, messageContext] = message.useMessage();
   const canStart = simulation.scenarioErrors.length === 0 && !simulation.pending;
+
+  async function startSimulation(): Promise<void> {
+    messageApi.destroy();
+    const result = await simulation.start();
+    // 失败或输入变化导致响应失效时没有有效结果，不显示完成提示。
+    if (result !== undefined) void messageApi.success('本次模拟已完成');
+  }
 
   function resetScenario(): void {
     Modal.confirm({
@@ -169,22 +188,20 @@ export function JourneySimulationPanel({
 
   return (
     <div className={styles.panel ?? ''}>
+      {messageContext}
       <header className={styles.header ?? ''}>
         <div>
           <Typography.Title level={4} className={styles.heading ?? ''}>
             旅程模拟
           </Typography.Title>
-          <Typography.Text type="secondary" className={styles.scope ?? ''}>
-            仅预览，不会实际发送消息
-          </Typography.Text>
         </div>
         <Button
           type="primary"
           loading={simulation.pending}
           disabled={!canStart}
-          onClick={() => void simulation.start()}
+          onClick={() => void startSimulation()}
         >
-          开始模拟
+          {simulation.pending ? '模拟中…' : simulation.result !== null ? '重新模拟' : '开始模拟'}
         </Button>
       </header>
       <div className={styles.body ?? ''}>
@@ -204,9 +221,16 @@ export function JourneySimulationPanel({
         {simulation.stale && <Alert type="info" showIcon title="模拟条件已变化，请重新模拟。" />}
         {simulation.error !== undefined && <Alert type="error" showIcon title={simulation.error} />}
 
+        {simulation.pending && simulation.result === null && (
+          <Flex role="status" align="center" gap={8}>
+            <Spin size="small" />
+            <Typography.Text>模拟中…</Typography.Text>
+          </Flex>
+        )}
         {simulation.result !== null && (
           <SimulationResultView
             result={simulation.result}
+            visibleStepCount={simulation.visibleStepCount}
             scenario={simulation.scenario}
             onLocate={onLocate}
           />

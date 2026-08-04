@@ -4,6 +4,7 @@ import {
   campaignJourneyParamsSchema,
   getJourneyDraftWarnings,
   getPaginationErrorMessages,
+  journeyAiDraftRequestSchema,
   journeyCreateSchema,
   journeyDraftSaveSchema,
   journeyIdParamsSchema,
@@ -16,16 +17,24 @@ import {
   journeyVersionPublishSchema,
 } from '@journeylens/shared';
 import { ApiError } from '../../errors.js';
+import { AiDraftService, type AiDraftServiceDeps } from './ai-draft-service.js';
 import { JourneyService } from './service.js';
 import { JourneyVersionService } from './version-service.js';
+
+/** 生成请求只包含描述和成对补答，单独限制请求体大小，其余接口沿用原约定。 */
+const AI_DRAFT_BODY_LIMIT_BYTES = 16 * 1024;
 
 export function registerJourneyRoutes(
   app: FastifyInstance,
   prisma: PrismaClient,
   now?: () => Date,
+  aiDraftDeps?: AiDraftServiceDeps,
 ): void {
   const service = new JourneyService(prisma);
   const versionService = new JourneyVersionService(prisma, now);
+  // 未配置模型时不创建服务：接口明确提示暂不可用，手工编排不受影响。
+  const aiDraftService =
+    aiDraftDeps === undefined ? undefined : new AiDraftService(prisma, aiDraftDeps);
 
   app.get('/api/campaigns/:campaignId/journeys', async (request) => {
     const params = campaignJourneyParamsSchema.safeParse(request.params);
@@ -117,6 +126,42 @@ export function registerJourneyRoutes(
     const journey = await service.saveDraft(params.data.id, input.data, request.currentAccount!.id);
     return { data: journey };
   });
+
+  // AI 起草：一次点击最多一次模型调用，结果不写业务表，应用仍走原有草稿保存接口。
+  app.post(
+    '/api/journeys/:id/ai-draft',
+    { bodyLimit: AI_DRAFT_BODY_LIMIT_BYTES },
+    async (request) => {
+      const params = journeyIdParamsSchema.safeParse(request.params);
+      if (!params.success) throw new ApiError(400, 'BAD_REQUEST', '旅程链接无效');
+
+      const input = journeyAiDraftRequestSchema.safeParse(request.body);
+      if (!input.success) {
+        // 成对补答不符合题目要求时，提示运营检查已选内容
+        const clarificationInvalid = input.error.issues.some(
+          (issue) => issue.path[0] === 'clarifications',
+        );
+        throw new ApiError(
+          400,
+          'BAD_REQUEST',
+          clarificationInvalid
+            ? '请填写完整的补充信息，并检查所选内容'
+            : '请选择有效的进入行为，并填写有效的旅程描述',
+        );
+      }
+      if (aiDraftService === undefined) {
+        throw new ApiError(503, 'AI_DRAFT_UNAVAILABLE', 'AI 起草暂不可用，请稍后再试');
+      }
+
+      const result = await aiDraftService.generate(
+        params.data.id,
+        input.data,
+        request.currentAccount!.id,
+        request.log,
+      );
+      return { data: result };
+    },
+  );
 
   app.post('/api/journeys/:id/simulate', async (request) => {
     const params = journeyIdParamsSchema.safeParse(request.params);

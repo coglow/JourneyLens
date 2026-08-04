@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   journeyDraftDefinitionSchema,
@@ -72,10 +72,11 @@ function makeController(
     scenarioErrors: [],
     resetScenario: vi.fn(),
     result: null,
+    visibleStepCount: 0,
     pending: false,
     error: undefined,
     stale: false,
-    start: vi.fn(async () => {}),
+    start: vi.fn(async () => undefined),
     ...overrides,
   } as JourneySimulationController;
 }
@@ -146,16 +147,76 @@ describe('旅程模拟面板', () => {
         journeyId="journey-1"
         definition={definition}
         segmentRules={null}
-        simulation={{ ...simulation, result }}
+        simulation={{ ...simulation, result, visibleStepCount: result.steps.length }}
         onLocate={onLocate}
       />,
     );
 
     expect(screen.getByText('已到达结束步骤')).toBeTruthy();
-    expect(screen.getByText('经过 2 步 · 累计等待 0 秒')).toBeTruthy();
+    expect(screen.queryByText(/经过 \d+ 步 · 累计等待/)).toBeNull();
     expect(screen.getByRole('list', { name: '模拟经过的步骤' })).toBeTruthy();
     fireEvent.click(screen.getAllByRole('button', { name: '定位' })[0]!);
     expect(onLocate).toHaveBeenCalledWith('start');
+  });
+
+  it('模拟期间显示进度并禁用按钮', () => {
+    renderPanel(makeController({ pending: true }));
+
+    const button = screen.getByRole('button', { name: /模拟中…/ }) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    expect(screen.getByRole('status').textContent).toBe('模拟中…');
+    expect(screen.queryByRole('region', { name: '模拟结果' })).toBeNull();
+  });
+
+  it('播放时只展示已走过的步骤，尚未结束时不显示完成结论', () => {
+    const simulation = makeController();
+    renderPanel({
+      ...simulation,
+      pending: true,
+      result: makeResult(simulation.scenario),
+      visibleStepCount: 1,
+    });
+
+    expect(screen.getByText('正在模拟')).toBeTruthy();
+    expect(screen.getByText('已走过 1 步 · 每步间隔 0.5 秒')).toBeTruthy();
+    const steps = screen.getByRole('list', { name: '模拟经过的步骤' });
+    expect(within(steps).getByText('开始')).toBeTruthy();
+    expect(within(steps).queryByText('结束')).toBeNull();
+    expect(screen.queryByText('已到达结束步骤')).toBeNull();
+    expect(screen.queryByText('本次模拟已完成')).toBeNull();
+  });
+
+  it('相同结果重新模拟后仍显示本次完成提示', async () => {
+    const simulation = makeController();
+    const result = makeResult(simulation.scenario);
+    let finish: ((value: JourneySimulationResult) => void) | undefined;
+    const start = vi
+      .fn()
+      .mockResolvedValueOnce(result)
+      .mockImplementationOnce(
+        () =>
+          new Promise<JourneySimulationResult>((resolve) => {
+            finish = resolve;
+          }),
+      );
+    renderPanel({ ...simulation, result, start, visibleStepCount: result.steps.length });
+
+    fireEvent.click(screen.getByRole('button', { name: '重新模拟' }));
+    expect(await screen.findByText('本次模拟已完成')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '重新模拟' }));
+    await waitFor(() => expect(screen.queryByText('本次模拟已完成')).toBeNull());
+    await act(async () => finish?.(result));
+    expect(await screen.findByText('本次模拟已完成')).toBeTruthy();
+    expect(start).toHaveBeenCalledTimes(2);
+  });
+
+  it('没有有效结果时不提示完成', async () => {
+    const start = vi.fn(async () => undefined);
+    renderPanel(makeController({ start }));
+
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '开始模拟' })));
+    expect(start).toHaveBeenCalledOnce();
+    expect(screen.queryByText('本次模拟已完成')).toBeNull();
   });
 
   it.each<{
@@ -189,7 +250,7 @@ describe('旅程模拟面板', () => {
       branch: 'unmet',
       evidence: { kind: 'value', actual },
     });
-    renderPanel({ ...simulation, result });
+    renderPanel({ ...simulation, result, visibleStepCount: result.steps.length });
     expect(screen.getByText(summary)).toBeTruthy();
     const disclosure = screen.getByRole('button', { name: /查看判断详情/ });
     expect(disclosure.getAttribute('aria-expanded')).toBe('false');
@@ -225,7 +286,7 @@ describe('旅程模拟面板', () => {
         },
       },
     };
-    renderPanel({ ...simulation, result });
+    renderPanel({ ...simulation, result, visibleStepCount: result.steps.length });
     expect(screen.getByText('未进入旅程')).toBeTruthy();
     expect(screen.getByText('进入行为不匹配，没有进入旅程。')).toBeTruthy();
     expect(screen.getByText('未满足入口分群“成年用户”。')).toBeTruthy();
@@ -264,7 +325,7 @@ describe('旅程模拟面板', () => {
         checks: [{ eventId: simulation.scenario.entryEvent.id, reason: 'wrong_type' }],
       },
     });
-    renderPanel({ ...simulation, result });
+    renderPanel({ ...simulation, result, visibleStepCount: result.steps.length });
 
     fireEvent.click(screen.getByRole('button', { name: /查看判断详情/ }));
     expect(screen.getByText('进入前 7 天 至 进入时（两端包含）')).toBeTruthy();
@@ -290,7 +351,7 @@ describe('旅程模拟面板', () => {
       branch: 'met',
       evidence: { kind: 'value', actual: { exists: true, value: 'beauty' } },
     });
-    renderPanel({ ...simulation, result });
+    renderPanel({ ...simulation, result, visibleStepCount: result.steps.length });
 
     expect(screen.getByText('商品类目：美妆个护 → 走「满足」路径')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /查看判断详情/ }));
@@ -312,7 +373,7 @@ describe('旅程模拟面板', () => {
       subject: '欢迎回来',
       body,
     });
-    renderPanel({ ...simulation, result });
+    renderPanel({ ...simulation, result, visibleStepCount: result.steps.length });
     expect(screen.queryByText(body, { exact: true })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: /查看消息预览/ }));
     expect(screen.getByText('正文（仅预览）')).toBeTruthy();
@@ -320,7 +381,7 @@ describe('旅程模拟面板', () => {
   });
 
   it('资料无效时拦住模拟并提供直接修改入口', () => {
-    const start = vi.fn(async () => {});
+    const start = vi.fn(async () => undefined);
     renderPanel(makeController({ scenarioErrors: ['年龄必须是数字'], start }));
 
     expect((screen.getByRole('button', { name: '开始模拟' }) as HTMLButtonElement).disabled).toBe(

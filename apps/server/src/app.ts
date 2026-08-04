@@ -10,8 +10,11 @@ import { registerEventRoutes } from './modules/events/routes.js';
 import { registerExecutionRoutes } from './modules/executions/routes.js';
 import { registerJourneyRoutes } from './modules/journeys/routes.js';
 import { registerSegmentRoutes } from './modules/segments/routes.js';
+import { readAiDraftConfig, type AiDraftModelConfig } from './config.js';
 import { createPrismaClient } from './db/client.js';
 import { ApiError } from './errors.js';
+import { callAiDraftModel, type AiDraftModelCall } from './modules/journeys/ai-draft-model.js';
+import type { AiDraftServiceDeps } from './modules/journeys/ai-draft-service.js';
 import { registerRequestSecurity } from './plugins/security.js';
 
 const REQUEST_ID_PATTERN = /^[\x21-\x7E]{1,128}$/;
@@ -23,11 +26,33 @@ interface RequestErrorInfo {
 
 export type AppLoggerOption = false | { stream: { write(message: string): void } };
 
+/** AI 起草的模型配置；测试可传 callModel 替身，不发出真实请求。 */
+export interface AiDraftOption {
+  config: AiDraftModelConfig;
+  callModel?: AiDraftModelCall;
+}
+
 export interface BuildAppOptions {
   prisma?: PrismaClient;
   verifyPassword?: (hash: string, password: string) => Promise<boolean>;
   now?: () => Date;
   logger?: AppLoggerOption;
+  aiDraft?: AiDraftOption;
+}
+
+/** 未显式提供时按环境变量决定；缺少密钥就不启用，生成接口会明确提示暂不可用。 */
+function resolveAiDraftDeps(options: BuildAppOptions): AiDraftServiceDeps | undefined {
+  const config = readAiDraftConfig(process.env);
+  const option: AiDraftOption | undefined =
+    options.aiDraft ?? (config === undefined ? undefined : { config });
+  if (option === undefined) return undefined;
+
+  const now = options.now;
+  return {
+    config: option.config,
+    callModel: option.callModel ?? callAiDraftModel,
+    ...(now === undefined ? {} : { now: () => now().getTime() }),
+  };
 }
 
 function resolveRequestId(headerValue: unknown): string {
@@ -100,7 +125,7 @@ export function buildApp(options: BuildAppOptions = {}) {
   registerAuthRoutes(app, { service, now: options.now });
   registerCampaignRoutes(app, prisma, options.now);
   registerSegmentRoutes(app, prisma, options.now);
-  registerJourneyRoutes(app, prisma, options.now);
+  registerJourneyRoutes(app, prisma, options.now, resolveAiDraftDeps(options));
   registerEventRoutes(app, prisma, options.now);
   registerExecutionRoutes(app, prisma);
 
@@ -113,7 +138,24 @@ export function buildApp(options: BuildAppOptions = {}) {
         reply.header('Retry-After', String(error.retryAfterSeconds));
       }
       return reply.code(error.statusCode).send({
-        error: { code: error.code, message: error.message, requestId },
+        error: {
+          code: error.code,
+          message: error.message,
+          requestId,
+          ...(error.details === undefined ? {} : { details: error.details }),
+        },
+      });
+    }
+
+    // 请求体超过所设上限时给出可执行的说法，不退回“请求内容无效”。
+    if (
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      error.code === 'FST_ERR_CTP_BODY_TOO_LARGE'
+    ) {
+      return reply.code(413).send({
+        error: { code: 'BAD_REQUEST', message: '提交内容过长，请精简后重试', requestId },
       });
     }
 

@@ -1,10 +1,17 @@
 import { z } from 'zod';
-import { COMPARISON_OPERATORS, type ComparisonOperator } from '../audience/audience-catalog.js';
+import { COMPARISON_OPERATORS } from '../audience/audience-catalog.js';
 import { segmentCompareRuleSchema } from '../segments/segment-rule.js';
 import { JOURNEY_WAIT_MAX_SECONDS } from './journey-limits.js';
-import { JOURNEY_EVENT_TYPES, journeyEventField, type JourneyEventType } from './journey-events.js';
+import {
+  JOURNEY_EVENT_TYPES,
+  journeyEventField,
+  journeyEventOperators,
+  type JourneyEventType,
+} from './journey-events.js';
 
-const scalarSchema = z.union([z.string(), z.number().finite(), z.boolean(), z.null()]);
+const scalarSchema = z.union([z.string(), z.number().finite(), z.boolean(), z.null()], {
+  error: '行为属性只能填写单个比较值，不能填写多个值',
+});
 const numericOperators = ['eq', 'neq', 'gt', 'gte', 'lt', 'lte'] as const;
 const numericOperatorSchema = z.enum(numericOperators);
 
@@ -33,12 +40,7 @@ function validateAttributeCompare(
     return;
   }
 
-  const allowedOperators: readonly ComparisonOperator[] =
-    field.kind === 'number'
-      ? [...numericOperators, 'exists']
-      : field.values === undefined
-        ? ['eq', 'neq', 'contains', 'exists']
-        : ['eq', 'neq', 'exists'];
+  const allowedOperators = journeyEventOperators(value.left.eventType, value.left.path);
   if (!allowedOperators.includes(value.operator)) {
     ctx.addIssue({
       code: 'custom',

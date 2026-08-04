@@ -1,4 +1,10 @@
-import { useEffect, useMemo, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from 'react';
 import { ApartmentOutlined, ArrowLeftOutlined, ExperimentOutlined } from '@ant-design/icons';
 import {
   Alert,
@@ -28,6 +34,7 @@ import {
   Panel,
   ReactFlow,
   type Edge,
+  type EdgeTypes,
   type NodeTypes,
   type OnConnectEnd,
 } from '@xyflow/react';
@@ -38,6 +45,10 @@ import {
   type JourneyCanvasFlowNode,
 } from '@/features/journeys/components/JourneyCanvasNode';
 import { JourneyNodeSettings } from '@/features/journeys/components/JourneyNodeSettings';
+import { JourneyEdge } from '@/features/journeys/components/JourneyEdge';
+import { JourneyAiDraftPage } from './JourneyAiDraftPage';
+import { useJourneyAiDraft } from '@/features/journeys/hooks/useJourneyAiDraft';
+import { useJourneyEditorNavigation } from '@/features/journeys/hooks/useJourneyEditorNavigation';
 import { JourneyEditorPalette } from '@/features/journeys/components/JourneyEditorPalette';
 import { JourneyFlowCheck } from '@/features/journeys/components/JourneyFlowCheck';
 import { JourneyPublishDialog } from '@/features/journeys/components/JourneyPublishDialog';
@@ -51,7 +62,8 @@ import styles from '@/features/journeys/components/JourneyDraftEditor.module.css
 import { readReturnTo } from '@/utils/return-to';
 
 const nodeTypes: NodeTypes = { journey: JourneyCanvasNode };
-const defaultEdgeOptions = { type: 'smoothstep' as const, interactionWidth: 18 };
+const edgeTypes: EdgeTypes = { journey: JourneyEdge };
+const defaultEdgeOptions = { type: 'journey' as const, interactionWidth: 18 };
 const flowAriaLabels = {
   'node.a11yDescription.default':
     '按 Enter 或空格选中节点，方向键移动节点，按 Delete 删除，可撤销。',
@@ -75,6 +87,7 @@ type QuickAddState = {
 export function JourneyEditorPage() {
   const { id = '', view = 'editor' } = useParams();
   const simulationPage = view === 'simulation';
+  const aiDraftPage = view === 'ai-draft';
   const location = useLocation();
   const navigate = useNavigate();
   const [quickAdd, setQuickAdd] = useState<QuickAddState | null>(null);
@@ -85,6 +98,8 @@ export function JourneyEditorPage() {
     definition: canvas.currentDefinition,
     parsedDefinition: canvas.parsedDefinition,
     dragging: canvas.dragging,
+    // 起草页与编排共用原画布，起草期间暂停自动保存。
+    paused: aiDraftPage,
     onAcceptDefinition: canvas.resetDefinition,
   });
   const { clearSaveError } = draft;
@@ -120,6 +135,7 @@ export function JourneyEditorPage() {
     dirty,
     canEdit,
     conflict,
+    mustVerify,
     serverReadOnly,
     journeyMissing,
     saveError,
@@ -131,10 +147,22 @@ export function JourneyEditorPage() {
   } = draft;
   const simulation = useJourneySimulation({
     journeyId: id,
+    active: simulationPage,
     definition: currentDefinition,
     normalizedDefinition: parsedDefinition.success ? parsedDefinition.data : null,
     warnings,
   });
+
+  // 起草入口只需要可写且没有在途保存或冲突；未保存修改和暂不合法的旧图都可以继续起草。
+  function getAiDraftBlockReason(): string | undefined {
+    if (journey === undefined || initializedId !== id) return '正在读取旅程，请稍后再试';
+    if (journeyMissing) return '旅程已不存在，无法起草';
+    if (serverReadOnly || !canEditCampaign(journey.campaign.status))
+      return '当前活动已不能编辑，无法起草';
+    if (saving) return '正在保存，请稍后再起草';
+    if (conflict) return '旅程已在其他页面修改，请先读取最新内容';
+    return undefined;
+  }
 
   // 发布只针对已保存且可写的内容：先看旅程当前状态，再看本地编辑状态，最后看流程检查。
   function getPublishBlockReason(): string | undefined {
@@ -143,6 +171,7 @@ export function JourneyEditorPage() {
     if (serverReadOnly) return '当前活动已不能编辑，无法发布';
     if (saving) return '正在保存，请稍后再试';
     if (conflict) return '旅程已在其他页面修改，请先读取最新内容';
+    if (mustVerify) return '上次保存结果尚未确认，请先读取最新内容';
     if (dirty) return '请先保存当前修改';
     if (journey.draftDefinition === null) return '请先保存编排';
     if (!parsedDefinition.success || warnings.length > 0) return '请先补齐流程连接并修正步骤设置';
@@ -152,20 +181,25 @@ export function JourneyEditorPage() {
   const simulationResult = simulation.result;
   const displayNodes = useMemo(() => {
     if (simulationResult === null) return nodes;
-    const traversed = new Set(simulationResult.steps.map((step) => step.nodeId));
+    const traversed = new Set(
+      simulationResult.steps.slice(0, simulation.visibleStepCount).map((step) => step.nodeId),
+    );
     return nodes.map((node) =>
       traversed.has(node.id)
         ? { ...node, data: { ...node.data, simulationState: 'traversed' as const } }
         : node,
     );
-  }, [nodes, simulationResult]);
+  }, [nodes, simulationResult, simulation.visibleStepCount]);
   const displayEdges = useMemo(() => {
     if (simulationResult === null) return edges;
-    const traversed = new Set(simulationResult.traversedEdgeIds);
+    // 每展示一个新步骤，才点亮到达该步骤的连线；第一步还没有经过连线。
+    const traversed = new Set(
+      simulationResult.traversedEdgeIds.slice(0, Math.max(0, simulation.visibleStepCount - 1)),
+    );
     return edges.map((edge) =>
       traversed.has(edge.id) ? { ...edge, className: styles.simulationEdge ?? '' } : edge,
     );
-  }, [edges, simulationResult]);
+  }, [edges, simulationResult, simulation.visibleStepCount]);
 
   const currentStatus = journey ? campaignStatusLabels[journey.campaign.status] : undefined;
   const hasSelection = selectedNodeIds.length > 0 || selectedEdgeIds.length > 0;
@@ -179,9 +213,26 @@ export function JourneyEditorPage() {
           (issue) => issue.nodeId === selectedNode.id && issue.path.at(-1) === 'waitSeconds',
         )?.message
       : undefined;
-  const startBehavior = canvas.currentDefinition.nodes.find(
-    (node) => node.type === 'start',
-  )?.entryBehavior;
+  const startNodes = canvas.currentDefinition.nodes.filter((node) => node.type === 'start');
+  const startBehavior = startNodes[0]?.entryBehavior;
+  // 只有画布恰有一个开始步骤时才预填进入行为；空旅程保持未选择，由运营明确决定。
+  const initialEntryBehavior = startNodes.length === 1 ? startNodes[0]?.entryBehavior : undefined;
+  const aiDraft = useJourneyAiDraft({
+    journeyId: id,
+    initialEntryBehavior,
+    onApply: draft.applyDraft,
+  });
+  const aiDraftRef = useRef(aiDraft);
+  aiDraftRef.current = aiDraft;
+  const initialBehaviorRef = useRef(initialEntryBehavior);
+  initialBehaviorRef.current = initialEntryBehavior;
+  // 切换同一旅程的页面不卸载编辑器；只在进入起草时建立新输入，离开后清除候选。
+  useEffect(() => {
+    if (aiDraftPage && initializedId === id) aiDraftRef.current.start(initialBehaviorRef.current);
+    else aiDraftRef.current.clear();
+  }, [id, aiDraftPage, initializedId]);
+  useJourneyEditorNavigation({ id, dirty, saving, mustVerify, aiDraftPage, aiDraft });
+
   const simulationBlockReason = !parsedDefinition.success
     ? (canvas.issues[0]?.message ?? '旅程设置有问题，请先修正。')
     : (warnings[0]?.message ?? undefined);
@@ -219,7 +270,7 @@ export function JourneyEditorPage() {
   }
 
   function handleCanvasKeyDown(event: ReactKeyboardEvent<HTMLElement>): void {
-    if (showSimulationPage) return;
+    if (showSimulationPage || aiDraftPage) return;
     const target = event.target;
     if (
       target instanceof HTMLElement &&
@@ -235,7 +286,7 @@ export function JourneyEditorPage() {
 
   useEffect(() => {
     function handleCanvasShortcut(event: KeyboardEvent): void {
-      if (showSimulationPage) return;
+      if (showSimulationPage || aiDraftPage) return;
       if (!(event.ctrlKey || event.metaKey)) return;
       const key = event.key.toLowerCase();
       if (!['z', 'y', 'c', 'v'].includes(key)) return;
@@ -286,6 +337,7 @@ export function JourneyEditorPage() {
     redoCanvas,
     undoCanvas,
     showSimulationPage,
+    aiDraftPage,
   ]);
 
   function handleConnectEnd(
@@ -341,6 +393,26 @@ export function JourneyEditorPage() {
         ?.querySelector<HTMLElement>(`[data-testid="rf__node-${sourceId}"]`)
         ?.focus();
     });
+  }
+
+  if (aiDraftPage && initializedId === id && journey !== undefined) {
+    return (
+      <JourneyAiDraftPage
+        draft={aiDraft}
+        journeyName={journey.name}
+        segmentName={journey.segment?.name ?? null}
+        layoutDirection={layoutDirection}
+        hasExistingFlow={nodes.length > 0}
+        unsavedChanges={dirty}
+        mustVerify={mustVerify}
+        saveError={saveError}
+        blockReason={getAiDraftBlockReason()}
+        onReturn={() => navigate(`/journeys/${id}/editor`, { state: location.state })}
+        onReadLatest={async () => {
+          if (await readLatestAfterConfirm()) aiDraft.clear();
+        }}
+      />
+    );
   }
 
   return (
@@ -400,14 +472,6 @@ export function JourneyEditorPage() {
               </span>
             </Tooltip>
           )}
-          {!showSimulationPage && (
-            <Button
-              type="link"
-              onClick={() => navigate(`/journeys/${id}`, { state: location.state })}
-            >
-              查看已发布版本
-            </Button>
-          )}
           {journey !== undefined && canEditCampaign(journey.campaign.status) && (
             <JourneyPublishDialog
               journeyId={id}
@@ -422,7 +486,7 @@ export function JourneyEditorPage() {
               loading={saving}
               disabled={
                 !canEdit ||
-                conflict ||
+                mustVerify ||
                 saving ||
                 !dirty ||
                 !parsedDefinition.success ||
@@ -495,6 +559,10 @@ export function JourneyEditorPage() {
                 hasSelection={hasSelection}
                 canUndo={canUndo}
                 canRedo={canRedo}
+                aiDraftBlockReason={getAiDraftBlockReason()}
+                onOpenAiDraft={() =>
+                  navigate(`/journeys/${id}/ai-draft`, { state: location.state })
+                }
                 onAddNode={(type) => edit(() => canvas.addNode(type))}
                 onUndo={() => edit(canvas.undo)}
                 onRedo={() => edit(canvas.redo)}
@@ -540,6 +608,7 @@ export function JourneyEditorPage() {
                   nodes={displayNodes}
                   edges={displayEdges}
                   nodeTypes={nodeTypes}
+                  edgeTypes={edgeTypes}
                   onNodesChange={onNodesChange}
                   onEdgesChange={onEdgesChange}
                   onConnect={(connection) => edit(() => canvas.handleConnect(connection))}

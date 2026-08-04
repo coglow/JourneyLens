@@ -1,4 +1,4 @@
-import { AUDIENCE_FIELDS } from '../audience/audience-catalog.js';
+import { AUDIENCE_FIELDS, type ComparisonOperator } from '../audience/audience-catalog.js';
 
 /** 模拟行为与开始步骤使用同一组静态类型，不维护第二份行为枚举。 */
 export const JOURNEY_ENTRY_BEHAVIORS = [
@@ -72,6 +72,20 @@ export function journeyEventField(
 
 export function journeyEventFields(eventType: JourneyEventType): readonly JourneyEventField[] {
   return eventFields[eventType];
+}
+
+/** 表单、行为条件校验和 AI 能力说明共用比较方式；行为枚举只接受单值比较。 */
+export function journeyEventOperators(
+  eventType: JourneyEventType,
+  path: string,
+): readonly ComparisonOperator[] {
+  const field = journeyEventField(eventType, path);
+  if (field === undefined) return [];
+  return field.kind === 'number'
+    ? ['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'exists']
+    : field.values === undefined
+      ? ['eq', 'neq', 'contains', 'exists']
+      : ['eq', 'neq', 'exists'];
 }
 
 export function journeyEventHasProductId(eventType: JourneyEventType): boolean {

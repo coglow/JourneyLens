@@ -60,7 +60,7 @@ export function toFlowEdge(edge: JourneyDraftEdge): Edge {
     target: edge.target,
     sourceHandle: edge.branch ?? 'next',
     targetHandle: 'target',
-    type: 'smoothstep',
+    type: 'journey',
     ...(edge.branch
       ? {
           label: JOURNEY_BRANCH_LABELS[edge.branch],

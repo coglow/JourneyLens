@@ -114,6 +114,14 @@
   margin: 0 !important;
 }
 
+.aiDraftEntry {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+}
+
 .paletteItem {
   display: flex !important;
   min-height: 72px;

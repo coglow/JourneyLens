@@ -233,25 +233,30 @@ function stepDetails(step: JourneySimulationStep, scenario: JourneySimulationSce
 /** 模拟结果：结论、入口依据和执行过程。只展示本次请求返回的数据，不查询真实受众。 */
 export function SimulationResultView({
   result,
+  visibleStepCount,
   scenario,
   onLocate,
 }: {
   result: JourneySimulationResult;
+  visibleStepCount: number;
   scenario: JourneySimulationScenario;
   onLocate: (nodeId: string) => void;
 }) {
   const completed = result.outcome === 'completed';
+  const playing = visibleStepCount < result.steps.length;
   const segment = result.admission.segment;
   return (
     <section className={styles.result ?? ''} aria-label="模拟结果" aria-live="polite">
       <div className={styles.outcome ?? ''}>
         <Alert
-          type={completed ? 'success' : 'warning'}
+          type={playing ? 'info' : completed ? 'success' : 'warning'}
           showIcon
-          title={completed ? '已到达结束步骤' : '未进入旅程'}
+          title={playing ? '正在模拟' : completed ? '已到达结束步骤' : '未进入旅程'}
           description={
             completed ? (
-              `经过 ${result.steps.length} 步 · 累计等待 ${formatElapsedDuration(result.elapsedSeconds)}`
+              playing ? (
+                `已走过 ${visibleStepCount} 步 · 每步间隔 0.5 秒`
+              ) : undefined
             ) : (
               <ul className={styles.reasons ?? ''}>
                 {!result.admission.entryBehavior.matched && <li>进入行为不匹配，没有进入旅程。</li>}
@@ -321,14 +326,14 @@ export function SimulationResultView({
               执行过程
             </Typography.Title>
             <Typography.Text type="secondary" className={styles.meta ?? ''}>
-              共 {result.steps.length} 步
+              {playing ? `已走过 ${visibleStepCount} 步` : `共 ${result.steps.length} 步`}
             </Typography.Text>
           </Flex>
           <ConfigProvider theme={{ components: { Steps: { dotSize: 30, dotCurrentSize: 30 } } }}>
             <Timeline
               aria-label="模拟经过的步骤"
               className={styles.steps ?? ''}
-              items={result.steps.map((step) => {
+              items={result.steps.slice(0, visibleStepCount).map((step) => {
                 const details = stepDetails(step, scenario);
                 const showSummary =
                   step.nodeType === 'condition' ||

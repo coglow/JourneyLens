@@ -1,0 +1,58 @@
+.preview {
+  position: relative;
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+}
+.toolbar {
+  display: flex;
+  min-height: 54px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 8px 20px;
+  border-bottom: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+  background: var(--ant-color-bg-container, #fff);
+}
+.status {
+  color: var(--ant-color-success, #52c41a);
+  font-size: 13px;
+  white-space: nowrap;
+}
+.previewCanvas {
+  position: relative;
+  min-height: 0;
+  flex: 1;
+  background: #fafbfe;
+}
+.canvasHint {
+  position: absolute;
+  right: 16px;
+  bottom: 12px;
+  color: var(--ant-color-text-tertiary, #999);
+  font-size: 12px;
+  pointer-events: none;
+}
+.checklist {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  padding: 20px 24px;
+}
+.checklistItem {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+.itemTitle {
+  margin: 0 !important;
+}
+.messageBody {
+  white-space: pre-wrap;
+  word-break: break-word;
+}

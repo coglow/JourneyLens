@@ -80,6 +80,48 @@ describe('请求客户端', () => {
     expect(isSessionExpired(error)).toBe(false);
   });
 
+  it('保留错误详情与服务端给出的等待秒数', async () => {
+    mock.onPost('/journeys/1/ai-draft').reply(
+      429,
+      {
+        error: {
+          code: 'AI_DRAFT_RATE_LIMITED',
+          message: '起草请求过于频繁，请稍后再试',
+          requestId: 'req-429',
+          details: ['「短信订阅判断」：请选择“是”或“否”'],
+        },
+      },
+      { 'retry-after': '900' },
+    );
+
+    const error = await captureError(
+      request({ url: '/journeys/1/ai-draft', method: 'POST' }, passthroughSchema),
+    );
+
+    expect(error).toMatchObject({
+      status: 429,
+      code: 'AI_DRAFT_RATE_LIMITED',
+      retryAfterSeconds: 900,
+      details: ['「短信订阅判断」：请选择“是”或“否”'],
+    });
+  });
+
+  it('缺少 Retry-After 时不猜等待秒数', async () => {
+    mock.onPost('/journeys/1/ai-draft').reply(429, {
+      error: {
+        code: 'AI_DRAFT_RATE_LIMITED',
+        message: '请求过于频繁，请 60 秒后重试',
+        requestId: 'req-429',
+      },
+    });
+
+    const error = await captureError(
+      request({ url: '/journeys/1/ai-draft', method: 'POST' }, passthroughSchema),
+    );
+
+    expect(error).toMatchObject({ status: 429, retryAfterSeconds: undefined });
+  });
+
   it('错误响应缺少请求标识时使用公开兜底文案', async () => {
     mock.onGet('/campaigns/1').reply(500, {
       error: { code: 'INTERNAL_ERROR', message: '服务暂时不可用' },

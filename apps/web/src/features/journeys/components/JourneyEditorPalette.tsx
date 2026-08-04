@@ -1,4 +1,5 @@
-import { Button, Flex, Typography } from 'antd';
+import { RobotOutlined } from '@ant-design/icons';
+import { Button, Flex, Tooltip, Typography } from 'antd';
 import type { JourneyNodeType } from '@journeylens/shared';
 import { journeyNodeOptions } from '@/features/journeys/journey-node-options';
 import styles from './JourneyDraftEditor.module.css';
@@ -10,6 +11,8 @@ type Props = {
   hasSelection: boolean;
   canUndo: boolean;
   canRedo: boolean;
+  aiDraftBlockReason: string | undefined;
+  onOpenAiDraft: () => void;
   onAddNode: (type: JourneyNodeType) => void;
   onUndo: () => void;
   onRedo: () => void;
@@ -25,6 +28,8 @@ export function JourneyEditorPalette({
   hasSelection,
   canUndo,
   canRedo,
+  aiDraftBlockReason,
+  onOpenAiDraft,
   onAddNode,
   onUndo,
   onRedo,
@@ -33,8 +38,26 @@ export function JourneyEditorPalette({
 }: Props) {
   return (
     <aside className={styles.palette} aria-label="添加步骤">
+      <div className={styles.aiDraftEntry}>
+        <Tooltip title={aiDraftBlockReason} placement="right">
+          <span className={styles.disabledButtonTrigger ?? ''}>
+            <Button
+              type="primary"
+              block
+              icon={<RobotOutlined />}
+              disabled={!canEdit || aiDraftBlockReason !== undefined}
+              onClick={onOpenAiDraft}
+            >
+              AI 生成旅程
+            </Button>
+          </span>
+        </Tooltip>
+        <Typography.Text type="secondary" className={styles.keyboardHint ?? ''}>
+          生成旅程初稿
+        </Typography.Text>
+      </div>
       <Typography.Title level={4} className={styles.panelTitle ?? ''}>
-        添加步骤
+        手动添加步骤
       </Typography.Title>
       <Flex vertical gap={8} className={styles.paletteList}>
         {journeyNodeOptions.map((option) => (

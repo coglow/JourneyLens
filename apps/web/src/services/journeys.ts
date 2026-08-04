@@ -1,5 +1,7 @@
 import {
   getPaginationErrorMessages,
+  journeyAiDraftRequestSchema,
+  journeyAiDraftResponseSchema,
   journeyCreateSchema,
   journeyDetailResponseSchema,
   journeyDraftSaveSchema,
@@ -15,6 +17,7 @@ import {
   journeyVersionListResponseSchema,
   journeyVersionPublishSchema,
   journeyVersionStatsResponseSchema,
+  type JourneyAiDraftRequestInput,
   type JourneyCreateInput,
   type JourneyDraftDefinition,
   type JourneyListQueryInput,
@@ -130,6 +133,24 @@ export async function saveJourneyDraft(
   const body = await request(
     { url: `/journeys/${encodeURIComponent(id)}/draft`, method: 'PUT', data: payload },
     journeyDetailResponseSchema,
+  );
+  return body.data;
+}
+
+/** 生成请求单独放宽超时：等待模型比普通读写长，服务端自身仍有更短的等待上限。 */
+const AI_DRAFT_TIMEOUT_MS = 70_000;
+
+/** AI 起草：只提交本次选择、描述和成对补答，不提交画布内容或修订号。 */
+export async function generateJourneyAiDraft(journeyId: string, input: JourneyAiDraftRequestInput) {
+  const payload = journeyAiDraftRequestSchema.parse(input);
+  const body = await request(
+    {
+      url: `/journeys/${encodeURIComponent(journeyId)}/ai-draft`,
+      method: 'POST',
+      data: payload,
+      timeout: AI_DRAFT_TIMEOUT_MS,
+    },
+    journeyAiDraftResponseSchema,
   );
   return body.data;
 }

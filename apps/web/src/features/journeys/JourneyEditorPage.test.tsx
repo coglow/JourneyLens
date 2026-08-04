@@ -10,7 +10,12 @@ import type {
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { JourneyEditorPage } from './JourneyEditorPage';
-import { getJourney, saveJourneyDraft, simulateJourney } from '@/services/journeys';
+import {
+  generateJourneyAiDraft,
+  getJourney,
+  saveJourneyDraft,
+  simulateJourney,
+} from '@/services/journeys';
 import { ApiError } from '@/services/api';
 import { journeyQueryKeys } from './journey-queries';
 
@@ -19,6 +24,7 @@ vi.mock('@/services/journeys', () => ({
   saveJourneyDraft: vi.fn(),
   simulateJourney: vi.fn(),
   publishJourney: vi.fn(),
+  generateJourneyAiDraft: vi.fn(),
 }));
 
 const journeyId = '88a0f727-a226-4cb4-9495-74364f8d0e33';
@@ -37,6 +43,21 @@ const journey: JourneyDetail = {
 };
 
 let queryClient: QueryClient | undefined;
+
+const aiCandidate: JourneyDraftDefinition = {
+  layoutDirection: 'vertical',
+  nodes: [
+    {
+      id: 'ai-start',
+      type: 'start',
+      name: 'AI 开始',
+      position: { x: 0, y: 0 },
+      entryBehavior: 'product_viewed',
+    },
+    { id: 'ai-end', type: 'end', name: 'AI 结束', position: { x: 0, y: 200 }, note: null },
+  ],
+  edges: [{ id: 'ai-edge', source: 'ai-start', target: 'ai-end' }],
+};
 
 // jsdom 缺少测量连接点时读取的矩阵对象；页面测试默认缩放为 1，真实几何另做浏览器验证。
 beforeAll(() => {
@@ -69,6 +90,23 @@ function renderEditor() {
     </ConfigProvider>,
   );
   return { ...view, router };
+}
+
+async function applyAiDraft() {
+  vi.mocked(getJourney).mockResolvedValue({ ...journey, draftDefinition: aiCandidate });
+  vi.mocked(generateJourneyAiDraft).mockResolvedValue({
+    status: 'ready',
+    draftDefinition: aiCandidate,
+  });
+  const { router } = renderEditor();
+  await screen.findByRole('heading', { name: '欢迎旅程' });
+  fireEvent.click(screen.getByRole('button', { name: /AI 生成旅程/ }));
+  await screen.findByRole('heading', { name: 'AI 起草' });
+  fireEvent.change(screen.getByLabelText('旅程描述'), { target: { value: '浏览后结束' } });
+  fireEvent.click(screen.getByRole('button', { name: '生成方案' }));
+  fireEvent.click(await screen.findByRole('button', { name: '应用并保存草稿' }));
+  fireEvent.click(await screen.findByRole('button', { name: '替换并保存' }));
+  return router;
 }
 
 function dispatchShortcut(
@@ -107,6 +145,291 @@ afterEach(() => {
 });
 
 describe('旅程编排页面', () => {
+  it('起草保存冲突后取消读取保留候选，读取成功后才允许返回', async () => {
+    vi.mocked(getJourney).mockResolvedValue({ ...journey, draftDefinition: aiCandidate });
+    vi.mocked(generateJourneyAiDraft).mockResolvedValue({
+      status: 'ready',
+      draftDefinition: aiCandidate,
+    });
+    vi.mocked(saveJourneyDraft).mockRejectedValueOnce(
+      new ApiError(409, 'JOURNEY_REVISION_CONFLICT', '旅程已更新'),
+    );
+    const { router } = renderEditor();
+    await screen.findByRole('heading', { name: '欢迎旅程' });
+    fireEvent.click(screen.getByRole('button', { name: /AI 生成旅程/ }));
+    await screen.findByRole('heading', { name: 'AI 起草' });
+    fireEvent.change(screen.getByLabelText('旅程描述'), { target: { value: '浏览后结束' } });
+    fireEvent.click(screen.getByRole('button', { name: '生成方案' }));
+    fireEvent.click(await screen.findByRole('button', { name: '应用并保存草稿' }));
+    fireEvent.click(await screen.findByRole('button', { name: '替换并保存' }));
+    await screen.findByText('旅程已在其他页面修改，你的内容仍保留在本页。读取最新内容前会先确认。');
+    expect(screen.getByRole('button', { name: /^返回编排$/ }).hasAttribute('disabled')).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: '读取最新内容' }));
+    fireEvent.click(await screen.findByRole('button', { name: '继续编辑' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(screen.getByText(/流程检查通过/)).toBeTruthy();
+    expect(router.state.location.pathname).toBe(`/journeys/${journeyId}/ai-draft`);
+
+    vi.mocked(getJourney).mockResolvedValue({
+      ...journey,
+      revision: 2,
+      draftDefinition: aiCandidate,
+    });
+    fireEvent.click(screen.getByRole('button', { name: '读取最新内容' }));
+    const confirm = await screen.findByRole('dialog');
+    fireEvent.click(within(confirm).getByRole('button', { name: '读取最新内容' }));
+    await waitFor(() =>
+      expect((screen.getByLabelText('旅程描述') as HTMLTextAreaElement).value).toBe(''),
+    );
+    fireEvent.click(screen.getByRole('button', { name: /^返回编排$/ }));
+    expect(await screen.findByLabelText('开始：AI 开始')).toBeTruthy();
+    expect(screen.queryByText('放弃本次起草？')).toBeNull();
+  });
+
+  it.each(['TIMEOUT', 'NETWORK_ERROR'])(
+    '起草保存%s后修改描述仍需核实，读取成功后恢复保存',
+    async (code) => {
+      vi.mocked(saveJourneyDraft).mockRejectedValueOnce(
+        new ApiError(undefined, code, '暂时无法确认保存结果'),
+      );
+      const router = await applyAiDraft();
+      await screen.findByText('本次保存结果未确认，请读取最新内容核实');
+      fireEvent.change(screen.getByLabelText('旅程描述'), { target: { value: '修改后的要求' } });
+
+      expect(screen.getByText('本次保存结果未确认，请读取最新内容核实')).toBeTruthy();
+      expect(screen.getByRole('button', { name: /^返回编排$/ }).hasAttribute('disabled')).toBe(
+        true,
+      );
+      expect(screen.getByRole('button', { name: '生成方案' }).hasAttribute('disabled')).toBe(true);
+      await act(async () => {
+        await router.navigate(`/journeys/${journeyId}/editor`);
+      });
+      const leave = await screen.findByRole('dialog');
+      expect(
+        within(leave).getByRole('button', { name: '放弃并离开' }).hasAttribute('disabled'),
+      ).toBe(true);
+      fireEvent.click(within(leave).getByRole('button', { name: '留在此页' }));
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+
+      vi.mocked(getJourney).mockResolvedValue({
+        ...journey,
+        revision: 2,
+        draftDefinition: aiCandidate,
+      });
+      fireEvent.click(screen.getByRole('button', { name: '读取最新内容' }));
+      fireEvent.click(
+        within(await screen.findByRole('dialog')).getByRole('button', { name: '读取最新内容' }),
+      );
+      await waitFor(() =>
+        expect((screen.getByLabelText('旅程描述') as HTMLTextAreaElement).value).toBe(''),
+      );
+      fireEvent.click(screen.getByRole('button', { name: /^返回编排$/ }));
+      fireEvent.click(await screen.findByLabelText('结束：AI 结束'));
+      fireEvent.change(await screen.findByLabelText('节点名称'), {
+        target: { value: '核实后的结束' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: '保存编排' }));
+      await waitFor(() => expect(saveJourneyDraft).toHaveBeenCalledTimes(2));
+      expect(saveJourneyDraft).toHaveBeenLastCalledWith(
+        journeyId,
+        expect.objectContaining({
+          revision: 2,
+          draftDefinition: expect.objectContaining({
+            nodes: expect.arrayContaining([expect.objectContaining({ name: '核实后的结束' })]),
+          }),
+        }),
+      );
+    },
+  );
+
+  it('起草核实时读取失败会显示原因，重试成功后解除保护', async () => {
+    vi.mocked(saveJourneyDraft).mockRejectedValueOnce(
+      new ApiError(409, 'JOURNEY_REVISION_CONFLICT', '旅程已更新'),
+    );
+    await applyAiDraft();
+    await screen.findByText('旅程已在其他页面修改，你的内容仍保留在本页。读取最新内容前会先确认。');
+    vi.mocked(getJourney).mockRejectedValueOnce(
+      new ApiError(undefined, 'NETWORK_ERROR', '无法连接服务器，请稍后重试'),
+    );
+    fireEvent.click(screen.getByRole('button', { name: '读取最新内容' }));
+    fireEvent.click(
+      within(await screen.findByRole('dialog')).getByRole('button', { name: '读取最新内容' }),
+    );
+    await screen.findByText('无法连接服务器，请稍后重试');
+    expect(screen.getByText(/流程检查通过/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^返回编排$/ }).hasAttribute('disabled')).toBe(true);
+
+    vi.mocked(getJourney).mockResolvedValue({
+      ...journey,
+      revision: 2,
+      draftDefinition: aiCandidate,
+    });
+    fireEvent.click(screen.getByRole('button', { name: '读取最新内容' }));
+    fireEvent.click(
+      within(await screen.findByRole('dialog')).getByRole('button', { name: '读取最新内容' }),
+    );
+    await waitFor(() =>
+      expect((screen.getByLabelText('旅程描述') as HTMLTextAreaElement).value).toBe(''),
+    );
+    expect(screen.queryByText('无法连接服务器，请稍后重试')).toBeNull();
+    expect(screen.getByRole('button', { name: /^返回编排$/ }).hasAttribute('disabled')).toBe(false);
+  });
+
+  it('起草核实发现旅程已删除时显示原因，并允许确认后离开', async () => {
+    vi.mocked(saveJourneyDraft).mockRejectedValueOnce(
+      new ApiError(409, 'JOURNEY_REVISION_CONFLICT', '旅程已更新'),
+    );
+    const router = await applyAiDraft();
+    await screen.findByText('旅程已在其他页面修改，你的内容仍保留在本页。读取最新内容前会先确认。');
+    vi.mocked(getJourney).mockRejectedValueOnce(new ApiError(404, 'NOT_FOUND', '旅程不存在'));
+    fireEvent.click(screen.getByRole('button', { name: '读取最新内容' }));
+    fireEvent.click(
+      within(await screen.findByRole('dialog')).getByRole('button', { name: '读取最新内容' }),
+    );
+    await screen.findByText('旅程已不存在，当前内容无法保存。');
+    expect(screen.getByRole('button', { name: /^返回编排$/ }).hasAttribute('disabled')).toBe(false);
+    expect(screen.getByRole('button', { name: '应用并保存草稿' }).hasAttribute('disabled')).toBe(
+      true,
+    );
+    await act(async () => {
+      await router.navigate(`/campaigns/${journey.campaign.id}`);
+    });
+    const leave = await screen.findByRole('dialog');
+    const confirm = within(leave).getByRole('button', { name: '放弃并离开' });
+    expect(confirm.hasAttribute('disabled')).toBe(false);
+    fireEvent.click(confirm);
+    expect(await screen.findByText('活动详情')).toBeTruthy();
+    expect(saveJourneyDraft).toHaveBeenCalledTimes(1);
+  });
+
+  it('生成中离开确认后丢弃迟到结果，重新进入保持空白', async () => {
+    let resolve:
+      ((value: { status: 'ready'; draftDefinition: JourneyDraftDefinition }) => void) | undefined;
+    vi.mocked(getJourney).mockResolvedValue({ ...journey, draftDefinition: aiCandidate });
+    vi.mocked(generateJourneyAiDraft).mockImplementationOnce(
+      () =>
+        new Promise((done) => {
+          resolve = done;
+        }),
+    );
+    renderEditor();
+    await screen.findByRole('heading', { name: '欢迎旅程' });
+    fireEvent.click(screen.getByRole('button', { name: /AI 生成旅程/ }));
+    await screen.findByRole('heading', { name: 'AI 起草' });
+    fireEvent.change(screen.getByLabelText('旅程描述'), { target: { value: '浏览后结束' } });
+    fireEvent.click(screen.getByRole('button', { name: '生成方案' }));
+    await screen.findByText('正在生成方案，请稍候…');
+    fireEvent.click(screen.getByRole('button', { name: /^返回编排$/ }));
+    await screen.findAllByText('方案还在生成，仍要离开？');
+    fireEvent.click(screen.getByRole('button', { name: '放弃并离开' }));
+    await screen.findByRole('button', { name: /AI 生成旅程/ });
+    await act(async () => {
+      resolve?.({ status: 'ready', draftDefinition: aiCandidate });
+    });
+    fireEvent.click(screen.getByRole('button', { name: /AI 生成旅程/ }));
+    await screen.findByRole('heading', { name: 'AI 起草' });
+    expect((screen.getByLabelText('旅程描述') as HTMLTextAreaElement).value).toBe('');
+    expect(screen.queryByRole('button', { name: '应用并保存草稿' })).toBeNull();
+  });
+
+  it('独立起草路由保留原画布未保存内容，返回时只确认放弃起草输入', async () => {
+    const { router } = renderEditor();
+    await screen.findByRole('heading', { name: '欢迎旅程' });
+    fireEvent.click(screen.getByRole('button', { name: '添加消息' }));
+    expect(await screen.findByText('消息内容不能为空')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /AI 生成旅程/ }));
+    expect(await screen.findByRole('heading', { name: 'AI 起草' })).toBeTruthy();
+    expect(router.state.location.pathname).toBe(`/journeys/${journeyId}/ai-draft`);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    fireEvent.change(screen.getByLabelText('旅程描述'), { target: { value: '尚未生成的要求' } });
+    fireEvent.click(screen.getByRole('button', { name: /^返回编排$/ }));
+    expect((await screen.findAllByText('放弃本次起草？')).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole('button', { name: '继续编辑' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect((screen.getByLabelText('旅程描述') as HTMLTextAreaElement).value).toBe('尚未生成的要求');
+    fireEvent.click(screen.getByRole('button', { name: /^返回编排$/ }));
+    fireEvent.click(await screen.findByRole('button', { name: '放弃并离开' }));
+    expect(await screen.findByRole('button', { name: '保存编排' })).toBeTruthy();
+    expect(screen.getByLabelText('消息：消息')).toBeTruthy();
+    expect(saveJourneyDraft).not.toHaveBeenCalled();
+    await act(async () => {
+      await router.navigate(`/campaigns/${journey.campaign.id}`);
+    });
+    expect((await screen.findAllByText('放弃未保存的修改？')).length).toBeGreaterThan(0);
+  });
+
+  it('浏览器返回同样保护起草内容，刷新保护与空页返回正确释放', async () => {
+    const { router } = renderEditor();
+    await screen.findByRole('heading', { name: '欢迎旅程' });
+    fireEvent.click(screen.getByRole('button', { name: /AI 生成旅程/ }));
+    await screen.findByRole('heading', { name: 'AI 起草' });
+    fireEvent.change(screen.getByLabelText('旅程描述'), { target: { value: '浏览后提醒' } });
+    const refresh = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(refresh);
+    expect(refresh.defaultPrevented).toBe(true);
+    await act(async () => {
+      await router.navigate(-1);
+    });
+    fireEvent.click(await screen.findByRole('button', { name: '继续编辑' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(router.state.location.pathname).toBe(`/journeys/${journeyId}/ai-draft`);
+    await act(async () => {
+      await router.navigate(-1);
+    });
+    fireEvent.click(await screen.findByRole('button', { name: '放弃并离开' }));
+    await screen.findByRole('button', { name: /AI 生成旅程/ });
+    const cleanRefresh = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(cleanRefresh);
+    expect(cleanRefresh.defaultPrevented).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: /AI 生成旅程/ }));
+    await screen.findByRole('heading', { name: 'AI 起草' });
+    expect((screen.getByLabelText('旅程描述') as HTMLTextAreaElement).value).toBe('');
+    fireEvent.click(screen.getByRole('button', { name: /^返回编排$/ }));
+    await screen.findByRole('button', { name: /AI 生成旅程/ });
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('起草应用复用保存，成功后返回编排显示新流程', async () => {
+    const definition: JourneyDraftDefinition = {
+      layoutDirection: 'vertical',
+      nodes: [
+        {
+          id: 'ai-start',
+          type: 'start',
+          name: 'AI 开始',
+          position: { x: 0, y: 0 },
+          entryBehavior: 'product_viewed',
+        },
+        { id: 'ai-end', type: 'end', name: 'AI 结束', position: { x: 0, y: 200 }, note: null },
+      ],
+      edges: [{ id: 'ai-edge', source: 'ai-start', target: 'ai-end' }],
+    };
+    vi.mocked(generateJourneyAiDraft).mockResolvedValue({
+      status: 'ready',
+      draftDefinition: definition,
+    });
+    renderEditor();
+    await screen.findByRole('heading', { name: '欢迎旅程' });
+    fireEvent.click(screen.getByRole('button', { name: /AI 生成旅程/ }));
+    await screen.findByRole('heading', { name: 'AI 起草' });
+    fireEvent.mouseDown(screen.getByLabelText('进入行为'));
+    fireEvent.click(
+      await screen.findByText('浏览商品', { selector: '.ant-select-item-option-content' }),
+    );
+    fireEvent.change(screen.getByLabelText('旅程描述'), { target: { value: '浏览后结束' } });
+    fireEvent.click(screen.getByRole('button', { name: '生成方案' }));
+    expect(await screen.findByText(/流程检查通过/)).toBeTruthy();
+    expect(saveJourneyDraft).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '应用并保存草稿' }));
+    expect(await screen.findByLabelText('开始：AI 开始')).toBeTruthy();
+    expect(saveJourneyDraft).toHaveBeenCalledWith(
+      journeyId,
+      expect.objectContaining({ revision: 1 }),
+    );
+    expect(await screen.findByLabelText('开始：AI 开始')).toBeTruthy();
+    expect(screen.queryByText('放弃本次起草？')).toBeNull();
+  });
+
   it('显示已保存草稿的保存日期', async () => {
     vi.mocked(getJourney).mockResolvedValue({
       ...journey,
@@ -161,7 +484,7 @@ describe('旅程编排页面', () => {
     expect(await screen.findByLabelText('结束：结束')).toBeTruthy();
   });
 
-  // 这两个用例要模拟完整的 d3 鼠标事件链并等待画布重绘，单次耗时约 6 秒，高于默认 5 秒。
+  // 用完整的 d3 鼠标事件链验证拖动后的排列、撤销、重做与保存。
   it.each([
     { label: '单个', movedIds: ['wait'] },
     { label: '多个', movedIds: ['wait', 'end'] },
@@ -207,6 +530,11 @@ describe('旅程编排页面', () => {
       renderEditor();
       await screen.findByLabelText('定时等待：等待一分钟');
 
+      // 工具栏不会随画布编辑卸载，复用按钮以避免每一步都遍历整页计算可访问名称。
+      const arrangeButton = screen.getByRole('button', { name: /自动排列/ });
+      const undoButton = screen.getByRole('button', { name: '撤销' });
+      const redoButton = screen.getByRole('button', { name: '重做' });
+      const saveButton = screen.getByRole('button', { name: '保存编排' });
       const positions = () =>
         definition.nodes.map(({ id }) => screen.getByTestId(`rf__node-${id}`).style.transform);
       const initialPositions = positions();
@@ -240,25 +568,23 @@ describe('旅程编排页面', () => {
 
       // d3 会在拖动结束的当前事件循环内屏蔽点击，等待它解除后再点击工具栏。
       await new Promise((resolve) => setTimeout(resolve, 0));
-      fireEvent.click(screen.getByRole('button', { name: /自动排列/ }));
+      fireEvent.click(arrangeButton);
       fireEvent.click(await screen.findByRole('button', { name: '自动排列' }));
       const arrangedPositions = positions();
       expect(arrangedPositions).not.toEqual(movedPositions);
 
-      fireEvent.click(screen.getByRole('button', { name: '撤销' }));
+      fireEvent.click(undoButton);
       expect(positions()).toEqual(movedPositions);
       expect(screen.queryByLabelText('流程检查')).toBeNull();
-      fireEvent.click(screen.getByRole('button', { name: '撤销' }));
+      fireEvent.click(undoButton);
       expect(positions()).toEqual(initialPositions);
-      expect((screen.getByRole('button', { name: '撤销' }) as HTMLButtonElement).disabled).toBe(
-        true,
-      );
-      fireEvent.click(screen.getByRole('button', { name: '重做' }));
+      expect(undoButton.hasAttribute('disabled')).toBe(true);
+      fireEvent.click(redoButton);
       expect(positions()).toEqual(movedPositions);
-      fireEvent.click(screen.getByRole('button', { name: '重做' }));
+      fireEvent.click(redoButton);
       expect(positions()).toEqual(arrangedPositions);
-      fireEvent.click(screen.getByRole('button', { name: '撤销' }));
-      fireEvent.click(screen.getByRole('button', { name: '保存编排' }));
+      fireEvent.click(undoButton);
+      fireEvent.click(saveButton);
 
       await waitFor(() => expect(saveJourneyDraft).toHaveBeenCalledTimes(1));
       const saved = vi.mocked(saveJourneyDraft).mock.calls[0]![1].draftDefinition;
@@ -1455,7 +1781,18 @@ describe('旅程编排页面', () => {
     expect(screen.getByRole('main', { name: '旅程画布' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '开始模拟' }));
 
-    expect(await screen.findByText('已到达结束步骤')).toBeTruthy();
+    expect(await screen.findByText('已走过 1 步 · 每步间隔 0.5 秒')).toBeTruthy();
+    expect(document.querySelectorAll('[data-simulation-state="traversed"]')).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: '定位' })).toHaveLength(1);
+    expect(screen.queryByText('已到达结束步骤')).toBeNull();
+    expect(screen.queryByText('本次模拟已完成')).toBeNull();
+    await waitFor(
+      () =>
+        expect(document.querySelectorAll('[data-simulation-state="traversed"]')).toHaveLength(2),
+      { timeout: 1800 },
+    );
+    expect(screen.getAllByRole('button', { name: '定位' })).toHaveLength(2);
+    expect(await screen.findByText('已到达结束步骤', {}, { timeout: 2000 })).toBeTruthy();
     expect(document.querySelectorAll('[data-simulation-state="traversed"]')).toHaveLength(3);
 
     fireEvent.click(screen.getAllByRole('button', { name: '定位' })[1]!);
@@ -1465,6 +1802,34 @@ describe('旅程编排页面', () => {
     expect(
       screen.getByTestId('rf__node-n-message').querySelector('[data-selected="true"]'),
     ).not.toBeNull();
+
+    let finish: ((value: JourneySimulationResult) => void) | undefined;
+    vi.mocked(simulateJourney).mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: '重新模拟' }));
+
+    expect(screen.queryByRole('region', { name: '模拟结果' })).toBeNull();
+    expect(document.querySelectorAll('[data-simulation-state="traversed"]')).toHaveLength(0);
+    expect(
+      ((await screen.findByRole('button', { name: /模拟中…/ })) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    await act(async () => finish?.(result));
+
+    expect(document.querySelectorAll('[data-simulation-state="traversed"]')).toHaveLength(1);
+    expect(await screen.findByText('已到达结束步骤', {}, { timeout: 4000 })).toBeTruthy();
+    expect(document.querySelectorAll('[data-simulation-state="traversed"]')).toHaveLength(3);
+    expect(simulateJourney).toHaveBeenCalledTimes(2);
+
+    fireEvent.click(screen.getByRole('button', { name: '重新模拟' }));
+    await screen.findByText('已走过 1 步 · 每步间隔 0.5 秒');
+    fireEvent.click(screen.getByRole('button', { name: '返回编排' }));
+    fireEvent.click(await screen.findByRole('button', { name: '打开旅程模拟' }));
+    expect(await screen.findByRole('button', { name: '开始模拟' })).toBeTruthy();
+    expect(document.querySelectorAll('[data-simulation-state="traversed"]')).toHaveLength(0);
+    expect(screen.queryByRole('region', { name: '模拟结果' })).toBeNull();
   }, 20_000);
 
   it('流程不完整时禁用模拟入口并提示原因，直接打开模拟地址会回到编排页', async () => {
@@ -1567,7 +1932,7 @@ describe('旅程编排页面', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '打开旅程模拟' }));
     fireEvent.click(screen.getByRole('button', { name: '开始模拟' }));
-    expect(await screen.findByText('已到达结束步骤')).toBeTruthy();
+    expect(await screen.findByText('已到达结束步骤', {}, { timeout: 4000 })).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: '返回编排' }));
     expect(await screen.findByRole('tab', { name: '步骤设置' })).toBeTruthy();

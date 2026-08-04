@@ -33,7 +33,10 @@ function shiftNodesToBranchSide(
   }
 }
 
-/** 只计算节点坐标；双分支的独占后代固定到各自一侧，普通连线保留给 React Flow 绘制。 */
+/**
+ * 只计算节点坐标；双分支的独占后代固定到各自一侧，普通连线保留给 React Flow 绘制。
+ * 编辑器、版本页和 AI 候选预览共用这一份尺寸与排列，保证预览看到的排布就是应用后的排布。
+ */
 export function layoutJourneyNodes(
   nodes: readonly JourneyDraftNode[],
   edges: readonly JourneyDraftEdge[],

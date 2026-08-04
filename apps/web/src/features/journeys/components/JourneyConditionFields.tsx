@@ -8,6 +8,7 @@ import {
   journeyEventFields,
   journeyEventField,
   journeyEventHasProductId,
+  journeyEventOperators,
   type JourneyConditionRule,
   type JourneyEventFilter,
   type JourneyEventType,
@@ -26,16 +27,6 @@ type ConditionSource = 'user' | 'entry_event' | 'event_count';
 
 const NUMERIC_OPERATORS = ['eq', 'neq', 'gt', 'gte', 'lt', 'lte'] as const;
 const DEFAULT_EVENT_COUNT_WINDOW_SECONDS = 7 * 24 * 60 * 60;
-
-function eventOperators(eventType: JourneyEventType, path: string) {
-  const field = journeyEventField(eventType, path);
-  if (field === undefined) return [];
-  return field.kind === 'number'
-    ? [...NUMERIC_OPERATORS, 'exists' as const]
-    : field.values === undefined
-      ? (['eq', 'neq', 'contains', 'exists'] as const)
-      : (['eq', 'neq', 'exists'] as const);
-}
 
 /** 切换判断来源时给出可直接编辑的初始规则，不让界面停留在不合法的组合上。 */
 function createUserCompareRule(): JourneyConditionRule {
@@ -182,7 +173,7 @@ export function JourneyEventFilterFields({
   const eventFields = journeyEventFields(eventType);
   const hasFilterableFields = eventFields.length > 0;
   const field = value === undefined ? undefined : journeyEventField(eventType, value.path);
-  const options = value === undefined ? [] : eventOperators(eventType, value.path);
+  const options = value === undefined ? [] : journeyEventOperators(eventType, value.path);
 
   return (
     <Flex vertical gap={8}>
@@ -211,7 +202,7 @@ export function JourneyEventFilterFields({
             value={value.path}
             options={eventFields.map((item) => ({ label: item.label, value: item.key }))}
             onChange={(path: string) => {
-              const nextOperators = eventOperators(eventType, path);
+              const nextOperators = journeyEventOperators(eventType, path);
               const nextOperator = nextOperators[0] ?? 'exists';
               onChange({ path, operator: nextOperator });
             }}
@@ -327,7 +318,7 @@ export function JourneyConditionFields({
           aria-label="旅程条件比较方式"
           disabled={disabled}
           value={value.operator}
-          options={eventOperators(eventType, path).map((operator) => ({
+          options={journeyEventOperators(eventType, path).map((operator) => ({
             label: COMPARISON_OPERATOR_LABELS[operator],
             value: operator,
           }))}
