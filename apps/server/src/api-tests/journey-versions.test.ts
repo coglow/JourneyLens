@@ -1060,3 +1060,48 @@ describe('旅程版本运行统计', () => {
     }
   });
 });
+
+describe('消息变量的保存与发布边界', () => {
+  it('语法错误阻止保存，商品来源问题允许保存但阻止发布', async () => {
+    const { app } = makeApp(db);
+    try {
+      const cookie = await signedInCookie(app);
+      await seedCampaign();
+      const created = await createJourney(app, cookie, { name: '消息变量旅程', segmentId: null });
+      expect(created.statusCode).toBe(201);
+      const id = created.json().data.id as string;
+
+      const invalid = await saveDraft(app, cookie, id, 1, draftWithBody('您好 {{游客昵称}}'));
+      expect(invalid.statusCode).toBe(400);
+      expect(invalid.json().error).toMatchObject({
+        code: 'JOURNEY_DRAFT_INVALID',
+        message: '消息内容中有不支持的变量，请从“插入变量”中选择',
+      });
+
+      const saved = await saveDraft(app, cookie, id, 1, draftWithBody('您好 {{商品名称}}'));
+      expect(saved.statusCode).toBe(200);
+      expect(saved.json().data.revision).toBe(2);
+
+      const blocked = await publish(app, cookie, id, { revision: 2, segmentRevision: null });
+      expect(blocked.statusCode).toBe(409);
+      expect(blocked.json().error).toMatchObject({
+        code: 'JOURNEY_DRAFT_INCOMPLETE',
+        message:
+          '「发送邮件」使用了商品名称，但当前进入行为没有商品信息。请更换进入行为，或删除商品变量。',
+      });
+
+      const productDraft = draftWithBody('您好 {{商品名称}}');
+      const resaved = await saveDraft(app, cookie, id, 2, {
+        ...productDraft,
+        nodes: productDraft.nodes.map((node) =>
+          node.id === 'n-start' ? { ...node, entryBehavior: 'product_viewed' as const } : node,
+        ),
+      });
+      expect(resaved.statusCode).toBe(200);
+      const published = await publish(app, cookie, id, { revision: 3, segmentRevision: null });
+      expect(published.statusCode).toBe(201);
+    } finally {
+      await app.close();
+    }
+  });
+});

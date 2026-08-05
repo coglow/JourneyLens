@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Prisma, PrismaClient } from '@prisma/client';
-import type { SegmentRule } from '@journeylens/shared';
+import { executionTraceResponseSchema, type SegmentRule } from '@journeylens/shared';
 import { advanceExecution, type AdvanceResult } from '../modules/executions/runner.js';
 import { jsonHeaders, makeApp, signedInCookie, type TestApp } from '../test-support/harness.js';
 import { startTestDatabase, type TestDatabase } from '../test-support/test-database.js';
@@ -1033,5 +1033,130 @@ describe('活动锁竞争顺序', () => {
       where: { id: ingestResponse.executions[0]!.id },
     });
     expect(execution.status).toBe('stopped');
+  });
+});
+
+describe('消息内容变量', () => {
+  function messageJourney(body: string, options: { waitSeconds?: number } = {}) {
+    const nodes: unknown[] = [
+      {
+        id: 'start',
+        type: 'start',
+        name: '开始',
+        position: { x: 0, y: 0 },
+        entryBehavior: 'product_viewed',
+      },
+    ];
+    const edges: unknown[] = [
+      { id: 'e1', source: 'start', target: options.waitSeconds === undefined ? 'message' : 'wait' },
+    ];
+
+    if (options.waitSeconds !== undefined) {
+      nodes.push({
+        id: 'wait',
+        type: 'wait',
+        name: '等待',
+        position: { x: 0, y: 100 },
+        waitSeconds: options.waitSeconds,
+      });
+      edges.push({ id: 'e2', source: 'wait', target: 'message' });
+    }
+
+    nodes.push(
+      {
+        id: 'message',
+        type: 'message',
+        name: '欢迎消息',
+        position: { x: 0, y: 200 },
+        channel: 'sms',
+        subject: null,
+        body,
+      },
+      { id: 'end', type: 'end', name: '结束', position: { x: 0, y: 300 }, note: null },
+    );
+    edges.push({ id: 'e3', source: 'message', target: 'end' });
+
+    return { layoutDirection: 'vertical', nodes, edges };
+  }
+
+  it('消息步骤保存替换后的最终文案', async () => {
+    await setupUser();
+    await publishTestJourney(db, {
+      name: '消息变量旅程',
+      definition: messageJourney('您好 {{用户昵称}}，欢迎查看 {{商品名称}}'),
+    });
+
+    const started = await ingestEvent({ payload: { productId: 'p1', productName: '无线耳机' } });
+    const executionId = started.executions[0]!.id;
+    expect(await advance(executionId, 0)).toBe('completed');
+
+    const execution = await executionWithSteps(executionId);
+    expect(execution.steps.find((step) => step.nodeType === 'message')?.output).toMatchObject({
+      kind: 'message',
+      body: '您好 霖铃铃，欢迎查看 无线耳机',
+    });
+  });
+
+  it('昵称在消息步骤执行时读取，完成后修改不改写历史消息', async () => {
+    await setupUser();
+    await publishTestJourney(db, {
+      name: '昵称时机旅程',
+      definition: messageJourney('您好 {{用户昵称}}', { waitSeconds: 10 }),
+    });
+
+    const started = await ingestEvent({});
+    const executionId = started.executions[0]!.id;
+    expect(await advance(executionId, 1)).toBe('waiting');
+
+    await db.prisma.audienceUser.update({
+      where: { externalId: eligibleExternalId },
+      data: { displayName: '新昵称' },
+    });
+    expect(await advance(executionId, 11)).toBe('completed');
+
+    const execution = await executionWithSteps(executionId);
+    expect(execution.steps.find((step) => step.nodeType === 'message')?.output).toMatchObject({
+      kind: 'message',
+      body: '您好 新昵称',
+    });
+
+    await db.prisma.audienceUser.update({
+      where: { externalId: eligibleExternalId },
+      data: { displayName: '再次修改的昵称' },
+    });
+    const trace = await app.inject({
+      method: 'GET',
+      url: `/api/executions/${executionId}/trace`,
+      headers: { host: 'localhost', cookie },
+    });
+    expect(trace.statusCode).toBe(200);
+    const traceData = executionTraceResponseSchema.parse(trace.json()).data;
+    expect(traceData.audience.displayName).toBe('再次修改的昵称');
+    expect(traceData.steps.find((step) => step.nodeType === 'message')?.output).toMatchObject({
+      kind: 'message',
+      body: '您好 新昵称',
+    });
+  });
+
+  it('替换后的正文超过上限时标记失败，不写成功消息也不继续推进', async () => {
+    await setupUser();
+    await publishTestJourney(db, {
+      name: '超长消息旅程',
+      definition: messageJourney(`${'a'.repeat(1_992)}{{商品名称}}`),
+    });
+
+    const started = await ingestEvent({
+      payload: { productId: 'p1', productName: 'x'.repeat(180) },
+    });
+    const executionId = started.executions[0]!.id;
+    expect(await advance(executionId, 0)).toBe('failed');
+
+    const execution = await executionWithSteps(executionId);
+    expect(execution.status).toBe('failed');
+    expect(execution.failureReason).toContain('替换后超过 2000 字');
+    expect(execution.steps.find((step) => step.nodeType === 'message')).toMatchObject({
+      status: 'failed',
+    });
+    expect(execution.steps.some((step) => step.nodeType === 'end')).toBe(false);
   });
 });

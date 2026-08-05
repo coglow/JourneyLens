@@ -16,7 +16,7 @@ import {
 } from '@journeylens/shared';
 import { ApiError } from '../../errors.js';
 import { lockCampaignForJourneyWrite } from '../campaigns/campaign-lock.js';
-import { simulateJourney } from './simulation.js';
+import { JourneySimulationMessageError, simulateJourney } from './simulation.js';
 
 const journeyDetailSelect = {
   id: true,
@@ -360,14 +360,22 @@ export class JourneyService {
     });
     if (journey === null) throw new ApiError(404, 'NOT_FOUND', '旅程不存在');
 
-    return simulateJourney({
-      definition: input.draftDefinition,
-      scenario: input.scenario,
-      segment:
-        journey.segment === null
-          ? null
-          : { ...journey.segment, rules: journey.segment.rules as unknown as SegmentRule },
-    });
+    try {
+      return simulateJourney({
+        definition: input.draftDefinition,
+        scenario: input.scenario,
+        segment:
+          journey.segment === null
+            ? null
+            : { ...journey.segment, rules: journey.segment.rules as unknown as SegmentRule },
+      });
+    } catch (error) {
+      // 消息替换后的实际文案超长，用本次模拟请求的失败反馈说明具体步骤。
+      if (error instanceof JourneySimulationMessageError) {
+        throw new ApiError(400, 'BAD_REQUEST', error.message);
+      }
+      throw error;
+    }
   }
 
   private async assertSegmentExists(

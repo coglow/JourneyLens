@@ -5,6 +5,8 @@ import {
   journeyDraftDefinitionSchema,
   JOURNEY_ENTRY_BEHAVIORS,
   JOURNEY_MESSAGE_CHANNELS,
+  JOURNEY_MESSAGE_INCOMPLETE_VARIABLE,
+  JOURNEY_MESSAGE_UNSUPPORTED_VARIABLE,
 } from './journey-draft.js';
 
 const vipRule = {
@@ -589,5 +591,68 @@ describe('旅程草稿契约', () => {
       'subscription_started',
     ]);
     expect(JOURNEY_MESSAGE_CHANNELS.map((item) => item.value)).toEqual(['sms', 'push', 'email']);
+  });
+});
+
+describe('消息变量校验边界', () => {
+  it('未知变量和未配对标记阻止保存，并定位到消息字段', () => {
+    const unknown = completeDraft();
+    unknown.nodes = unknown.nodes.map((node) =>
+      node.id === 'n-message' ? { ...node, body: '您好 {{游客昵称}}' } : node,
+    );
+    expect(issueMessagesAt(unknown, 'body')).toEqual([JOURNEY_MESSAGE_UNSUPPORTED_VARIABLE]);
+    expect(journeyDraftDefinitionSchema.safeParse(unknown).success).toBe(false);
+
+    const invalidSubject = {
+      nodes: [
+        startNode(),
+        messageNode('n-message', { channel: 'email', subject: '{{用户昵称}', body: '您好' }),
+        endNode(),
+      ],
+      edges: [edge('e1', 'n-start', 'n-message'), edge('e2', 'n-message', 'n-end')],
+    };
+    expect(issueMessagesAt(invalidSubject, 'subject')).toEqual([
+      JOURNEY_MESSAGE_INCOMPLETE_VARIABLE,
+    ]);
+    expect(journeyDraftDefinitionSchema.safeParse(invalidSubject).success).toBe(false);
+  });
+
+  it('商品变量在进入行为不支持商品时只给流程提示，草稿仍可保存', () => {
+    const draft = journeyDraftDefinitionSchema.parse({
+      nodes: [
+        startNode('n-start', { entryBehavior: 'registration_completed' }),
+        messageNode('n-message', { body: '您好 {{商品名称}}' }),
+        endNode(),
+      ],
+      edges: [edge('e1', 'n-start', 'n-message'), edge('e2', 'n-message', 'n-end')],
+    });
+
+    expect(getJourneyDraftWarnings(draft)).toContainEqual({
+      code: 'message-product-unavailable',
+      nodeIds: ['n-message'],
+      message:
+        '「欢迎消息」使用了商品名称，但当前进入行为没有商品信息。请更换进入行为，或删除商品变量。',
+    });
+  });
+
+  it('进入行为支持商品名称时不产生商品来源提示', () => {
+    const draft = journeyDraftDefinitionSchema.parse({
+      nodes: [startNode(), messageNode('n-message', { body: '您好 {{商品名称}}' }), endNode()],
+      edges: [edge('e1', 'n-start', 'n-message'), edge('e2', 'n-message', 'n-end')],
+    });
+
+    expect(
+      getJourneyDraftWarnings(draft).some(
+        (warning) => warning.code === 'message-product-unavailable',
+      ),
+    ).toBe(false);
+  });
+
+  it('单花括号按普通文字保留，不影响保存', () => {
+    const draft = completeDraft();
+    draft.nodes = draft.nodes.map((node) =>
+      node.id === 'n-message' ? { ...node, body: '您好 {顾客}' } : node,
+    );
+    expect(journeyDraftDefinitionSchema.safeParse(draft).success).toBe(true);
   });
 });

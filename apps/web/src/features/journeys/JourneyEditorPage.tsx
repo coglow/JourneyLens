@@ -145,6 +145,8 @@ export function JourneyEditorPage() {
     loadError,
     readLatestAfterConfirm,
   } = draft;
+  // 商品变量来源问题要优先展示具体原因，其他未完成流程仍用原提示。
+  const productWarning = warnings.find((warning) => warning.code === 'message-product-unavailable');
   const simulation = useJourneySimulation({
     journeyId: id,
     active: simulationPage,
@@ -174,7 +176,9 @@ export function JourneyEditorPage() {
     if (mustVerify) return '上次保存结果尚未确认，请先读取最新内容';
     if (dirty) return '请先保存当前修改';
     if (journey.draftDefinition === null) return '请先保存编排';
-    if (!parsedDefinition.success || warnings.length > 0) return '请先补齐流程连接并修正步骤设置';
+    if (!parsedDefinition.success) return '请先修正步骤设置';
+    if (productWarning !== undefined) return productWarning.message;
+    if (warnings.length > 0) return '请先补齐流程连接并修正步骤设置';
     return undefined;
   }
   // 高亮只存在于展示副本：不改画布状态，也不进入草稿和撤销历史。
@@ -215,8 +219,22 @@ export function JourneyEditorPage() {
       : undefined;
   const startNodes = canvas.currentDefinition.nodes.filter((node) => node.type === 'start');
   const startBehavior = startNodes[0]?.entryBehavior;
+  const hasUniqueStart = startNodes.length === 1;
+  // 消息变量错误按字段取出，交给设置面板就地提示；保存禁用仍由共享校验统一决定。
+  const messageSubjectError =
+    selectedNode?.data.draftNode.type === 'message'
+      ? canvas.issues.find(
+          (issue) => issue.nodeId === selectedNode.id && issue.path.at(-1) === 'subject',
+        )?.message
+      : undefined;
+  const messageBodyError =
+    selectedNode?.data.draftNode.type === 'message'
+      ? canvas.issues.find(
+          (issue) => issue.nodeId === selectedNode.id && issue.path.at(-1) === 'body',
+        )?.message
+      : undefined;
   // 只有画布恰有一个开始步骤时才预填进入行为；空旅程保持未选择，由运营明确决定。
-  const initialEntryBehavior = startNodes.length === 1 ? startNodes[0]?.entryBehavior : undefined;
+  const initialEntryBehavior = hasUniqueStart ? startNodes[0]?.entryBehavior : undefined;
   const aiDraft = useJourneyAiDraft({
     journeyId: id,
     initialEntryBehavior,
@@ -235,7 +253,7 @@ export function JourneyEditorPage() {
 
   const simulationBlockReason = !parsedDefinition.success
     ? (canvas.issues[0]?.message ?? '旅程设置有问题，请先修正。')
-    : (warnings[0]?.message ?? undefined);
+    : (productWarning?.message ?? warnings[0]?.message);
   const showSimulationPage =
     simulationPage && (initializedId !== id || simulationBlockReason === undefined);
 
@@ -738,6 +756,9 @@ export function JourneyEditorPage() {
                                 disabled={!canEdit}
                                 waitSecondsError={waitSecondsError}
                                 startBehavior={startBehavior}
+                                hasUniqueStart={hasUniqueStart}
+                                messageSubjectError={messageSubjectError}
+                                messageBodyError={messageBodyError}
                                 onChange={(node) => edit(() => canvas.updateNode(node))}
                               />
                             ) : selectedEdge ? (

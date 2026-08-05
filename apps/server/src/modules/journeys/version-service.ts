@@ -178,8 +178,17 @@ export class JourneyVersionService {
           '该旅程已保存的内容无法用于发布，请重新保存编排',
         );
       }
-      if (getJourneyDraftWarnings(definition.data).length > 0) {
-        throw new ApiError(409, 'JOURNEY_DRAFT_INCOMPLETE', '请先补齐流程连接');
+      const warnings = getJourneyDraftWarnings(definition.data);
+      if (warnings.length > 0) {
+        // 商品变量来源问题要说明具体原因；其他未完成流程仍沿用原提示。
+        const productWarning = warnings.find(
+          (warning) => warning.code === 'message-product-unavailable',
+        );
+        throw new ApiError(
+          409,
+          'JOURNEY_DRAFT_INCOMPLETE',
+          productWarning?.message ?? '请先补齐流程连接',
+        );
       }
 
       // 每次实际生成发布版本前，在活动锁内确认目标与开始行为兼容：开启同商品时，

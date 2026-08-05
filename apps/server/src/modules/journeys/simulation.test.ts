@@ -4,7 +4,7 @@ import {
   type JourneyDraftDefinition,
   type JourneySimulationScenario,
 } from '@journeylens/shared';
-import { simulateJourney } from './simulation.js';
+import { JourneySimulationMessageError, simulateJourney } from './simulation.js';
 
 function makeScenario(): JourneySimulationScenario {
   return {
@@ -280,5 +280,69 @@ describe('旅程模拟纯计算', () => {
     scenario.entryEvent.type = 'purchase_completed';
     const result = simulateJourney({ definition, scenario, segment: null });
     expect(result).toMatchObject({ outcome: 'not_entered', steps: [], elapsedSeconds: 0 });
+  });
+});
+
+describe('模拟消息变量', () => {
+  function messageDefinition(body: string, subject: string | null = null) {
+    return makeDefinition(
+      [
+        startNode(),
+        {
+          id: 'message',
+          type: 'message',
+          name: '欢迎消息',
+          position: { x: 0, y: 100 },
+          channel: subject === null ? 'sms' : 'email',
+          subject,
+          body,
+        },
+        endNode(),
+      ],
+      [
+        { id: 'to-message', source: 'start', target: 'message' },
+        { id: 'to-end', source: 'message', target: 'end' },
+      ],
+    );
+  }
+
+  it('使用本次填写的昵称和进入商品替换主题与正文', () => {
+    const scenario = makeScenario();
+    scenario.user.displayName = '小陈';
+    scenario.entryEvent.payload.productName = '无线耳机';
+    const definition = messageDefinition(
+      '您好 {{用户昵称}}，欢迎查看 {{商品名称}}',
+      '{{用户昵称}}，看看 {{商品名称}}',
+    );
+
+    const result = simulateJourney({ definition, scenario, segment: null });
+    expect(result.steps.find((step) => step.nodeType === 'message')).toMatchObject({
+      subject: '小陈，看看 无线耳机',
+      body: '您好 小陈，欢迎查看 无线耳机',
+    });
+  });
+
+  it('资料缺失时使用固定文字', () => {
+    const scenario = makeScenario();
+    scenario.user.displayName = null;
+    const definition = messageDefinition('{{用户昵称}}/{{商品名称}}');
+
+    const result = simulateJourney({ definition, scenario, segment: null });
+    expect(result.steps.find((step) => step.nodeType === 'message')).toMatchObject({
+      body: '顾客/该商品',
+    });
+  });
+
+  it('替换后的正文超过上限时按请求失败处理', () => {
+    const scenario = makeScenario();
+    scenario.entryEvent.payload.productName = 'x'.repeat(180);
+    const definition = messageDefinition(`${'a'.repeat(1_992)}{{商品名称}}`);
+
+    expect(() => simulateJourney({ definition, scenario, segment: null })).toThrow(
+      JourneySimulationMessageError,
+    );
+    expect(() => simulateJourney({ definition, scenario, segment: null })).toThrow(
+      '「欢迎消息」的消息内容替换后超过 2000 字，请精简后重试',
+    );
   });
 });

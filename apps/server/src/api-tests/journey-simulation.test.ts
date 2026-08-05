@@ -248,3 +248,61 @@ describe('旅程模拟接口', () => {
     ).toBe(404);
   });
 });
+
+describe('模拟消息变量', () => {
+  it('实际文案超长时返回具体失败原因，不返回部分轨迹', async () => {
+    await seedCampaign();
+    await seedSegment();
+    await seedJourney();
+
+    const definition = {
+      layoutDirection: 'vertical',
+      nodes: [
+        {
+          id: 'start',
+          type: 'start',
+          name: '开始',
+          position: { x: 0, y: 0 },
+          entryBehavior: 'product_viewed',
+        },
+        {
+          id: 'message',
+          type: 'message',
+          name: '欢迎消息',
+          position: { x: 0, y: 100 },
+          channel: 'sms',
+          subject: null,
+          body: `${'a'.repeat(1_992)}{{商品名称}}`,
+        },
+        { id: 'end', type: 'end', name: '结束', position: { x: 0, y: 200 }, note: null },
+      ],
+      edges: [
+        { id: 'to-message', source: 'start', target: 'message' },
+        { id: 'to-end', source: 'message', target: 'end' },
+      ],
+    };
+
+    const { app } = makeApp(db);
+    try {
+      const cookie = await signedInCookie(app);
+      const response = await simulate(app, cookie, {
+        draftDefinition: definition,
+        scenario: {
+          ...scenario,
+          entryEvent: {
+            ...scenario.entryEvent,
+            type: 'product_viewed',
+            payload: { productId: 'p1', productName: 'x'.repeat(180) },
+          },
+        },
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json().error.message).toBe(
+        '「欢迎消息」的消息内容替换后超过 2000 字，请精简后重试',
+      );
+    } finally {
+      await app.close();
+    }
+  });
+});

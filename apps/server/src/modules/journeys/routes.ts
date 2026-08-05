@@ -15,6 +15,7 @@ import {
   journeyVersionListQuerySchema,
   journeyVersionParamsSchema,
   journeyVersionPublishSchema,
+  isJourneyMessageVariableError,
 } from '@journeylens/shared';
 import { ApiError } from '../../errors.js';
 import { AiDraftService, type AiDraftServiceDeps } from './ai-draft-service.js';
@@ -120,7 +121,17 @@ export function registerJourneyRoutes(
 
     const input = journeyDraftSaveSchema.safeParse(request.body);
     if (!input.success) {
-      throw new ApiError(400, 'JOURNEY_DRAFT_INVALID', '旅程草稿内容无效，请检查节点设置和连线');
+      // 变量语法错误给出具体原因；其他草稿错误保持原有提示。
+      const variableIssue = input.error.issues.find(
+        (issue) =>
+          (issue.path.at(-1) === 'subject' || issue.path.at(-1) === 'body') &&
+          isJourneyMessageVariableError(issue.message),
+      );
+      throw new ApiError(
+        400,
+        'JOURNEY_DRAFT_INVALID',
+        variableIssue?.message ?? '旅程草稿内容无效，请检查节点设置和连线',
+      );
     }
 
     const journey = await service.saveDraft(params.data.id, input.data, request.currentAccount!.id);
@@ -170,8 +181,17 @@ export function registerJourneyRoutes(
     const input = journeySimulationRequestSchema.safeParse(request.body);
     if (!input.success)
       throw new ApiError(400, 'BAD_REQUEST', '请检查模拟资料、行为内容和步骤设置');
-    if (getJourneyDraftWarnings(input.data.draftDefinition).length > 0) {
-      throw new ApiError(400, 'JOURNEY_DRAFT_INCOMPLETE', '请先补齐流程连接');
+    const warnings = getJourneyDraftWarnings(input.data.draftDefinition);
+    if (warnings.length > 0) {
+      // 商品变量来源问题要说明具体原因；其他未完成流程仍沿用原提示。
+      const productWarning = warnings.find(
+        (warning) => warning.code === 'message-product-unavailable',
+      );
+      throw new ApiError(
+        400,
+        'JOURNEY_DRAFT_INCOMPLETE',
+        productWarning?.message ?? '请先补齐流程连接',
+      );
     }
 
     return { data: await service.simulate(params.data.id, input.data) };

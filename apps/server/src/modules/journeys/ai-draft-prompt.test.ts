@@ -48,4 +48,11 @@ describe('AI 起草提示约束', () => {
     expect(system).toContain('不写“商品还在”“有货”“已保留”等承诺');
     expect(system).toContain('欢迎按需查看商品详情');
   });
+
+  it('只开放两个消息变量，并说明商品名称的进入行为范围', () => {
+    expect(system).toContain('{{用户昵称}}');
+    expect(system).toContain('{{商品名称}}');
+    expect(system).toContain('只有浏览商品、完成购买、创建预约可以读取');
+    expect(system).not.toContain('不要使用模板变量');
+  });
 });

@@ -1,4 +1,5 @@
 import type { Prisma, PrismaClient } from '@prisma/client';
+import { renderJourneyMessage } from '@journeylens/shared';
 import {
   compareSegmentValue,
   readSegmentRuleValue,
@@ -75,6 +76,12 @@ function triggerEventSummary(event: {
     receivedAt: event.receivedAt.toISOString(),
     payload: event.payload as unknown as EventSummary['payload'],
   };
+}
+
+/** 商品名称只读取进入行为，不读取后续等待命中的行为。 */
+function readTriggerProductName(payload: EventSummary['payload']): string | null {
+  const value = (payload as Record<string, unknown>).productName;
+  return typeof value === 'string' ? value : null;
 }
 
 function nextNode(
@@ -469,6 +476,35 @@ async function processNode(
 
   if (node.type === 'message') {
     const next = nextNode(context.definition, node);
+    const nickname = context.audience.displayName;
+    const productName = readTriggerProductName(context.triggerEvent.payload);
+    const body = renderJourneyMessage({
+      template: node.body,
+      nickname,
+      productName,
+      field: 'body',
+    });
+    if (!body.ok) {
+      throw new ExecutionBusinessError(
+        `「${node.name}」的消息内容替换后超过 ${body.maxLength} 字，请精简后重试`,
+      );
+    }
+    let subject: string | null = null;
+    if (node.subject !== null) {
+      const renderedSubject = renderJourneyMessage({
+        template: node.subject,
+        nickname,
+        productName,
+        field: 'subject',
+      });
+      if (!renderedSubject.ok) {
+        throw new ExecutionBusinessError(
+          `「${node.name}」的邮件主题替换后超过 ${renderedSubject.maxLength} 字，请精简后重试`,
+        );
+      }
+      subject = renderedSubject.text;
+    }
+
     await createStep(
       context,
       node,
@@ -476,8 +512,8 @@ async function processNode(
       {
         kind: 'message',
         channel: node.channel,
-        subject: node.subject,
-        body: node.body,
+        subject,
+        body: body.text,
         audienceUserId: context.execution.audienceUserId,
         demo: true,
       },

@@ -9,17 +9,29 @@ import {
   refineWaitForEventConfig,
   waitForEventConfigShape,
 } from './journey-condition.js';
-import { JOURNEY_WAIT_MAX_SECONDS } from './journey-limits.js';
+import {
+  JOURNEY_MESSAGE_BODY_MAX_LENGTH,
+  JOURNEY_MESSAGE_SUBJECT_MAX_LENGTH,
+  JOURNEY_WAIT_MAX_SECONDS,
+} from './journey-limits.js';
+import {
+  checkJourneyMessageVariables,
+  journeyEntrySupportsProductName,
+  journeyMessageUsesProductVariable,
+} from './journey-message.js';
 
 export { JOURNEY_ENTRY_BEHAVIOR_VALUES, JOURNEY_ENTRY_BEHAVIORS } from './journey-events.js';
-export { JOURNEY_WAIT_MAX_SECONDS } from './journey-limits.js';
+export {
+  JOURNEY_MESSAGE_BODY_MAX_LENGTH,
+  JOURNEY_MESSAGE_SUBJECT_MAX_LENGTH,
+  JOURNEY_WAIT_MAX_SECONDS,
+} from './journey-limits.js';
+export * from './journey-message.js';
 
 export const JOURNEY_NODE_LIMIT = 30;
 export const JOURNEY_EDGE_LIMIT = 60;
 export const JOURNEY_NODE_NAME_MAX_LENGTH = 120;
 export const JOURNEY_END_NOTE_MAX_LENGTH = 500;
-export const JOURNEY_MESSAGE_BODY_MAX_LENGTH = 2_000;
-export const JOURNEY_MESSAGE_SUBJECT_MAX_LENGTH = 200;
 export const JOURNEY_COORDINATE_LIMIT = 100_000;
 
 const NODE_ID_MAX_LENGTH = 64;
@@ -440,6 +452,16 @@ function validateJourneyDraft(definition: JourneyDraftShape, ctx: z.RefinementCt
 
   const start = definition.nodes.find((node) => node.type === 'start');
   definition.nodes.forEach((node, index) => {
+    if (node.type === 'message') {
+      // 语法错误阻止保存；商品来源是否可用属于流程检查，见 getJourneyDraftWarnings。
+      const bodyError = checkJourneyMessageVariables(node.body);
+      if (bodyError !== undefined) addDraftIssue(ctx, bodyError, ['nodes', index, 'body']);
+      if (node.subject !== null) {
+        const subjectError = checkJourneyMessageVariables(node.subject);
+        if (subjectError !== undefined)
+          addDraftIssue(ctx, subjectError, ['nodes', index, 'subject']);
+      }
+    }
     if (node.type === 'condition') {
       const rule = node.rules;
       if (
@@ -491,7 +513,12 @@ export const journeyDraftDefinitionSchema =
 export type JourneyDraftDefinition = z.infer<typeof journeyDraftDefinitionSchema>;
 
 export type JourneyDraftWarningCode =
-  'missing-start' | 'missing-end' | 'missing-next' | 'missing-branch' | 'unlinked-node';
+  | 'missing-start'
+  | 'missing-end'
+  | 'missing-next'
+  | 'missing-branch'
+  | 'unlinked-node'
+  | 'message-product-unavailable';
 
 export interface JourneyDraftWarning {
   code: JourneyDraftWarningCode;
@@ -500,13 +527,23 @@ export interface JourneyDraftWarning {
   message: string;
 }
 
+/** 流程检查只读取定位问题所需的字段，不要求调用方构造完整节点。 */
+type JourneyDraftWarningNode = {
+  id: string;
+  type: JourneyNodeType;
+  name: string;
+  entryBehavior?: JourneyEventType;
+  subject?: string | null;
+  body?: string;
+};
+
 /**
  * 草稿允许未完成的连接，这里把需要补齐的内容转成可定位提示。
  * 条件节点只有一条比较判断，不存在组合条件互相矛盾的问题，
  * 因此不复用分群的规则矛盾分析。
  */
 export function getJourneyDraftWarnings(definition: {
-  nodes: readonly Pick<JourneyDraftNode, 'id' | 'type' | 'name'>[];
+  nodes: readonly JourneyDraftWarningNode[];
   edges: readonly Pick<JourneyDraftEdge, 'source' | 'target' | 'branch'>[];
 }): JourneyDraftWarning[] {
   const incomingCount = new Map<string, number>();
@@ -566,6 +603,26 @@ export function getJourneyDraftWarnings(definition: {
 
   if (!definition.nodes.some((node) => node.type === 'end')) {
     warnings.push({ code: 'missing-end', nodeIds: [], message: '旅程还没有结束节点。' });
+  }
+
+  // 商品名称只取开始步骤的进入行为。草稿可以保留这种配置继续编辑，
+  // 但发布和模拟前必须提示运营修正来源，避免注册类旅程始终显示“该商品”。
+  const startBehavior = definition.nodes.find((node) => node.type === 'start')?.entryBehavior;
+  if (startBehavior !== undefined && !journeyEntrySupportsProductName(startBehavior)) {
+    for (const node of definition.nodes) {
+      if (node.type !== 'message') continue;
+      if (
+        !journeyMessageUsesProductVariable(node.body) &&
+        !journeyMessageUsesProductVariable(node.subject)
+      ) {
+        continue;
+      }
+      warnings.push({
+        code: 'message-product-unavailable',
+        nodeIds: [node.id],
+        message: `「${node.name}」使用了商品名称，但当前进入行为没有商品信息。请更换进入行为，或删除商品变量。`,
+      });
+    }
   }
 
   return warnings;

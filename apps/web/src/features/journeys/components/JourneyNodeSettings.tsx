@@ -2,7 +2,6 @@ import {
   JOURNEY_ENTRY_BEHAVIORS,
   JOURNEY_EVENT_TYPE_LABELS,
   JOURNEY_ENTRY_BEHAVIOR_VALUES,
-  JOURNEY_MESSAGE_CHANNELS,
   JOURNEY_WAIT_MAX_SECONDS,
   journeyEventHasProductId,
   type JourneyEventType,
@@ -11,6 +10,7 @@ import {
 import { Checkbox, Divider, Flex, Input, InputNumber, Select, Typography } from 'antd';
 import { JourneyConditionFields, JourneyEventFilterFields } from './JourneyConditionFields';
 import { JourneyDurationInput } from './JourneyDurationInput';
+import { JourneyMessageFields } from './JourneyMessageFields';
 import { formatWaitDuration } from '@/features/journeys/journey-wait';
 
 type Props = {
@@ -18,11 +18,24 @@ type Props = {
   disabled: boolean;
   onChange: (node: JourneyDraftNode) => void;
   startBehavior: JourneyEventType | undefined;
+  /** 画布是否恰有一个开始步骤；商品变量只在能确定来源时可用。 */
+  hasUniqueStart: boolean;
   /** 共享草稿校验给出的等待时长错误；没有错误时为 undefined，调用方总是显式传入。 */
   waitSecondsError: string | undefined;
+  messageSubjectError: string | undefined;
+  messageBodyError: string | undefined;
 };
 
-function NodeFields({ node, disabled, onChange, waitSecondsError, startBehavior }: Props) {
+function NodeFields({
+  node,
+  disabled,
+  onChange,
+  waitSecondsError,
+  startBehavior,
+  hasUniqueStart,
+  messageSubjectError,
+  messageBodyError,
+}: Props) {
   if (node.type === 'start') {
     return (
       <>
@@ -137,42 +150,15 @@ function NodeFields({ node, disabled, onChange, waitSecondsError, startBehavior 
 
   if (node.type === 'message') {
     return (
-      <>
-        <Typography.Text strong>消息渠道</Typography.Text>
-        <Select
-          aria-label="消息渠道"
-          value={node.channel}
-          disabled={disabled}
-          options={JOURNEY_MESSAGE_CHANNELS.map(({ label, value }) => ({ label, value }))}
-          onChange={(channel) => {
-            // 渠道切换后旧正文和主题不再适用，统一清空，避免把上一个渠道的文案带过去。
-            if (channel === node.channel) return;
-            onChange({ ...node, channel, subject: null, body: '' });
-          }}
-        />
-        {node.channel === 'email' && (
-          <>
-            <Typography.Text strong>邮件主题</Typography.Text>
-            <Input
-              aria-label="邮件主题"
-              maxLength={200}
-              value={node.subject ?? ''}
-              disabled={disabled}
-              onChange={(event) => onChange({ ...node, subject: event.target.value })}
-            />
-          </>
-        )}
-        <Typography.Text strong>消息内容</Typography.Text>
-        <Input.TextArea
-          aria-label="消息内容"
-          rows={5}
-          maxLength={2_000}
-          showCount
-          value={node.body}
-          disabled={disabled}
-          onChange={(event) => onChange({ ...node, body: event.target.value })}
-        />
-      </>
+      <JourneyMessageFields
+        node={node}
+        disabled={disabled}
+        onChange={onChange}
+        startBehavior={startBehavior}
+        hasUniqueStart={hasUniqueStart}
+        subjectError={messageSubjectError}
+        bodyError={messageBodyError}
+      />
     );
   }
 
@@ -198,6 +184,9 @@ export function JourneyNodeSettings({
   onChange,
   waitSecondsError,
   startBehavior,
+  hasUniqueStart,
+  messageSubjectError,
+  messageBodyError,
 }: Props) {
   return (
     <Flex vertical gap={12}>
@@ -218,6 +207,9 @@ export function JourneyNodeSettings({
         onChange={onChange}
         waitSecondsError={waitSecondsError}
         startBehavior={startBehavior}
+        hasUniqueStart={hasUniqueStart}
+        messageSubjectError={messageSubjectError}
+        messageBodyError={messageBodyError}
       />
     </Flex>
   );

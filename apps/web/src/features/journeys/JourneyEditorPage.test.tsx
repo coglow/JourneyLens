@@ -933,7 +933,8 @@ describe('旅程编排页面', () => {
     fireEvent.keyDown(editor, { key: 'v', ctrlKey: true });
 
     await waitFor(() => expect(screen.getAllByLabelText('消息：消息')).toHaveLength(2));
-    expect(screen.getAllByText('消息内容不能为空')).toHaveLength(2);
+    // 两个节点的流程检查各一条，选中节点的设置面板再就地提示一条。
+    expect(screen.getAllByText('消息内容不能为空')).toHaveLength(3);
     expect(screen.getByText('请填写比较值')).toBeTruthy();
     expect(screen.getByText('旅程还没有结束节点。')).toBeTruthy();
     expect((screen.getByRole('button', { name: '保存编排' }) as HTMLButtonElement).disabled).toBe(

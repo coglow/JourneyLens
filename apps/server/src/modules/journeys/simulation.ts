@@ -1,3 +1,4 @@
+import { renderJourneyMessage } from '@journeylens/shared';
 import type {
   JourneyConditionRule,
   JourneyDraftDefinition,
@@ -21,6 +22,14 @@ import {
   type SimulationFact,
   waitForMatchingEvent,
 } from './simulation-events.js';
+
+/** 模拟中的消息内容替换后超长；由服务层转换成现有请求失败反馈，不新增模拟终态。 */
+export class JourneySimulationMessageError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'JourneySimulationMessageError';
+  }
+}
 
 export interface SimulationInput {
   /** 请求中的画布和场景均已由共享契约校验，纯计算不读写数据库。 */
@@ -246,12 +255,42 @@ export function simulateJourney(input: SimulationInput): JourneySimulationResult
     }
 
     if (current.type === 'message') {
+      // 与真实运行共用同一个替换函数，避免模拟结果和实际文案不一致。
+      const nickname = scenario.user.displayName;
+      const rawProductName = scenario.entryEvent.payload.productName;
+      const productName = typeof rawProductName === 'string' ? rawProductName : null;
+      const body = renderJourneyMessage({
+        template: current.body,
+        nickname,
+        productName,
+        field: 'body',
+      });
+      if (!body.ok) {
+        throw new JourneySimulationMessageError(
+          `「${current.name}」的消息内容替换后超过 ${body.maxLength} 字，请精简后重试`,
+        );
+      }
+      let subject: string | null = null;
+      if (current.subject !== null) {
+        const renderedSubject = renderJourneyMessage({
+          template: current.subject,
+          nickname,
+          productName,
+          field: 'subject',
+        });
+        if (!renderedSubject.ok) {
+          throw new JourneySimulationMessageError(
+            `「${current.name}」的邮件主题替换后超过 ${renderedSubject.maxLength} 字，请精简后重试`,
+          );
+        }
+        subject = renderedSubject.text;
+      }
       steps.push({
         ...baseStep(current, order, elapsedSeconds),
         nodeType: 'message',
         channel: current.channel,
-        subject: current.subject,
-        body: current.body,
+        subject,
+        body: body.text,
       });
       order += 1;
       current = nextNode(current.id);
