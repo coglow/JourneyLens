@@ -2,6 +2,7 @@ import {
   AppstoreOutlined,
   BarChartOutlined,
   HistoryOutlined,
+  HomeOutlined,
   SolutionOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
@@ -19,27 +20,44 @@ const { Sider, Content } = Layout;
 const SIDEBAR_WIDTH = '220px';
 const navigationItems = [
   {
+    key: 'overview',
+    label: '概览',
+    group: '运营',
+    path: '/overview',
+    icon: <HomeOutlined aria-hidden="true" />,
+  },
+  {
     key: 'campaigns',
     label: '活动',
+    group: '运营',
     path: '/campaigns',
     icon: <AppstoreOutlined aria-hidden="true" />,
   },
   {
+    key: 'segments',
+    label: '分群',
+    group: '运营',
+    path: '/segments',
+    icon: <TeamOutlined aria-hidden="true" />,
+  },
+  {
     key: 'journey-stats',
     label: '旅程统计',
+    group: '观察',
     path: '/journey-stats',
     icon: <BarChartOutlined aria-hidden="true" />,
   },
-  { key: 'segments', label: '分群', path: '/segments', icon: <TeamOutlined aria-hidden="true" /> },
   {
     key: 'executions',
     label: '执行记录',
+    group: '观察',
     path: '/executions',
     icon: <HistoryOutlined aria-hidden="true" />,
   },
   {
     key: 'events',
     label: '行为记录',
+    group: '观察',
     path: '/events',
     icon: <SolutionOutlined aria-hidden="true" />,
   },
@@ -64,8 +82,12 @@ export function WorkbenchLayout({
   const navigate = useNavigate();
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
+  // 旅程详情仍属于活动；新增首项概览后不能让它落到首项而误选首页。
   const activeItem =
-    navigationItems.find(({ path }) => location.pathname.startsWith(path)) ?? navigationItems[0]!;
+    (location.pathname.startsWith('/journeys/')
+      ? navigationItems.find(({ key }) => key === 'campaigns')
+      : navigationItems.find(({ path }) => location.pathname.startsWith(path))) ??
+    navigationItems[0]!;
 
   function navigateToMenu(key: string): void {
     const item = navigationItems.find((navigationItem) => navigationItem.key === key);
@@ -93,7 +115,6 @@ export function WorkbenchLayout({
           >
             <div
               className={styles.logo}
-              data-collapsed={collapsed}
               style={{ background: token.colorPrimary }}
               aria-hidden="true"
             >
@@ -105,7 +126,7 @@ export function WorkbenchLayout({
               </Typography.Text>
             )}
           </div>
-          <Flex className={styles.headerMain} align="center" gap={20} wrap>
+          <Flex className={styles.headerMain} align="center" gap={16} wrap>
             <Button
               className={styles.collapseButton ?? ''}
               type="text"
@@ -144,16 +165,33 @@ export function WorkbenchLayout({
           width={SIDEBAR_WIDTH}
           collapsedWidth={64}
           collapsed={collapsed}
+          // 内置 xl 断点为 1200px，窗口变化与手动按钮共用同一折叠状态。
+          breakpoint="xl"
+          onCollapse={setCollapsed}
           trigger={null}
           theme="light"
         >
           <nav aria-label="主导航" className={styles.nav}>
             <Menu
               mode="inline"
+              inlineIndent={16}
               inlineCollapsed={collapsed}
               selectedKeys={[activeItem.key]}
               style={{ borderInlineEnd: 'none' }}
-              items={navigationItems.map(({ key, label, icon }) => ({ key, label, icon }))}
+              // 折叠后只保留图标入口，分组标题不占据侧栏空间。
+              items={
+                collapsed
+                  ? navigationItems.map(({ key, label, icon }) => ({ key, label, icon }))
+                  : ['运营', '观察'].map((group) => ({
+                      key: group,
+                      type: 'group',
+                      label: group,
+                      className: styles.navigationGroup ?? '',
+                      children: navigationItems
+                        .filter((item) => item.group === group)
+                        .map(({ key, label, icon }) => ({ key, label, icon })),
+                    }))
+              }
               onClick={({ key }) => navigateToMenu(key)}
             />
           </nav>

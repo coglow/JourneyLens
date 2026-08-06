@@ -12,9 +12,9 @@
   display: flex;
   flex: 0 0 auto;
   align-items: center;
-  gap: 20px;
+  gap: 12px;
   overflow: hidden;
-  padding-left: 20px;
+  padding-inline: 16px;
   border-right: 1px solid;
   transition:
     width 0.2s ease,
@@ -28,45 +28,39 @@
 
 .logo {
   display: grid;
-  width: 40px;
-  height: 40px;
-  flex: 0 0 40px;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
   place-items: center;
   border-radius: 8px;
   color: #fff;
-  font-size: 22px;
+  font-size: 18px;
   font-weight: 600;
-}
-
-.logo[data-collapsed='true'] {
-  width: 48px;
-  height: 48px;
-  flex-basis: 48px;
 }
 
 .brandName {
   overflow: visible;
-  font-size: 22px;
+  font-size: 18px;
   white-space: nowrap;
 }
 
 .headerMain {
   min-width: 0;
   flex: 1;
-  padding: 16px 32px;
+  padding: 12px 24px;
 }
 
 .collapseButton {
-  width: 48px;
-  height: 48px;
-  flex: 0 0 48px;
-  border-radius: 12px;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  border-radius: 6px;
   background: var(--ant-color-fill-quaternary, #f5f8fa);
-  font-size: 18px;
+  font-size: 16px;
 }
 
 .pageLocation :global(.ant-typography) {
-  font-size: 18px;
+  font-size: 16px;
   line-height: 1.4;
 }
 
@@ -87,7 +81,6 @@
   padding: 12px 8px 0;
 }
 
-.nav :global(.ant-menu-title-content) {
-  font-weight: 600;
-  color: rgba(0, 0, 0, 0.55);
+.navigationGroup + .navigationGroup {
+  margin-top: 16px;
 }

@@ -5,10 +5,12 @@ export const theme: ThemeConfig = {
   components: {
     Badge: { statusSize: 7 },
     Menu: {
-      fontSize: 16,
-      iconSize: 20,
+      fontSize: 15,
+      iconSize: 14,
       iconMarginInlineEnd: 12,
-      collapsedIconSize: 20,
+      collapsedIconSize: 18,
+      groupTitleFontSize: 13,
+      itemBorderRadius: 6,
     },
   },
 };

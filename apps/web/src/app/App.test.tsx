@@ -1,5 +1,5 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import MockAdapter from 'axios-mock-adapter';
 import { ConfigProvider } from 'antd';
@@ -19,13 +19,17 @@ const account = {
   displayName: 'JourneyLens 管理员',
 };
 
-function campaignsBody() {
+function overviewBody() {
   return {
-    data: [],
-    page: {
-      page: 1,
-      pageSize: 10,
-      total: 0,
+    data: {
+      windowStartedAt: '2026-07-30T06:30:12.345Z',
+      windowEndedAt: '2026-08-06T06:30:12.345Z',
+      campaignStatusCounts: { draft: 0, running: 0, paused: 0, stopped: 0 },
+      entryCount: 0,
+      goalReachedCount: 0,
+      failedCount: 0,
+      recentJourneys: [],
+      recentCampaigns: [],
     },
   };
 }
@@ -75,6 +79,7 @@ afterEach(() => {
   queryClient?.clear();
   queryClient = undefined;
   mock.restore();
+  vi.restoreAllMocks();
 });
 
 describe('登录与会话路由', () => {
@@ -95,23 +100,39 @@ describe('登录与会话路由', () => {
   it('登录后进入工作台，退出成功后回到登录页', async () => {
     mock.onGet('/userinfo').replyOnce(401, unauthorizedBody());
     mock.onPost('/auth/login').replyOnce(200, { data: account });
-    mock.onGet('/campaigns').replyOnce(200, campaignsBody());
+    mock.onGet('/overview').replyOnce(200, overviewBody());
     mock.onPost('/auth/logout').replyOnce(204);
     const router = renderApp('/');
 
     await screen.findByRole('heading', { name: '登录 JourneyLens' });
     submitCredentials();
     expect(await screen.findByText('JourneyLens 管理员')).toBeTruthy();
-    expect(router.state.location.pathname).toBe('/campaigns');
+    expect(router.state.location.pathname).toBe('/overview');
     expect(screen.getByRole('banner').textContent).toContain('JourneyLens');
+    expect(
+      screen.getByRole('menuitem', { name: '概览' }).classList.contains('ant-menu-item-selected'),
+    ).toBe(true);
     expect(screen.getByRole('menuitem', { name: '活动' })).toBeTruthy();
     expect(screen.getByRole('menuitem', { name: '旅程统计' })).toBeTruthy();
     expect(screen.getByRole('menuitem', { name: '分群' })).toBeTruthy();
     expect(screen.getByRole('menuitem', { name: '执行记录' })).toBeTruthy();
     expect(screen.getByRole('menuitem', { name: '行为记录' })).toBeTruthy();
-    expect(screen.getAllByRole('menuitem')).toHaveLength(5);
-    expect(await screen.findByText('暂无活动')).toBeTruthy();
-    expect(mock.history.get.map((request) => request.url)).toContain('/campaigns');
+    expect(screen.getAllByRole('menuitem')).toHaveLength(6);
+    const navigation = screen.getByRole('navigation', { name: '主导航' });
+    expect(
+      within(navigation)
+        .getAllByRole('group')
+        .map((group) =>
+          within(group)
+            .getAllByRole('menuitem')
+            .map((item) => item.textContent),
+        ),
+    ).toEqual([
+      ['概览', '活动', '分群'],
+      ['旅程统计', '执行记录', '行为记录'],
+    ]);
+    expect(await screen.findByText('近 7 天还没有进入旅程的记录')).toBeTruthy();
+    expect(mock.history.get.map((request) => request.url)).toContain('/overview');
     expect(mock.history.post[0]?.url).toBe('/auth/login');
     expect(mock.history.post[0]?.baseURL).toBe('/api');
     expect(JSON.parse(String(mock.history.post[0]?.data))).toEqual({
@@ -127,16 +148,20 @@ describe('登录与会话路由', () => {
 
   it('已登录访问 /login 会回到工作台', async () => {
     mock.onGet('/userinfo').replyOnce(200, { data: account });
-    mock.onGet('/campaigns').replyOnce(200, campaignsBody());
+    mock.onGet('/overview').replyOnce(200, overviewBody());
     const router = renderApp('/login');
 
     expect(await screen.findByText('JourneyLens 管理员')).toBeTruthy();
-    expect(router.state.location.pathname).toBe('/campaigns');
+    expect(router.state.location.pathname).toBe('/overview');
   });
 
-  it('工作台顶部显示当前菜单路径并可折叠侧栏', async () => {
+  it('侧栏折叠后隐藏分组标题，跨组切换菜单后展开仍保留选中项与当前位置', async () => {
     mock.onGet('/userinfo').replyOnce(200, { data: account });
     mock.onGet('/segments').replyOnce(200, {
+      data: [],
+      page: { page: 1, pageSize: 10, total: 0 },
+    });
+    mock.onGet('/journey-stats').replyOnce(200, {
       data: [],
       page: { page: 1, pageSize: 10, total: 0 },
     });
@@ -145,11 +170,73 @@ describe('登录与会话路由', () => {
     const breadcrumb = await screen.findByRole('navigation', { name: '当前位置' });
     expect(breadcrumb.textContent).toContain('运营工作台');
     expect(breadcrumb.textContent).toContain('分群');
+    const navigation = screen.getByRole('navigation', { name: '主导航' });
+    expect(within(navigation).getByText('运营')).toBeTruthy();
+    expect(within(navigation).getByText('观察')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: '折叠侧栏' }));
     expect(screen.getByRole('button', { name: '展开侧栏' })).toBeTruthy();
+    expect(within(navigation).queryByText('运营')).toBeNull();
+    expect(within(navigation).queryByText('观察')).toBeNull();
+    expect(within(navigation).getAllByRole('menuitem')).toHaveLength(6);
+
+    fireEvent.click(within(navigation).getByRole('menuitem', { name: '旅程统计' }));
+    expect(await screen.findByRole('main', { name: '旅程统计工作区' })).toBeTruthy();
+    expect(breadcrumb.textContent).toContain('旅程统计');
     fireEvent.click(screen.getByRole('button', { name: '展开侧栏' }));
     expect(screen.getByRole('button', { name: '折叠侧栏' })).toBeTruthy();
+    expect(within(navigation).getByText('运营')).toBeTruthy();
+    expect(within(navigation).getByText('观察')).toBeTruthy();
+    expect(
+      within(navigation)
+        .getByRole('menuitem', { name: '旅程统计' })
+        .classList.contains('ant-menu-item-selected'),
+    ).toBe(true);
+  });
+
+  it('小窗口首次进入自动折叠，跨过 1200px 后自动展开或折叠，并支持手动切换', async () => {
+    const breakpoint = 'screen and (max-width: 1199.98px)';
+    const originalMatchMedia = window.matchMedia;
+    const mediaEvents = new EventTarget();
+    const sidebarMedia = {
+      ...originalMatchMedia(breakpoint),
+      matches: true,
+      addEventListener: mediaEvents.addEventListener.bind(mediaEvents),
+      removeEventListener: mediaEvents.removeEventListener.bind(mediaEvents),
+    };
+    vi.spyOn(window, 'matchMedia').mockImplementation((query) =>
+      query === breakpoint ? sidebarMedia : originalMatchMedia(query),
+    );
+    function resizeViewport(matches: boolean): void {
+      act(() => {
+        sidebarMedia.matches = matches;
+        mediaEvents.dispatchEvent(Object.assign(new Event('change'), { matches }));
+      });
+    }
+
+    mock.onGet('/userinfo').replyOnce(200, { data: account });
+    mock.onGet('/segments').replyOnce(200, {
+      data: [],
+      page: { page: 1, pageSize: 10, total: 0 },
+    });
+    renderApp('/segments');
+
+    expect(await screen.findByRole('button', { name: '展开侧栏' })).toBeTruthy();
+    const navigation = screen.getByRole('navigation', { name: '主导航' });
+    expect(within(navigation).queryByText('运营')).toBeNull();
+
+    resizeViewport(false);
+    expect(screen.getByRole('button', { name: '折叠侧栏' })).toBeTruthy();
+    expect(within(navigation).getByText('运营')).toBeTruthy();
+
+    resizeViewport(true);
+    expect(screen.getByRole('button', { name: '展开侧栏' })).toBeTruthy();
+    expect(within(navigation).queryByText('观察')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '展开侧栏' }));
+    expect(within(navigation).getByText('观察')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '折叠侧栏' }));
+    expect(screen.getByRole('button', { name: '展开侧栏' })).toBeTruthy();
   });
 
   it('菜单可进入旅程统计，标题、面包屑与工作区名称一致', async () => {
@@ -166,6 +253,19 @@ describe('登录与会话路由', () => {
     expect(screen.getByRole('main', { name: '旅程统计工作区' })).toBeTruthy();
     expect(await screen.findByText('暂无已发布版本的旅程')).toBeTruthy();
     expect(mock.history.get.map((request) => request.url)).toContain('/journey-stats');
+  });
+
+  it('新增概览菜单后旅程详情仍归属活动', async () => {
+    mock.onGet('/userinfo').replyOnce(200, { data: account });
+    mock.onGet('/journeys/8a2d4b6c-1e3f-4a5b-9c7d-2e4f6a8b0c1d').replyOnce(404, {
+      error: { code: 'NOT_FOUND', message: '旅程不存在', requestId: 'test-request-id' },
+    });
+    renderApp('/journeys/8a2d4b6c-1e3f-4a5b-9c7d-2e4f6a8b0c1d');
+    expect(await screen.findByRole('main', { name: '活动工作区' })).toBeTruthy();
+    expect(screen.getByRole('navigation', { name: '当前位置' }).textContent).toContain('活动');
+    expect(
+      screen.getByRole('menuitem', { name: '活动' }).classList.contains('ant-menu-item-selected'),
+    ).toBe(true);
   });
 
   it('错误密码展示服务端的实际错误', async () => {
@@ -192,7 +292,7 @@ describe('登录与会话路由', () => {
 
     expect(await screen.findByText('暂时无法连接服务')).toBeTruthy();
     expect(screen.queryByRole('heading', { name: '登录 JourneyLens' })).toBeNull();
-    expect(router.state.location.pathname).toBe('/campaigns');
+    expect(router.state.location.pathname).toBe('/overview');
     fireEvent.click(screen.getByRole('button', { name: /重\s*试/ }));
     expect(await screen.findByRole('heading', { name: '登录 JourneyLens' })).toBeTruthy();
     expect(router.state.location.pathname).toBe('/login');
@@ -200,7 +300,7 @@ describe('登录与会话路由', () => {
 
   it('退出请求失败时显示错误并保留已登录账号', async () => {
     mock.onGet('/userinfo').replyOnce(200, { data: account });
-    mock.onGet('/campaigns').replyOnce(200, campaignsBody());
+    mock.onGet('/overview').replyOnce(200, overviewBody());
     mock.onPost('/auth/logout').networkErrorOnce();
     const router = renderApp('/');
 
@@ -209,6 +309,6 @@ describe('登录与会话路由', () => {
     expect((await screen.findByRole('alert')).textContent).toContain('无法连接服务器');
     expect(screen.getByText('JourneyLens 管理员')).toBeTruthy();
     expect(screen.getByRole('button', { name: '退出登录' })).toBeTruthy();
-    expect(router.state.location.pathname).toBe('/campaigns');
+    expect(router.state.location.pathname).toBe('/overview');
   });
 });

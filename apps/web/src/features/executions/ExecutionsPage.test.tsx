@@ -247,4 +247,32 @@ describe('执行记录列表', () => {
     expect(router.state.location.pathname).toBe('/executions');
     expect(router.state.location.search).toBe('?q=lin&page=2&pageSize=20');
   });
+
+  it('首页带入的失败时间保留秒和毫秒，查询、刷新及轨迹返回不截断范围', async () => {
+    const from = '2026-07-30T06:30:12.345Z';
+    const to = '2026-08-06T06:30:12.345Z';
+    const params = new URLSearchParams({ status: 'failed', endedFrom: from, endedTo: to });
+    mock
+      .onGet('/executions')
+      .reply(200, listBody([{ ...completedExecution, status: 'failed', result: '步骤执行失败' }]));
+    mock.onGet(`/executions/${completedExecution.id}/trace`).reply(404, {
+      error: { code: 'NOT_FOUND', message: '执行记录不存在', requestId: 'test-request-id' },
+    });
+    const router = renderApp(`/executions?${params}`);
+    await screen.findByText('步骤执行失败');
+    fireEvent.click(screen.getByRole('button', { name: /^查\s*询$/ }));
+    await waitFor(() =>
+      expect(new URLSearchParams(router.state.location.search).get('endedTo')).toBe(to),
+    );
+    fireEvent.click(screen.getByRole('button', { name: /刷\s*新/ }));
+    await waitFor(() => expect(executionParams().length).toBeGreaterThan(1));
+    fireEvent.click(screen.getByRole('link', { name: '查看执行轨迹' }));
+    fireEvent.click(await screen.findByRole('button', { name: '返回执行记录' }));
+    await screen.findByText('步骤执行失败');
+    expect(new URLSearchParams(router.state.location.search).get('endedFrom')).toBe(from);
+    expect(new URLSearchParams(router.state.location.search).get('endedTo')).toBe(to);
+    expect(
+      executionParams().every((query) => query.endedFrom === from && query.endedTo === to),
+    ).toBe(true);
+  });
 });

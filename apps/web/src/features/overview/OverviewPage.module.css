@@ -1,0 +1,250 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 1560px;
+  margin: 0 auto;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px 24px;
+  flex-wrap: wrap;
+}
+
+.headerActions {
+  display: grid;
+  gap: 8px;
+  margin-left: auto;
+  text-align: right;
+}
+
+.updatedAt {
+  font-size: 13px;
+}
+
+.sectionDescription {
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.metric {
+  position: relative;
+  padding: 20px 28px;
+}
+
+.metric + .metric::before {
+  position: absolute;
+  inset: 20px auto 20px 0;
+  border-left: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+  content: '';
+}
+
+.metricLink {
+  display: block;
+}
+
+.metricValue {
+  margin-top: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.unit {
+  margin-left: 4px;
+  font-size: 16px;
+  font-weight: 400;
+}
+
+.mainGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr);
+  gap: 20px;
+}
+
+.recentCard {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.recentBody {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  font-variant-numeric: tabular-nums;
+}
+
+.sideColumn {
+  display: grid;
+  align-content: start;
+  gap: 20px;
+}
+
+.journeyRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+  color: inherit;
+}
+
+.journeyText {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.journeyName,
+.journeyMeta {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.journeyName {
+  font-weight: 600;
+}
+
+.journeyMeta {
+  font-size: 13px;
+}
+
+.journeyChevron {
+  flex: none;
+  font-size: 12px;
+}
+
+.loading {
+  padding: 64px 12px;
+}
+
+.statusChart {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.ringWrap {
+  position: relative;
+  width: 148px;
+  height: 148px;
+  flex: none;
+}
+
+.ring {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.ringCenter {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ringTotal {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  color: inherit;
+}
+
+.ringValue {
+  font-size: 32px;
+  font-weight: 600;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.ringLabel {
+  font-size: 13px;
+}
+
+.statusLegend {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 10px;
+}
+
+.statusLegendRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 1200px) {
+  .mainGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sideColumn {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1000px) {
+  .sideColumn {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 800px) {
+  .headerActions {
+    width: 100%;
+    margin-left: 0;
+    text-align: left;
+  }
+
+  .headerActions > :first-child {
+    justify-content: flex-start;
+  }
+
+  .metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .metric {
+    padding: 16px 20px;
+  }
+
+  .metric:nth-child(odd)::before {
+    content: none;
+  }
+
+  .metric:nth-child(n + 3) {
+    border-top: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+  }
+}
+
+@media (max-width: 600px) {
+  .metrics {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .metric + .metric {
+    border-top: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+  }
+
+  .metric + .metric::before {
+    content: none;
+  }
+}

@@ -8,6 +8,7 @@ import { registerSessionGuard } from './modules/auth/session-plugin.js';
 import { registerCampaignRoutes } from './modules/campaigns/routes.js';
 import { registerEventRoutes } from './modules/events/routes.js';
 import { registerExecutionRoutes } from './modules/executions/routes.js';
+import { registerOverviewRoutes } from './modules/overview/routes.js';
 import { registerJourneyRoutes } from './modules/journeys/routes.js';
 import { registerSegmentRoutes } from './modules/segments/routes.js';
 import { readAiDraftConfig, type AiDraftModelConfig } from './config.js';
@@ -128,6 +129,7 @@ export function buildApp(options: BuildAppOptions = {}) {
   registerJourneyRoutes(app, prisma, options.now, resolveAiDraftDeps(options));
   registerEventRoutes(app, prisma, options.now);
   registerExecutionRoutes(app, prisma);
+  registerOverviewRoutes(app, prisma, options.now);
 
   app.get('/health/live', async () => ({ status: 'ok' as const }));
 

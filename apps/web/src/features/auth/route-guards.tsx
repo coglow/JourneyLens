@@ -55,7 +55,7 @@ export function LoginRoute() {
   const auth = useAuth();
   const fallback = sessionFallbackNode(auth);
   if (fallback !== null) return fallback;
-  if (auth.status === 'authenticated') return <Navigate to="/campaigns" replace />;
+  if (auth.status === 'authenticated') return <Navigate to="/overview" replace />;
   return (
     <CenteredPage>
       <LoginPage />

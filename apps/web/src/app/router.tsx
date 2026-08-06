@@ -12,13 +12,14 @@ import { JourneyStatsPage } from '@/features/journeys/JourneyStatsPage';
 import { JourneyVersionPage } from '@/features/journeys/JourneyVersionPage';
 import { SegmentDetailPage } from '@/features/segments/SegmentDetailPage';
 import { SegmentsPage } from '@/features/segments/SegmentsPage';
+import { OverviewPage } from '@/features/overview/OverviewPage';
 import { WorkbenchPage } from './WorkbenchPage';
 
 export const appRoutes: RouteObject[] = [
   { path: '/login', element: <LoginRoute /> },
   {
     path: '/',
-    element: <Navigate to="/campaigns" replace />,
+    element: <Navigate to="/overview" replace />,
   },
   {
     element: <RequireAuth />,
@@ -28,6 +29,7 @@ export const appRoutes: RouteObject[] = [
       {
         element: <WorkbenchPage />,
         children: [
+          { path: 'overview', element: <OverviewPage /> },
           { path: 'campaigns', element: <CampaignsPage /> },
           { path: 'campaigns/:id', element: <CampaignDetailPage /> },
           { path: 'journey-stats', element: <JourneyStatsPage /> },
