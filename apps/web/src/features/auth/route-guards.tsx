@@ -56,9 +56,5 @@ export function LoginRoute() {
   const fallback = sessionFallbackNode(auth);
   if (fallback !== null) return fallback;
   if (auth.status === 'authenticated') return <Navigate to="/overview" replace />;
-  return (
-    <CenteredPage>
-      <LoginPage />
-    </CenteredPage>
-  );
+  return <LoginPage />;
 }

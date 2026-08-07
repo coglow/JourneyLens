@@ -1,0 +1,418 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  class="preview"
+  width="900"
+  height="540"
+  viewBox="0 0 900 540"
+  role="img"
+  aria-labelledby="full-title full-desc"
+>
+  <style>
+    /* 配色由嵌入页的 color-scheme 控制，节点颜色保留原有业务区分。 */
+    .preview {
+      --surface: #fff;
+      --text: #122344;
+      --muted: #536786;
+      --route: #849bbd;
+      --grid: #d3e0ef;
+      --canvas: #f7fbff;
+      --border: #dce5f0;
+      --divider: #e2eaf3;
+      --primary: #1671ff;
+      --selected: #e7f0ff;
+      --branch-label: #f0f5fc;
+      --entry-bg: #ecfbf4;
+      --entry-border: #36bd91;
+      --entry-icon: #15ad7e;
+      --condition-bg: #fff8e8;
+      --condition-border: #efbc56;
+      --condition-icon: #dd9308;
+      --message-bg: #eff5ff;
+      --wait-bg: #f5f1ff;
+      --wait-border: #d6c7ff;
+      --wait-icon: #8655ee;
+      --field-border: #d1ddeb;
+      --panel: #fcfdff;
+    }
+    @media (prefers-color-scheme: dark) {
+      .preview {
+        --surface: #1f2633;
+        --text: #e2eaf7;
+        --muted: #a5b7d1;
+        --route: #8098ba;
+        --grid: #35445b;
+        --canvas: #151e2d;
+        --border: #3b4b63;
+        --divider: #3b4b63;
+        --primary: #5b9bff;
+        --selected: #203b63;
+        --branch-label: #233149;
+        --entry-bg: #163b32;
+        --entry-border: #49bda0;
+        --entry-icon: #5ed2ae;
+        --condition-bg: #40321c;
+        --condition-border: #cba552;
+        --condition-icon: #edbc5c;
+        --message-bg: #203553;
+        --wait-bg: #302641;
+        --wait-border: #8b72b6;
+        --wait-icon: #b092f4;
+        --field-border: #485b75;
+        --panel: #1b2433;
+      }
+    }
+    .preview text {
+      font-family:
+        -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+      fill: var(--text);
+    }
+    .preview .muted {
+      fill: var(--muted);
+    }
+    .preview .tiny {
+      font-size: 11px;
+    }
+    .preview .small {
+      font-size: 12px;
+    }
+    .preview .body {
+      font-size: 14px;
+    }
+    .preview .title {
+      font-size: 16px;
+      font-weight: 600;
+    }
+    .preview .icon {
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .preview .route {
+      fill: none;
+      stroke: var(--route);
+      stroke-width: 1.5;
+      marker-end: url(#arrow);
+    }
+  </style>
+  <title id="full-title">完整旅程编辑器预览</title>
+  <desc id="full-desc">
+    包含工具栏、左侧工具列和右侧节点配置。旅程从进入节点到条件判断，满足条件发送邮件，否则等待，两条分支分别结束。此图为静态设计示意。
+  </desc>
+  <defs>
+    <symbol id="cursor" viewBox="0 0 24 24"><path d="M5 3l14 9-7 1-3 7z" /></symbol>
+    <symbol id="person" viewBox="0 0 24 24">
+      <circle cx="12" cy="7" r="3.4" />
+      <path d="M5 21v-3a7 7 0 0114 0v3" />
+    </symbol>
+    <symbol id="mail" viewBox="0 0 24 24">
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <path d="M3 6l9 7 9-7" />
+    </symbol>
+    <symbol id="clock" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l4 2" />
+    </symbol>
+    <symbol id="branch" viewBox="0 0 24 24">
+      <circle cx="12" cy="4" r="2.3" />
+      <circle cx="5" cy="19" r="2.3" />
+      <circle cx="19" cy="19" r="2.3" />
+      <path d="M12 6v4M5 16.5V14a4 4 0 014-4h6a4 4 0 014 4v2.5" />
+    </symbol>
+    <symbol id="flag" viewBox="0 0 24 24">
+      <path d="M5 21V4c5-4 9 4 14 0v10c-5 4-9-4-14 0" />
+    </symbol>
+    <symbol id="play" viewBox="0 0 24 24"><path d="M7 4l13 8-13 8z" /></symbol>
+    <symbol id="sparkles" viewBox="0 0 24 24">
+      <path
+        d="M10 2l2 6 6 2-6 2-2 6-2-6-6-2 6-2zM19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"
+      />
+    </symbol>
+    <symbol id="save" viewBox="0 0 24 24">
+      <path d="M4 3h13l3 3v15H4zM8 3v6h8V3M8 21v-8h8v8" />
+    </symbol>
+    <symbol id="menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16" /></symbol>
+    <symbol id="down" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6" /></symbol>
+    <marker
+      id="arrow"
+      viewBox="0 0 8 8"
+      refX="7"
+      refY="4"
+      markerWidth="6"
+      markerHeight="6"
+      orient="auto"
+    >
+      <path d="M0 0l8 4-8 4z" fill="var(--route)" />
+    </marker>
+    <marker
+      id="arrow-lite"
+      viewBox="0 0 8 8"
+      refX="7"
+      refY="4"
+      markerWidth="5"
+      markerHeight="5"
+      orient="auto"
+    >
+      <path d="M0 0l8 4-8 4z" fill="var(--route)" />
+    </marker>
+
+    <clipPath id="full-clip"><rect width="900" height="540" rx="14" /></clipPath>
+    <pattern id="full-grid" width="16" height="16" patternUnits="userSpaceOnUse">
+      <circle cx="8" cy="8" r=".65" fill="var(--grid)" />
+    </pattern>
+  </defs>
+  <g clip-path="url(#full-clip)">
+    <rect width="900" height="540" fill="var(--surface)" />
+    <rect x="72" y="52" width="604" height="488" fill="var(--canvas)" />
+    <rect x="72" y="52" width="604" height="488" fill="url(#full-grid)" />
+    <path d="M0 52h900M72 52v488M676 52v488" fill="none" stroke="var(--border)" />
+    <!-- 顶部工具栏。 -->
+    <use href="#menu" x="22" y="18" width="18" height="18" class="icon" color="var(--muted)" />
+    <path d="M54 17v18" stroke="var(--divider)" />
+    <text x="70" y="33" class="title">旅程编排</text>
+    <use
+      href="#sparkles"
+      x="624"
+      y="18"
+      width="18"
+      height="18"
+      class="icon"
+      color="var(--primary)"
+    />
+    <text x="654" y="32" class="small muted">AI生成</text>
+    <path d="M701 16v22" stroke="var(--border)" />
+    <use href="#play" x="710" y="18" width="18" height="18" class="icon" color="var(--primary)" />
+    <text x="740" y="32" class="small muted">模拟验证</text>
+    <path d="M796 16v22" stroke="var(--border)" />
+    <use href="#save" x="805" y="18" width="17" height="17" class="icon" color="var(--primary)" />
+    <text x="835" y="32" class="small">保存发布</text>
+    <!-- 左侧工具列。 -->
+    <g>
+      <rect x="14" y="70" width="45" height="53" rx="7" fill="var(--selected)" />
+      <use
+        href="#cursor"
+        x="27"
+        y="80"
+        width="20"
+        height="20"
+        class="icon"
+        color="var(--primary)"
+      />
+      <text x="36.5" y="113" text-anchor="middle" class="tiny">选择</text>
+      <rect
+        x="14"
+        y="149"
+        width="45"
+        height="53"
+        rx="7"
+        fill="var(--surface)"
+        stroke="var(--border)"
+      />
+      <use href="#person" x="27" y="159" width="20" height="20" class="icon" color="var(--muted)" />
+      <text x="36.5" y="192" text-anchor="middle" class="tiny muted">用户</text>
+      <rect
+        x="14"
+        y="228"
+        width="45"
+        height="53"
+        rx="7"
+        fill="var(--surface)"
+        stroke="var(--border)"
+      />
+      <use href="#mail" x="27" y="238" width="20" height="20" class="icon" color="var(--muted)" />
+      <text x="36.5" y="271" text-anchor="middle" class="tiny muted">消息</text>
+      <rect
+        x="14"
+        y="307"
+        width="45"
+        height="53"
+        rx="7"
+        fill="var(--surface)"
+        stroke="var(--border)"
+      />
+      <use href="#clock" x="27" y="317" width="20" height="20" class="icon" color="var(--muted)" />
+      <text x="36.5" y="350" text-anchor="middle" class="tiny muted">等待</text>
+      <rect
+        x="14"
+        y="386"
+        width="45"
+        height="53"
+        rx="7"
+        fill="var(--surface)"
+        stroke="var(--border)"
+      />
+      <use href="#branch" x="27" y="396" width="20" height="20" class="icon" color="var(--muted)" />
+      <text x="36.5" y="429" text-anchor="middle" class="tiny muted">条件</text>
+      <rect
+        x="14"
+        y="465"
+        width="45"
+        height="53"
+        rx="7"
+        fill="var(--surface)"
+        stroke="var(--border)"
+      />
+      <use href="#flag" x="27" y="475" width="20" height="20" class="icon" color="var(--muted)" />
+      <text x="36.5" y="508" text-anchor="middle" class="tiny muted">结束</text>
+    </g>
+    <!-- 节点连线与分支说明。 -->
+    <path class="route" d="M158 266h66" />
+    <path class="route" d="M279 266h16c31 0 13-52 47-52h68" />
+    <path class="route" d="M279 266h16c31 0 13 80 47 80h68" />
+    <path class="route" d="M504 214h59" />
+    <path class="route" d="M504 346h59" />
+    <rect
+      x="326"
+      y="203"
+      width="70"
+      height="20"
+      rx="10"
+      fill="var(--branch-label)"
+      stroke="var(--border)"
+    />
+    <text x="361" y="217" text-anchor="middle" class="tiny muted">满足条件</text>
+    <rect
+      x="326"
+      y="336"
+      width="70"
+      height="20"
+      rx="10"
+      fill="var(--branch-label)"
+      stroke="var(--border)"
+    />
+    <text x="361" y="350" text-anchor="middle" class="tiny muted">不满足条件</text>
+    <!-- 完整版本保留视觉稿的选中节点与控制点。 -->
+    <circle cx="131" cy="266" r="27" fill="var(--entry-bg)" stroke="var(--entry-border)" />
+    <use
+      href="#person"
+      x="117"
+      y="251"
+      width="28"
+      height="28"
+      class="icon"
+      color="var(--entry-icon)"
+    />
+    <text x="131" y="315" text-anchor="middle" class="small">进入旅程</text>
+    <rect
+      x="231"
+      y="244"
+      width="43"
+      height="43"
+      rx="7"
+      transform="rotate(45 252.5 265.5)"
+      fill="var(--condition-bg)"
+      stroke="var(--condition-border)"
+    />
+    <use
+      href="#branch"
+      x="239"
+      y="252"
+      width="27"
+      height="27"
+      class="icon"
+      color="var(--condition-icon)"
+    />
+    <text x="252" y="315" text-anchor="middle" class="small">条件判断</text>
+    <rect
+      x="410"
+      y="189"
+      width="94"
+      height="50"
+      rx="7"
+      fill="var(--message-bg)"
+      stroke="var(--primary)"
+      stroke-width="1.5"
+    />
+    <use href="#mail" x="422" y="204" width="20" height="20" class="icon" color="var(--primary)" />
+    <text x="451" y="218" class="small">发送邮件</text>
+    <g fill="var(--surface)" stroke="var(--primary)" stroke-width="1.4">
+      <circle cx="410" cy="189" r="3.5" />
+      <circle cx="504" cy="189" r="3.5" />
+      <circle cx="410" cy="239" r="3.5" />
+      <circle cx="504" cy="239" r="3.5" />
+    </g>
+    <rect
+      x="410"
+      y="321"
+      width="94"
+      height="50"
+      rx="7"
+      fill="var(--wait-bg)"
+      stroke="var(--wait-border)"
+    />
+    <use
+      href="#clock"
+      x="422"
+      y="336"
+      width="20"
+      height="20"
+      class="icon"
+      color="var(--wait-icon)"
+    />
+    <text x="451" y="350" class="small">等待</text>
+    <rect
+      x="563"
+      y="189"
+      width="94"
+      height="50"
+      rx="7"
+      fill="var(--surface)"
+      stroke="var(--field-border)"
+    />
+    <use href="#flag" x="579" y="204" width="20" height="20" class="icon" color="var(--muted)" />
+    <text x="609" y="218" class="small">结束</text>
+    <rect
+      x="563"
+      y="321"
+      width="94"
+      height="50"
+      rx="7"
+      fill="var(--surface)"
+      stroke="var(--field-border)"
+    />
+    <use href="#flag" x="579" y="336" width="20" height="20" class="icon" color="var(--muted)" />
+    <text x="609" y="350" class="small">结束</text>
+    <!-- 右侧面板为静态示意，字段不具有编辑行为。 -->
+    <rect x="677" y="53" width="223" height="487" fill="var(--panel)" />
+    <text x="698" y="91" class="title">节点配置</text>
+    <path d="M677 112h223" stroke="var(--border)" />
+    <text x="698" y="150" class="body muted">节点名称</text>
+    <rect
+      x="698"
+      y="166"
+      width="183"
+      height="40"
+      rx="6"
+      fill="var(--surface)"
+      stroke="var(--field-border)"
+    />
+    <text x="712" y="191" class="body">发送邮件</text>
+    <text x="698" y="280" class="body muted">发送内容</text>
+    <rect
+      x="698"
+      y="296"
+      width="183"
+      height="40"
+      rx="6"
+      fill="var(--surface)"
+      stroke="var(--field-border)"
+    />
+    <use href="#mail" x="710" y="308" width="16" height="16" class="icon" color="var(--muted)" />
+    <text x="736" y="321" class="small muted">选择邮件内容</text>
+    <use href="#down" x="858" y="308" width="16" height="16" class="icon" color="var(--muted)" />
+    <text x="698" y="410" class="body muted">发送时机</text>
+    <rect
+      x="698"
+      y="426"
+      width="183"
+      height="40"
+      rx="6"
+      fill="var(--surface)"
+      stroke="var(--field-border)"
+    />
+    <text x="712" y="451" class="body">立即发送</text>
+    <use href="#down" x="858" y="438" width="16" height="16" class="icon" color="var(--muted)" />
+  </g>
+  <rect x=".5" y=".5" width="899" height="539" rx="14" fill="none" stroke="var(--border)" />
+</svg>

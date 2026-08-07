@@ -1,0 +1,185 @@
+.page {
+  --hero-background: var(--ant-color-primary-bg);
+  --supporting-text-color: rgb(0 0 0 / 65%);
+
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1.9fr) minmax(400px, 1fr);
+  min-height: 100dvh;
+  color: var(--ant-color-text);
+  background: var(--ant-color-bg-container);
+}
+
+:global([data-color-mode='dark']) .page {
+  --hero-background: #111a2c;
+  --supporting-text-color: rgb(255 255 255 / 65%);
+}
+
+.page :global(.ant-typography-secondary) {
+  color: var(--supporting-text-color);
+}
+
+.themeToggle {
+  position: absolute;
+  top: 24px;
+  right: 24px;
+}
+
+.hero {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  padding: 64px clamp(32px, 4vw, 80px) 48px;
+  background: var(--hero-background);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.brandIcon {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  color: var(--ant-color-primary);
+}
+
+.introduction {
+  margin-top: 36px;
+}
+
+.introduction h2 {
+  margin: 0 0 12px;
+  font-size: clamp(28px, 2.5vw, 42px);
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: -0.03em;
+}
+
+.introduction :global(.ant-typography) {
+  font-size: 16px;
+}
+
+.preview {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  margin: 48px 0 0;
+}
+
+.preview img {
+  display: block;
+  width: 100%;
+  max-width: 900px;
+  height: auto;
+}
+
+.loginPanel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  padding: 88px 48px;
+  border-left: 1px solid var(--ant-color-border-secondary);
+}
+
+.loginContent {
+  width: 100%;
+  max-width: 384px;
+}
+
+.loginHeader {
+  margin-bottom: 32px;
+}
+
+.loginHeader .loginTitle {
+  margin: 0 0 8px;
+  font-size: 28px;
+  line-height: 1.4;
+}
+
+.loginHeader :global(.ant-typography-secondary) {
+  font-size: 16px;
+}
+
+.loginError {
+  margin-bottom: 24px;
+}
+
+.demoAccount {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.demoAccount .demoTitle {
+  margin: 0;
+  font-size: 18px;
+}
+
+/* 窄屏优先保留品牌与登录表单，避免缩小插图后挤占输入区域。 */
+@media (max-width: 1099px) {
+  .page {
+    grid-template-columns: minmax(0, 1fr);
+    align-content: center;
+    justify-items: center;
+    gap: 32px;
+    padding: 72px 24px 40px;
+    background: var(--hero-background);
+  }
+
+  .hero {
+    width: 100%;
+    max-width: 440px;
+    padding: 0;
+    background: transparent;
+  }
+
+  .introduction {
+    margin-top: 24px;
+  }
+
+  .introduction h2 {
+    font-size: 26px;
+  }
+
+  .preview {
+    display: none;
+  }
+
+  .loginPanel {
+    width: 100%;
+    max-width: 440px;
+    padding: 32px;
+    border: 1px solid var(--ant-color-border-secondary);
+    border-radius: 16px;
+    background: var(--ant-color-bg-container);
+  }
+}
+
+@media (max-width: 480px) {
+  .page {
+    padding: 64px 20px 32px;
+  }
+
+  .themeToggle {
+    top: 16px;
+    right: 16px;
+  }
+
+  .introduction h2 {
+    font-size: 24px;
+  }
+
+  .introduction :global(.ant-typography) {
+    font-size: 14px;
+  }
+
+  .loginPanel {
+    padding: 28px 24px;
+  }
+}

@@ -85,23 +85,35 @@ afterEach(() => {
 });
 
 describe('登录与会话路由', () => {
-  it('登录页切换主题保留输入，登录与退出后继续沿用深色', async () => {
+  it('登录页切换主题同步插图并保留账号输入，登录与退出继续沿用深色', async () => {
     mock.onGet('/userinfo').replyOnce(401, unauthorizedBody());
     mock.onPost('/auth/login').replyOnce(200, { data: account });
     mock.onGet('/overview').replyOnce(200, overviewBody());
     mock.onPost('/auth/logout').replyOnce(204);
     renderApp('/login');
     const email = await screen.findByLabelText('邮箱');
-    fireEvent.change(email, { target: { value: 'operator@example.com' } });
+    const password = screen.getByLabelText('密码');
+    const preview = screen.getByRole('img', { name: /旅程编排界面示意图/ }) as HTMLImageElement;
+    expect(preview.style.colorScheme).toBe('light');
+    fireEvent.click(screen.getByRole('button', { name: '填入演示账号' }));
     fireEvent.click(screen.getByRole('button', { name: '切换为深色模式' }));
-    expect((email as HTMLInputElement).value).toBe('operator@example.com');
+    expect((email as HTMLInputElement).value).toBe('demo@example.com');
+    expect((password as HTMLInputElement).value).toBe('demo123456');
+    expect(preview.style.colorScheme).toBe('dark');
     expect(document.documentElement.dataset.colorMode).toBe('dark');
+    fireEvent.click(screen.getByRole('button', { name: '切换为浅色模式' }));
+    expect(preview.style.colorScheme).toBe('light');
+    fireEvent.click(screen.getByRole('button', { name: '切换为深色模式' }));
     submitCredentials();
     await screen.findByText('JourneyLens 管理员');
     expect(screen.getByRole('button', { name: '切换为浅色模式' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '退出登录' }));
-    await screen.findByRole('heading', { name: '登录 JourneyLens' });
+    await screen.findByRole('heading', { name: '登录工作台' });
     expect(screen.getByRole('button', { name: '切换为浅色模式' })).toBeTruthy();
+    expect(
+      (screen.getByRole('img', { name: /旅程编排界面示意图/ }) as HTMLImageElement).style
+        .colorScheme,
+    ).toBe('dark');
     expect(localStorage.getItem('journeylens-color-mode')).toBe('dark');
   });
 
@@ -109,14 +121,33 @@ describe('登录与会话路由', () => {
     mock.onGet('/userinfo').replyOnce(401, unauthorizedBody());
     const router = renderApp('/');
 
-    expect(await screen.findByRole('heading', { name: '登录 JourneyLens' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: '登录工作台' })).toBeTruthy();
     expect(router.state.location.pathname).toBe('/login');
     expect((screen.getByLabelText('邮箱') as HTMLInputElement).value).toBe('');
     expect((screen.getByLabelText('密码') as HTMLInputElement).value).toBe('');
-    expect(screen.queryByRole('button', { name: /演示账号|填入/ })).toBeNull();
+    expect(screen.getByRole('button', { name: '填入演示账号' })).toBeTruthy();
     expect(mock.history.get[0]?.url).toBe('/userinfo');
     expect(mock.history.get[0]?.baseURL).toBe('/api');
     expect(mock.history.get[0]?.withCredentials).toBeFalsy();
+  });
+
+  it('演示账号只在点击后填入，点击登录才提交', async () => {
+    mock.onGet('/userinfo').replyOnce(401, unauthorizedBody());
+    mock.onPost('/auth/login').replyOnce(200, { data: account });
+    mock.onGet('/overview').replyOnce(200, overviewBody());
+    renderApp('/login');
+
+    fireEvent.click(await screen.findByRole('button', { name: '填入演示账号' }));
+    expect((screen.getByLabelText('邮箱') as HTMLInputElement).value).toBe('demo@example.com');
+    expect((screen.getByLabelText('密码') as HTMLInputElement).value).toBe('demo123456');
+    expect(mock.history.post).toHaveLength(0);
+
+    fireEvent.click(screen.getByRole('button', { name: /登\s*录/ }));
+    await screen.findByText('JourneyLens 管理员');
+    expect(JSON.parse(String(mock.history.post[0]?.data))).toEqual({
+      email: 'demo@example.com',
+      password: 'demo123456',
+    });
   });
 
   it('登录后进入工作台，退出成功后回到登录页', async () => {
@@ -126,7 +157,7 @@ describe('登录与会话路由', () => {
     mock.onPost('/auth/logout').replyOnce(204);
     const router = renderApp('/');
 
-    await screen.findByRole('heading', { name: '登录 JourneyLens' });
+    await screen.findByRole('heading', { name: '登录工作台' });
     submitCredentials();
     expect(await screen.findByText('JourneyLens 管理员')).toBeTruthy();
     expect(router.state.location.pathname).toBe('/overview');
@@ -163,7 +194,7 @@ describe('登录与会话路由', () => {
     });
 
     fireEvent.click(screen.getByRole('button', { name: '退出登录' }));
-    expect(await screen.findByRole('heading', { name: '登录 JourneyLens' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: '登录工作台' })).toBeTruthy();
     expect(router.state.location.pathname).toBe('/login');
     expect(mock.history.post[1]?.url).toBe('/auth/logout');
   });
@@ -301,10 +332,10 @@ describe('登录与会话路由', () => {
     });
     renderApp('/');
 
-    await screen.findByRole('heading', { name: '登录 JourneyLens' });
+    await screen.findByRole('heading', { name: '登录工作台' });
     submitCredentials();
     expect((await screen.findByRole('alert')).textContent).toContain('邮箱或密码不正确');
-    expect(screen.getByRole('heading', { name: '登录 JourneyLens' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '登录工作台' })).toBeTruthy();
   });
 
   it('服务不可达时显示重试，不当作未登录；重试收到 401 后才进入登录页', async () => {
@@ -313,10 +344,10 @@ describe('登录与会话路由', () => {
     const router = renderApp('/');
 
     expect(await screen.findByText('暂时无法连接服务')).toBeTruthy();
-    expect(screen.queryByRole('heading', { name: '登录 JourneyLens' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: '登录工作台' })).toBeNull();
     expect(router.state.location.pathname).toBe('/overview');
     fireEvent.click(screen.getByRole('button', { name: /重\s*试/ }));
-    expect(await screen.findByRole('heading', { name: '登录 JourneyLens' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: '登录工作台' })).toBeTruthy();
     expect(router.state.location.pathname).toBe('/login');
   });
 
