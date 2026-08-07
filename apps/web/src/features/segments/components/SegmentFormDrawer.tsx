@@ -10,6 +10,7 @@ import {
   Form,
   Input,
   Modal,
+  App as AntApp,
   Progress,
   Spin,
   Typography,
@@ -69,6 +70,7 @@ export function SegmentFormDrawer({
   onSaved,
   restoreFocus,
 }: SegmentFormDrawerProps) {
+  const { modal } = AntApp.useApp();
   const editing = segment !== undefined || segmentId !== undefined;
   const segmentQuery = useQuery({
     queryKey: segmentQueryKeys.detail(segmentId ?? ''),
@@ -194,7 +196,7 @@ export function SegmentFormDrawer({
     const returnFocus =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
     let leaveConfirmed = false;
-    Modal.confirm({
+    modal.confirm({
       title: editing ? '放弃修改？' : '放弃填写？',
       content: '已填写的内容不会保存。',
       okText: editing ? '放弃修改' : '放弃填写',
@@ -213,7 +215,7 @@ export function SegmentFormDrawer({
         if (!leaveConfirmed && returnFocus?.isConnected) returnFocus.focus();
       },
     });
-  }, [blocker, cancelPreview, editing, onCancel, pendingCreate]);
+  }, [blocker, cancelPreview, editing, onCancel, pendingCreate, modal]);
 
   function changeRules(next: SegmentRule): void {
     cancelPreview();
@@ -237,7 +239,7 @@ export function SegmentFormDrawer({
     let discardConfirmed = false;
     const returnFocus =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    Modal.confirm({
+    modal.confirm({
       title: editing ? '放弃修改？' : '放弃填写？',
       content: '已填写的内容不会保存。',
       okText: editing ? '放弃修改' : '放弃填写',
@@ -449,7 +451,7 @@ export function SegmentFormDrawer({
                           : (previewState.result.matched / previewState.result.total) * 100
                       }
                       showInfo={false}
-                      strokeColor="#52c41a"
+                      strokeColor="var(--ant-color-success)"
                       style={{ flex: 1, minWidth: 80, margin: 0 }}
                     />
                     <Typography.Text type="secondary" style={{ whiteSpace: 'nowrap' }}>

@@ -1,7 +1,6 @@
+import { ThemeProvider } from '@/app/ThemeProvider';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
-import { ConfigProvider } from 'antd';
-import zhCN from 'antd/locale/zh_CN';
 import { createMemoryRouter, RouterProvider, useLocation } from 'react-router';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
@@ -151,11 +150,11 @@ function renderPage(initialEntries: InitialEntry[]) {
     { initialEntries },
   );
   render(
-    <ConfigProvider locale={zhCN}>
+    <ThemeProvider>
       <QueryClientProvider client={client}>
         <RouterProvider router={router} />
       </QueryClientProvider>
-    </ConfigProvider>,
+    </ThemeProvider>,
   );
   return router;
 }
@@ -167,6 +166,9 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  localStorage.removeItem('journeylens-color-mode');
+  delete document.documentElement.dataset.colorMode;
+  document.documentElement.style.removeProperty('background-color');
   vi.clearAllMocks();
 });
 
@@ -190,6 +192,8 @@ describe('已发布版本详情', () => {
       '已发布内容固定保存，不随当前编排或入口分群的修改而变化。',
     );
     expect(screen.getByTestId('rf__node-n-message')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '切换为深色模式' }));
+    expect(document.querySelector('.react-flow')?.classList.contains('dark')).toBe(true);
 
     // 历史版本只读：只有名称查找框，没有配置输入、保存或恢复入口。
     expect(screen.getByRole('combobox', { name: '按步骤名称查找' })).toBeTruthy();

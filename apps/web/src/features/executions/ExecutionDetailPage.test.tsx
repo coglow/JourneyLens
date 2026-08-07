@@ -1,3 +1,4 @@
+import { ThemeProvider } from '@/app/ThemeProvider';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
@@ -226,13 +227,15 @@ function renderApp(initialPath = `/executions/${executionId}`, state?: unknown) 
   }
 
   render(
-    <ConfigProvider locale={zhCN}>
-      <AuthProvider>
-        <QueryProvider>
-          <CaptureQueryClient />
-        </QueryProvider>
-      </AuthProvider>
-    </ConfigProvider>,
+    <ThemeProvider>
+      <ConfigProvider locale={zhCN}>
+        <AuthProvider>
+          <QueryProvider>
+            <CaptureQueryClient />
+          </QueryProvider>
+        </AuthProvider>
+      </ConfigProvider>
+    </ThemeProvider>,
   );
   return router;
 }

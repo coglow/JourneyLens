@@ -19,3 +19,17 @@ body {
 .ant-table-cell.table-operation-cell .ant-btn {
   font-weight: 600;
 }
+
+/* 只为整页主题快照设置过渡，不覆盖组件的日常交互动效。 */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 250ms;
+  animation-timing-function: ease-in-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none;
+  }
+}

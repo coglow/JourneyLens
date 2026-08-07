@@ -1,3 +1,5 @@
+import { ThemeToggle } from '@/components/ThemeToggle';
+import { useColorMode } from '@/app/ThemeProvider';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   InfoCircleOutlined,
@@ -89,6 +91,7 @@ type VersionPageState = {
 };
 
 export function JourneyVersionPage() {
+  const { mode, switching, toggleMode } = useColorMode();
   const { id = '', versionId = '' } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
@@ -284,6 +287,7 @@ export function JourneyVersionPage() {
           }
           actions={
             <Flex gap={8} wrap>
+              <ThemeToggle mode={mode} switching={switching} onToggle={toggleMode} />
               <Button
                 icon={<ReloadOutlined aria-hidden />}
                 loading={statsQuery.isFetching}
@@ -405,6 +409,7 @@ export function JourneyVersionPage() {
                       </header>
                       <div className={styles.canvas}>
                         <ReactFlow<JourneyCanvasFlowNode, Edge>
+                          colorMode={mode}
                           key={versionId}
                           nodes={nodes}
                           edges={edges}

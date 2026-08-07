@@ -1,9 +1,8 @@
+import { ThemeProvider } from '@/app/ThemeProvider';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import MockAdapter from 'axios-mock-adapter';
-import { ConfigProvider } from 'antd';
-import zhCN from 'antd/locale/zh_CN';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { AuthProvider } from '@/features/auth/auth-provider';
 import { apiClient } from '@/services/api';
@@ -59,13 +58,13 @@ function renderApp(initialPath = '/') {
   }
 
   render(
-    <ConfigProvider locale={zhCN}>
+    <ThemeProvider>
       <AuthProvider>
         <QueryProvider>
           <CaptureQueryClient />
         </QueryProvider>
       </AuthProvider>
-    </ConfigProvider>,
+    </ThemeProvider>,
   );
   return router;
 }
@@ -76,6 +75,9 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  localStorage.removeItem('journeylens-color-mode');
+  delete document.documentElement.dataset.colorMode;
+  document.documentElement.style.removeProperty('background-color');
   queryClient?.clear();
   queryClient = undefined;
   mock.restore();
@@ -83,6 +85,26 @@ afterEach(() => {
 });
 
 describe('登录与会话路由', () => {
+  it('登录页切换主题保留输入，登录与退出后继续沿用深色', async () => {
+    mock.onGet('/userinfo').replyOnce(401, unauthorizedBody());
+    mock.onPost('/auth/login').replyOnce(200, { data: account });
+    mock.onGet('/overview').replyOnce(200, overviewBody());
+    mock.onPost('/auth/logout').replyOnce(204);
+    renderApp('/login');
+    const email = await screen.findByLabelText('邮箱');
+    fireEvent.change(email, { target: { value: 'operator@example.com' } });
+    fireEvent.click(screen.getByRole('button', { name: '切换为深色模式' }));
+    expect((email as HTMLInputElement).value).toBe('operator@example.com');
+    expect(document.documentElement.dataset.colorMode).toBe('dark');
+    submitCredentials();
+    await screen.findByText('JourneyLens 管理员');
+    expect(screen.getByRole('button', { name: '切换为浅色模式' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '退出登录' }));
+    await screen.findByRole('heading', { name: '登录 JourneyLens' });
+    expect(screen.getByRole('button', { name: '切换为浅色模式' })).toBeTruthy();
+    expect(localStorage.getItem('journeylens-color-mode')).toBe('dark');
+  });
+
   it('未登录访问受保护页面跳转到 /login，显示空白登录表单，不预填凭据', async () => {
     mock.onGet('/userinfo').replyOnce(401, unauthorizedBody());
     const router = renderApp('/');

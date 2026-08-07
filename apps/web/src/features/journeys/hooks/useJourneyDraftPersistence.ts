@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Modal } from 'antd';
+import { App as AntApp } from 'antd';
 import {
   canEditCampaign,
   journeyDraftDefinitionSchema,
@@ -53,6 +53,7 @@ export function useJourneyDraftPersistence({
   paused = false,
   onAcceptDefinition,
 }: Options) {
+  const { modal } = AntApp.useApp();
   const queryClient = useQueryClient();
   const queryKey = journeyQueryKeys.detail(id);
   const [initializedId, setInitializedId] = useState<string>();
@@ -297,7 +298,7 @@ export function useJourneyDraftPersistence({
 
   function readLatestAfterConfirm(): Promise<boolean> {
     return new Promise((resolve) => {
-      Modal.confirm({
+      modal.confirm({
         title: '读取最新旅程？',
         content: '读取后会放弃本页尚未保存的修改。',
         okText: '读取最新内容',

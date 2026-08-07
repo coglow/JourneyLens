@@ -7,7 +7,7 @@ import {
   Flex,
   Form,
   Input,
-  Modal,
+  App as AntApp,
   Pagination,
   Spin,
   Table,
@@ -38,6 +38,7 @@ type FilterValues = { q?: string };
 type DeleteError = { message: string; journeyId: string };
 
 export function CampaignJourneysSection({ campaignId, campaignStatus }: Props) {
+  const { modal } = AntApp.useApp();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
@@ -130,7 +131,7 @@ export function CampaignJourneysSection({ campaignId, campaignStatus }: Props) {
 
   function confirmDelete(journey: JourneyListItem): void {
     if (deleteMutation.isPending) return;
-    Modal.confirm({
+    modal.confirm({
       title: '删除旅程？',
       content: `确定删除“${journey.name}”旅程吗？删除后无法恢复。`,
       okText: '删除旅程',

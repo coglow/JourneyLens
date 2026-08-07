@@ -1,7 +1,7 @@
+import { ThemeProvider } from '@/app/ThemeProvider';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { ConfigProvider, Modal } from 'antd';
-import zhCN from 'antd/locale/zh_CN';
+import { Modal } from 'antd';
 import type {
   JourneyDetail,
   JourneyDraftDefinition,
@@ -83,11 +83,11 @@ function renderEditor() {
     { initialEntries: [`/journeys/${journeyId}/editor`] },
   );
   const view = render(
-    <ConfigProvider locale={zhCN}>
+    <ThemeProvider>
       <QueryClientProvider client={client}>
         <RouterProvider router={router} />
       </QueryClientProvider>
-    </ConfigProvider>,
+    </ThemeProvider>,
   );
   return { ...view, router };
 }
@@ -115,7 +115,7 @@ function dispatchShortcut(
   modifiers: Pick<KeyboardEventInit, 'ctrlKey' | 'metaKey' | 'shiftKey'> = {},
 ): KeyboardEvent {
   element.focus();
-  expect(document.activeElement).toBe(element);
+  expect(document.activeElement === element).toBe(true);
   const event = new KeyboardEvent('keydown', {
     key,
     bubbles: true,
@@ -140,11 +140,31 @@ beforeEach(() => {
 afterEach(() => {
   Modal.destroyAll();
   cleanup();
+  localStorage.removeItem('journeylens-color-mode');
+  delete document.documentElement.dataset.colorMode;
+  document.documentElement.style.removeProperty('background-color');
   queryClient?.clear();
   vi.clearAllMocks();
 });
 
 describe('旅程编排页面', () => {
+  it('编排切换主题保留画布节点，进入和返回 AI 起草沿用主题且不保存草稿', async () => {
+    const { router } = renderEditor();
+    await screen.findByRole('heading', { name: '欢迎旅程' });
+    const nodes = document.querySelectorAll('.react-flow__node');
+    fireEvent.click(screen.getByRole('button', { name: '切换为深色模式' }));
+    expect(document.querySelector('.react-flow')?.classList.contains('dark')).toBe(true);
+    expect(document.querySelectorAll('.react-flow__node')[0]).toBe(nodes[0]);
+    expect(vi.mocked(saveJourneyDraft)).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: /AI 生成旅程/ }));
+    await screen.findByRole('heading', { name: 'AI 起草' });
+    expect(router.state.location.pathname).toBe(`/journeys/${journeyId}/ai-draft`);
+    expect(screen.getByRole('button', { name: '切换为浅色模式' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /^返回编排$/ }));
+    expect(router.state.location.pathname).toBe(`/journeys/${journeyId}/editor`);
+    expect(document.documentElement.dataset.colorMode).toBe('dark');
+  });
+
   it('起草保存冲突后取消读取保留候选，读取成功后才允许返回', async () => {
     vi.mocked(getJourney).mockResolvedValue({ ...journey, draftDefinition: aiCandidate });
     vi.mocked(generateJourneyAiDraft).mockResolvedValue({

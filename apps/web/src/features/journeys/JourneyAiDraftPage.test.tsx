@@ -1,6 +1,6 @@
+import { ThemeProvider } from '@/app/ThemeProvider';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { ConfigProvider, Modal } from 'antd';
-import zhCN from 'antd/locale/zh_CN';
+import { Modal } from 'antd';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { JourneyDraftDefinition } from '@journeylens/shared';
 import { JourneyAiDraftPage } from './JourneyAiDraftPage';
@@ -65,6 +65,9 @@ afterEach(() => {
   // Modal.confirm 挂载在独立容器上，cleanup 卸载不到，需要显式清掉。
   Modal.destroyAll();
   cleanup();
+  localStorage.removeItem('journeylens-color-mode');
+  delete document.documentElement.dataset.colorMode;
+  document.documentElement.style.removeProperty('background-color');
   vi.clearAllMocks();
 });
 
@@ -109,9 +112,9 @@ function renderPage({
     );
   }
   render(
-    <ConfigProvider locale={zhCN}>
+    <ThemeProvider>
       <Page />
-    </ConfigProvider>,
+    </ThemeProvider>,
   );
 }
 
@@ -127,6 +130,9 @@ describe('AI 起草页面', () => {
     fireEvent.click(screen.getByRole('button', { name: '生成方案' }));
     await screen.findByText(/流程检查通过/);
     expect(screen.queryByRole('alert')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '切换为深色模式' }));
+    expect(document.querySelector('.react-flow')?.classList.contains('dark')).toBe(true);
+    expect((screen.getByLabelText('旅程描述') as HTMLTextAreaElement).value).toBe('浏览后提醒');
     fireEvent.click(screen.getByLabelText('消息：短信提醒'));
     const drawer = await screen.findByRole('dialog');
     expect(within(drawer).getByText('欢迎按需查看商品详情。')).toBeTruthy();

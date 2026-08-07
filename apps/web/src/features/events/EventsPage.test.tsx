@@ -1,3 +1,4 @@
+import { ThemeProvider } from '@/app/ThemeProvider';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import MockAdapter from 'axios-mock-adapter';
@@ -26,13 +27,15 @@ const event = {
 function renderApp(path: string) {
   const router = createMemoryRouter(appRoutes, { initialEntries: [path] });
   render(
-    <ConfigProvider locale={zhCN}>
-      <AuthProvider>
-        <QueryProvider>
-          <RouterProvider router={router} />
-        </QueryProvider>
-      </AuthProvider>
-    </ConfigProvider>,
+    <ThemeProvider>
+      <ConfigProvider locale={zhCN}>
+        <AuthProvider>
+          <QueryProvider>
+            <RouterProvider router={router} />
+          </QueryProvider>
+        </AuthProvider>
+      </ConfigProvider>
+    </ThemeProvider>,
   );
   return router;
 }

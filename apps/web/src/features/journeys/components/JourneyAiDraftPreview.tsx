@@ -1,3 +1,4 @@
+import { useColorMode } from '@/app/ThemeProvider';
 import { useMemo, useRef, useState } from 'react';
 import { CheckCircleFilled } from '@ant-design/icons';
 import { Button, Descriptions, Drawer, Flex, Segmented, Tooltip, Typography } from 'antd';
@@ -40,6 +41,7 @@ const flowAriaLabels = {
 type Props = { definition: JourneyDraftDefinition };
 
 export function JourneyAiDraftPreview({ definition }: Props) {
+  const { mode } = useColorMode();
   const flowInstance = useRef<ReactFlowInstance<JourneyCanvasFlowNode, Edge> | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string>();
   const [view, setView] = useState('canvas');
@@ -92,6 +94,7 @@ export function JourneyAiDraftPreview({ definition }: Props) {
       </div>
       <div className={styles.previewCanvas} hidden={view !== 'canvas'}>
         <ReactFlow<JourneyCanvasFlowNode, Edge>
+          colorMode={mode}
           nodes={nodes}
           edges={edges}
           nodeTypes={nodeTypes}

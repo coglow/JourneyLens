@@ -8,7 +8,7 @@ import {
   Descriptions,
   Flex,
   message,
-  Modal,
+  App as AntApp,
   Spin,
   Typography,
 } from 'antd';
@@ -165,6 +165,7 @@ export function JourneySimulationPanel({
   simulation,
   onLocate,
 }: Props) {
+  const { modal } = AntApp.useApp();
   const [editorOpen, setEditorOpen] = useState(false);
   const [messageApi, messageContext] = message.useMessage();
   const canStart = simulation.scenarioErrors.length === 0 && !simulation.pending;
@@ -177,7 +178,7 @@ export function JourneySimulationPanel({
   }
 
   function resetScenario(): void {
-    Modal.confirm({
+    modal.confirm({
       title: '重置模拟资料？',
       content: '用户资料和行为样本都会恢复为示例内容。',
       okText: '重置资料',

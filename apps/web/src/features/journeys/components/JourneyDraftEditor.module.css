@@ -7,7 +7,7 @@
   gap: 12px;
   overflow: hidden;
   padding: 16px 20px 20px;
-  background: #f3f4f6;
+  background: var(--ant-color-bg-layout);
 }
 
 .topbar {
@@ -160,7 +160,7 @@
 }
 
 .tone_condition .paletteIcon {
-  color: #7d56d8;
+  color: var(--ant-purple-6);
 }
 
 .tone_wait .paletteIcon {
@@ -325,7 +325,7 @@
   min-height: 0;
   flex: 1;
   overflow: hidden;
-  background: #f5f7fb;
+  background: var(--ant-color-bg-layout);
 }
 
 .quickAddAnchor {
@@ -341,7 +341,7 @@
 }
 
 .flow {
-  background: #f5f7fb;
+  background: var(--ant-color-bg-layout);
 }
 
 .emptyCanvas {
@@ -442,7 +442,7 @@
 }
 
 .canvasNode[data-node-type='message'] {
-  border-inline-start-color: #7856d6;
+  border-inline-start-color: var(--ant-purple-6);
 }
 
 .canvasNode[data-node-type='end'] {

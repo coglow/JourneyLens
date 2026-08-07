@@ -1,3 +1,4 @@
+import { ThemeProvider } from '@/app/ThemeProvider';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -83,13 +84,15 @@ function makeController(
 
 function renderPanel(simulation = makeController()) {
   return render(
-    <JourneySimulationPanel
-      journeyId="journey-1"
-      definition={definition}
-      segmentRules={null}
-      simulation={simulation}
-      onLocate={vi.fn()}
-    />,
+    <ThemeProvider>
+      <JourneySimulationPanel
+        journeyId="journey-1"
+        definition={definition}
+        segmentRules={null}
+        simulation={simulation}
+        onLocate={vi.fn()}
+      />
+    </ThemeProvider>,
   );
 }
 
@@ -143,13 +146,15 @@ describe('旅程模拟面板', () => {
     const result = makeResult(simulation.scenario);
     const onLocate = vi.fn();
     render(
-      <JourneySimulationPanel
-        journeyId="journey-1"
-        definition={definition}
-        segmentRules={null}
-        simulation={{ ...simulation, result, visibleStepCount: result.steps.length }}
-        onLocate={onLocate}
-      />,
+      <ThemeProvider>
+        <JourneySimulationPanel
+          journeyId="journey-1"
+          definition={definition}
+          segmentRules={null}
+          simulation={{ ...simulation, result, visibleStepCount: result.steps.length }}
+          onLocate={onLocate}
+        />
+      </ThemeProvider>,
     );
 
     expect(screen.getByText('已到达结束步骤')).toBeTruthy();

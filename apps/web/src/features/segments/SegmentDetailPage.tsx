@@ -1,3 +1,4 @@
+import { App as AntApp } from 'antd';
 import { useRef, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -47,6 +48,7 @@ function InfoRow({ label, value }: { label: string; value: ReactNode }) {
 }
 
 export function SegmentDetailPage() {
+  const { modal } = AntApp.useApp();
   const { id = '' } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
@@ -148,7 +150,7 @@ export function SegmentDetailPage() {
 
   function confirmDelete(target: SegmentDetail): void {
     if (deleteMutation.isPending) return;
-    confirmSegmentDeletion(target.name, async () => {
+    confirmSegmentDeletion(modal.confirm, target.name, async () => {
       setDeleteError(undefined);
       try {
         await deleteMutation.mutateAsync();

@@ -1,6 +1,17 @@
 import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Alert, Badge, Button, Card, Col, Descriptions, Flex, Modal, Row, Spin } from 'antd';
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  Col,
+  Descriptions,
+  Flex,
+  App as AntApp,
+  Row,
+  Spin,
+} from 'antd';
 import { canEditCampaign, type CampaignDetail } from '@journeylens/shared';
 import { useLocation, useNavigate, useParams } from 'react-router';
 import { PageHeader } from '@/components/PageHeader';
@@ -35,6 +46,7 @@ type TransitionConfirm = {
 };
 
 export function CampaignDetailPage() {
+  const { modal } = AntApp.useApp();
   const { id = '' } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
@@ -107,7 +119,7 @@ export function CampaignDetailPage() {
 
   function confirmDelete(target: CampaignDetail): void {
     if (deleteMutation.isPending) return;
-    Modal.confirm({
+    modal.confirm({
       title: '删除活动？',
       content: `确定删除“${target.name}”活动吗？删除后无法恢复。`,
       okText: '删除活动',
@@ -174,7 +186,7 @@ export function CampaignDetailPage() {
   function confirmTransition(config: TransitionConfirm): void {
     if (transitionPending) return;
     setTransitionError(undefined);
-    Modal.confirm({
+    modal.confirm({
       title: config.title,
       content: config.content,
       okText: config.okText,

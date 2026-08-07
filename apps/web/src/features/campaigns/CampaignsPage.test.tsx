@@ -1,3 +1,4 @@
+import { ThemeProvider } from '@/app/ThemeProvider';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { onlineManager, useQueryClient, type QueryClient } from '@tanstack/react-query';
@@ -73,7 +74,7 @@ function listBody(
   };
 }
 
-function renderApp(initialPath = '/') {
+function renderApp(initialPath = '/campaigns') {
   mock.onGet(/\/campaigns\/[^/]+\/journeys$/).reply(200, listBody());
   mock.onGet(/\/campaigns\/[^/]+\/overview$/).reply(200, { data: emptyOverview });
   const router = createMemoryRouter(appRoutes, { initialEntries: [initialPath] });
@@ -84,13 +85,15 @@ function renderApp(initialPath = '/') {
   }
 
   render(
-    <ConfigProvider locale={zhCN}>
-      <AuthProvider>
-        <QueryProvider>
-          <CaptureQueryClient />
-        </QueryProvider>
-      </AuthProvider>
-    </ConfigProvider>,
+    <ThemeProvider>
+      <ConfigProvider locale={zhCN}>
+        <AuthProvider>
+          <QueryProvider>
+            <CaptureQueryClient />
+          </QueryProvider>
+        </AuthProvider>
+      </ConfigProvider>
+    </ThemeProvider>,
   );
   return router;
 }
@@ -508,7 +511,7 @@ describe('活动列表与创建', () => {
     fireEvent.click(screen.getByRole('button', { name: '关闭' }));
     fireEvent.click(await screen.findByRole('button', { name: '放弃填写' }));
 
-    await waitFor(() => expect(document.activeElement).toBe(openButton));
+    await waitFor(() => expect(document.activeElement === openButton).toBe(true));
     await waitFor(() => expect(screen.queryByText('已填写的内容不会保存。')).toBeNull());
     expect(screen.queryByRole('dialog')).toBeNull();
   }, 10_000);
@@ -612,6 +615,8 @@ describe('活动列表与创建', () => {
     const confirmation = await screen.findByRole('dialog');
     fireEvent.click(within(confirmation).getByRole('button', { name: '删除活动' }));
 
+    await waitFor(() => expect(mock.history.delete).toHaveLength(1));
+
     expect(await screen.findByRole('link', { name: '最后一条活动' })).toBeTruthy();
     await waitFor(() => expect(router.state.location.search).toBe('?pageSize=10'));
     await waitFor(() => expect(listParams()).toEqual([{ page: 2 }, { page: 2 }, {}]));
@@ -676,7 +681,7 @@ describe('活动列表与创建', () => {
     fireEvent.click(screen.getByRole('button', { name: /取\s*消/ }));
     await waitFor(() => expect(screen.queryByRole('dialog', { name: '编辑活动' })).toBeNull());
     expect(screen.queryByText('已填写的内容不会保存。')).toBeNull();
-    await waitFor(() => expect(document.activeElement).toBe(editButton));
+    await waitFor(() => expect(document.activeElement === editButton).toBe(true));
 
     fireEvent.click(editButton);
     fireEvent.change(await screen.findByLabelText('活动名称'), {
@@ -691,7 +696,7 @@ describe('活动列表与创建', () => {
     fireEvent.click(await screen.findByRole('button', { name: '放弃修改' }));
 
     await waitFor(() => expect(screen.queryByRole('dialog', { name: '编辑活动' })).toBeNull());
-    await waitFor(() => expect(document.activeElement).toBe(editButton));
+    await waitFor(() => expect(document.activeElement === editButton).toBe(true));
     expect(mock.history.patch).toHaveLength(0);
   }, 15_000);
 

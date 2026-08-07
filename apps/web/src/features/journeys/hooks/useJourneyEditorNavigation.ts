@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react';
-import { Modal } from 'antd';
+import { App as AntApp } from 'antd';
 import { useBlocker, useLocation } from 'react-router';
 import type { useJourneyAiDraft } from './useJourneyAiDraft';
 
@@ -106,6 +106,7 @@ export function useJourneyEditorNavigation({
   aiDraftPage,
   aiDraft,
 }: Options) {
+  const { modal } = AntApp.useApp();
   const location = useLocation();
   const allowNavigation = useRef(false);
   const promptOpen = useRef(false);
@@ -160,7 +161,7 @@ export function useJourneyEditorNavigation({
       dirty,
       leavingWorkspace,
     });
-    Modal.confirm({
+    modal.confirm({
       title: copy.title,
       content: copy.content,
       okText: copy.okText,
@@ -178,5 +179,5 @@ export function useJourneyEditorNavigation({
         if (!confirmed && returnFocus?.isConnected) returnFocus.focus();
       },
     });
-  }, [blocker, dirty, saving, aiProtected, aiDraftPage, aiDraft, mustVerify, sharedPaths]);
+  }, [blocker, dirty, saving, aiProtected, aiDraftPage, aiDraft, mustVerify, sharedPaths, modal]);
 }

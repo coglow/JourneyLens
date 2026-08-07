@@ -175,6 +175,7 @@ describe('行为等待分支画布映射', () => {
     for (const branch of ['matched', 'timeout'] as const) {
       const edge = { id: `edge-${branch}`, source: 'wait', target: 'end', branch };
       expect(toDraftEdge(toFlowEdge(edge))).toEqual(edge);
+      expect(toFlowEdge(edge).labelBgStyle?.fill).toBe('var(--ant-color-bg-container)');
     }
   });
 

@@ -1,11 +1,14 @@
+import { ThemeToggle } from '@/components/ThemeToggle';
+import { useColorMode } from '@/app/ThemeProvider';
 import { useState } from 'react';
-import { Alert, Button, Card, Form, Input, Typography } from 'antd';
+import { Alert, Button, Card, Form, Input, Typography, Flex } from 'antd';
 import type { LoginRequest } from '@journeylens/shared';
 import { getApiErrorMessage } from '@/services/api';
 import { login } from '@/services/auth';
 import { useAuth } from './auth-provider';
 
 export function LoginPage() {
+  const { mode, switching, toggleMode } = useColorMode();
   const { signIn } = useAuth();
   const [loginError, setLoginError] = useState<string>();
   const [submitting, setSubmitting] = useState(false);
@@ -23,7 +26,10 @@ export function LoginPage() {
 
   return (
     <Card style={{ width: 440, maxWidth: '100%' }}>
-      <Typography.Title level={1}>登录 JourneyLens</Typography.Title>
+      <Flex justify="space-between" align="center">
+        <Typography.Title level={1}>登录 JourneyLens</Typography.Title>
+        <ThemeToggle mode={mode} switching={switching} onToggle={toggleMode} />
+      </Flex>
       {loginError && (
         <Alert style={{ marginBottom: 24 }} type="error" showIcon title={loginError} />
       )}

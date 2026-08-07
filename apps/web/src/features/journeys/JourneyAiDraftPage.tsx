@@ -1,3 +1,5 @@
+import { ThemeToggle } from '@/components/ThemeToggle';
+import { useColorMode } from '@/app/ThemeProvider';
 import { useEffect, useMemo } from 'react';
 import { ArrowLeftOutlined, InfoCircleOutlined, QuestionCircleOutlined } from '@ant-design/icons';
 import {
@@ -55,6 +57,7 @@ export function JourneyAiDraftPage({
   onReturn,
   onReadLatest,
 }: Props) {
+  const { mode, switching, toggleMode } = useColorMode();
   const { applying, applied, applyError } = draft;
   const applyMessage = saveError ?? applyError;
   const busy = draft.pending || applying;
@@ -126,6 +129,7 @@ export function JourneyAiDraftPage({
     <section className={styles.page} aria-label="AI 起草旅程">
       <header className={styles.header}>
         <Flex align="center" gap={20} className={styles.heading}>
+          <ThemeToggle mode={mode} switching={switching} onToggle={toggleMode} />
           <Button
             type="text"
             aria-label="返回编排"

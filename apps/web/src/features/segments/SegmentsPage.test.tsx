@@ -1,3 +1,4 @@
+import { ThemeProvider } from '@/app/ThemeProvider';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
@@ -70,13 +71,15 @@ function renderApp(initialPath = '/segments') {
   }
 
   render(
-    <ConfigProvider locale={zhCN}>
-      <AuthProvider>
-        <QueryProvider>
-          <CaptureQueryClient />
-        </QueryProvider>
-      </AuthProvider>
-    </ConfigProvider>,
+    <ThemeProvider>
+      <ConfigProvider locale={zhCN}>
+        <AuthProvider>
+          <QueryProvider>
+            <CaptureQueryClient />
+          </QueryProvider>
+        </AuthProvider>
+      </ConfigProvider>
+    </ThemeProvider>,
   );
   return router;
 }
@@ -186,19 +189,16 @@ describe('分群列表', () => {
     mock.onGet('/segments').reply(200, { data: [], page: { page: 1, pageSize: 10, total: 0 } });
     mock.onDelete(`/segments/${segment.id}`).reply(204);
     renderApp();
-    const confirmation = vi.spyOn(Modal, 'confirm');
 
     fireEvent.click(await screen.findByRole('button', { name: /^删\s*除$/ }, { timeout: 5_000 }));
-    expect(confirmation).toHaveBeenCalledWith(
-      expect.objectContaining({ title: '删除分群？', okText: '删除分群' }),
-    );
-    const onConfirm = confirmation.mock.calls[0]?.[0].onOk;
-    await act(async () => {
-      await onConfirm?.();
-    });
+    const dialog = await screen.findByRole('dialog');
+    expect(
+      within(dialog).getByText('删除分群？', { selector: '.ant-modal-confirm-title' }),
+    ).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole('button', { name: '删除分群' }));
 
     await waitFor(() => expect(screen.queryByRole('link', { name: '高价值会员' })).toBeNull());
-    expect(mock.history.delete).toHaveLength(1);
+    await waitFor(() => expect(mock.history.delete).toHaveLength(1));
     expect(await screen.findByText('暂无分群')).toBeTruthy();
   }, 10_000);
 
@@ -255,28 +255,14 @@ describe('分群列表', () => {
     mock.onGet('/segments').reply(200, listBody());
     mock.onDelete(`/segments/${segment.id}`).reply(204);
     const router = renderApp(`/segments/${segment.id}`);
-    const confirmation = vi.spyOn(Modal, 'confirm');
 
-    try {
-      expect(await screen.findByText('用于核对详情删除')).toBeTruthy();
-      fireEvent.click(screen.getByRole('button', { name: '删除分群' }));
-      expect(confirmation).toHaveBeenCalledWith(
-        expect.objectContaining({
-          title: '删除分群？',
-          content: `确定删除“${segment.name}”分群吗？删除后无法恢复。`,
-          okText: '删除分群',
-        }),
-      );
+    expect(await screen.findByText('用于核对详情删除')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '删除分群' }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: '删除分群' }));
 
-      await act(async () => {
-        await confirmation.mock.calls[0]?.[0].onOk?.();
-      });
-
-      expect(mock.history.delete).toHaveLength(1);
-      await waitFor(() => expect(router.state.location.pathname).toBe('/segments'));
-    } finally {
-      confirmation.mockRestore();
-    }
+    await waitFor(() => expect(mock.history.delete).toHaveLength(1));
+    await waitFor(() => expect(router.state.location.pathname).toBe('/segments'));
   }, 15_000);
 
   it('从网址恢复搜索与分页，显示最近人数和过期提示', async () => {
@@ -434,22 +420,16 @@ describe('分群列表', () => {
       },
     });
     const router = renderApp('/segments');
-    const confirmation = vi.spyOn(Modal, 'confirm');
 
-    try {
-      fireEvent.click(await screen.findByRole('button', { name: /^删\s*除$/ }, { timeout: 5_000 }));
-      await act(async () => {
-        await confirmation.mock.calls[0]?.[0].onOk?.();
-      });
+    fireEvent.click(await screen.findByRole('button', { name: /^删\s*除$/ }, { timeout: 5_000 }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: '删除分群' }));
 
-      expect(await screen.findByText('分群正在被旅程使用，请先更换或解除关联')).toBeTruthy();
-      fireEvent.click(screen.getByRole('link', { name: '查看引用' }));
-      expect(await screen.findByText('引用旅程')).toBeTruthy();
-      await waitFor(() => expect(router.state.location.pathname).toBe(`/segments/${segment.id}`));
-      expect(router.state.location.hash).toBe('#usages');
-    } finally {
-      confirmation.mockRestore();
-    }
+    expect(await screen.findByText('分群正在被旅程使用，请先更换或解除关联')).toBeTruthy();
+    fireEvent.click(screen.getByRole('link', { name: '查看引用' }));
+    expect(await screen.findByText('引用旅程')).toBeTruthy();
+    await waitFor(() => expect(router.state.location.pathname).toBe(`/segments/${segment.id}`));
+    expect(router.state.location.hash).toBe('#usages');
   }, 15_000);
 
   it('已保存分群明确重新计算后展示最近人数', async () => {

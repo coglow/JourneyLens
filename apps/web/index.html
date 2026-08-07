@@ -4,6 +4,24 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#f5f5f5" />
+    <style>
+      html {
+        color-scheme: light;
+        background: Canvas;
+      }
+      html[data-color-mode='dark'] {
+        color-scheme: dark;
+      }
+    </style>
+    <script>
+      // 在首次绘制前恢复偏好，React 从同一标记初始化主题。
+      try {
+        document.documentElement.dataset.colorMode =
+          localStorage.getItem('journeylens-color-mode') === 'dark' ? 'dark' : 'light';
+      } catch {
+        document.documentElement.dataset.colorMode = 'light';
+      }
+    </script>
     <title>JourneyLens</title>
   </head>
   <body>

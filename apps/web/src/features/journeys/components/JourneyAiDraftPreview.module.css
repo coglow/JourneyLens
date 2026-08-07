@@ -27,7 +27,7 @@
   position: relative;
   min-height: 0;
   flex: 1;
-  background: #fafbfe;
+  background: var(--ant-color-bg-layout);
 }
 .canvasHint {
   position: absolute;

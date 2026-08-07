@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Alert, Button, Drawer, Flex, Form, Input, Modal, Spin } from 'antd';
+import { Alert, Button, Drawer, Flex, Form, Input, App as AntApp, Spin } from 'antd';
 import { journeyCreateSchema, type JourneyDetail, type JourneyListItem } from '@journeylens/shared';
 import { useBlocker } from 'react-router';
 import { ApiError, getWriteErrorMessage, isSessionExpired } from '@/services/api';
@@ -36,6 +36,7 @@ export function JourneyFormDrawer({
   onSaved,
   restoreFocus,
 }: Props) {
+  const { modal } = AntApp.useApp();
   const editing = journey !== undefined;
   const journeyId = journey?.id;
   const queryClient = useQueryClient();
@@ -141,7 +142,7 @@ export function JourneyFormDrawer({
     const returnFocus =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
     let leaveConfirmed = false;
-    Modal.confirm({
+    modal.confirm({
       title: editing ? '放弃修改？' : '放弃填写？',
       content: '已填写的内容不会保存。',
       okText: editing ? '放弃修改' : '放弃填写',
@@ -158,7 +159,7 @@ export function JourneyFormDrawer({
         if (!leaveConfirmed && returnFocus?.isConnected) returnFocus.focus();
       },
     });
-  }, [blocker, editing, submitting]);
+  }, [blocker, editing, submitting, modal]);
 
   function close(): void {
     allowNavigation.current = true;
@@ -176,7 +177,7 @@ export function JourneyFormDrawer({
     let discardConfirmed = false;
     const returnFocus =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    Modal.confirm({
+    modal.confirm({
       title: editing ? '放弃修改？' : '放弃填写？',
       content: '已填写的内容不会保存。',
       okText: editing ? '放弃修改' : '放弃填写',
@@ -221,7 +222,7 @@ export function JourneyFormDrawer({
       await reload();
       return;
     }
-    Modal.confirm({
+    modal.confirm({
       title: '读取最新旅程？',
       content: '读取后会替换当前填写的内容。',
       okText: '读取最新内容',

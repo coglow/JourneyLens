@@ -1,3 +1,5 @@
+import { ThemeToggle } from '@/components/ThemeToggle';
+import { useColorMode } from '@/app/ThemeProvider';
 import {
   useEffect,
   useMemo,
@@ -85,6 +87,7 @@ type QuickAddState = {
 };
 
 export function JourneyEditorPage() {
+  const { mode, switching, toggleMode } = useColorMode();
   const { id = '', view = 'editor' } = useParams();
   const simulationPage = view === 'simulation';
   const aiDraftPage = view === 'ai-draft';
@@ -462,6 +465,7 @@ export function JourneyEditorPage() {
           </div>
         </div>
         <Flex align="center" gap={12} className={styles.topbarActions}>
+          <ThemeToggle mode={mode} switching={switching} onToggle={toggleMode} />
           <Typography.Text
             role="status"
             className={`${styles.saveStatus ?? ''} ${dirty ? (styles.saveStatusDirty ?? '') : ''}`}
@@ -623,6 +627,7 @@ export function JourneyEditorPage() {
               </header>
               <div ref={canvasElement} className={styles.canvas}>
                 <ReactFlow<JourneyCanvasFlowNode, Edge>
+                  colorMode={mode}
                   nodes={displayNodes}
                   edges={displayEdges}
                   nodeTypes={nodeTypes}

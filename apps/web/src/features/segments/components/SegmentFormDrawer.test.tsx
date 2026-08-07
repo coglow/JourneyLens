@@ -1,3 +1,4 @@
+import { ThemeProvider } from '@/app/ThemeProvider';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
@@ -62,13 +63,15 @@ function renderApp(initialPath = '/segments') {
   }
 
   render(
-    <ConfigProvider locale={zhCN}>
-      <AuthProvider>
-        <QueryProvider>
-          <CaptureQueryClient />
-        </QueryProvider>
-      </AuthProvider>
-    </ConfigProvider>,
+    <ThemeProvider>
+      <ConfigProvider locale={zhCN}>
+        <AuthProvider>
+          <QueryProvider>
+            <CaptureQueryClient />
+          </QueryProvider>
+        </AuthProvider>
+      </ConfigProvider>
+    </ThemeProvider>,
   );
   return router;
 }
@@ -441,8 +444,8 @@ describe('分群表单抽屉', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /取\s*消/ }));
     fireEvent.click(await screen.findByRole('button', { name: '放弃填写' }));
-    await waitFor(() => expect(screen.queryByLabelText('分群名称')).toBeNull());
-    await waitFor(() => expect(document.activeElement).toBe(createButton));
+    expect(screen.queryByLabelText('分群名称')).toBeNull();
+    expect(document.activeElement).toBe(createButton);
     expect(router.state.location.pathname).toBe('/segments');
   }, 10_000);
 });

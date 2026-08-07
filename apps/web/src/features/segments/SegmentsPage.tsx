@@ -1,3 +1,4 @@
+import { App as AntApp } from 'antd';
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -205,6 +206,7 @@ function getSegmentColumns(
 }
 
 export function SegmentsPage() {
+  const { modal } = AntApp.useApp();
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -357,7 +359,7 @@ export function SegmentsPage() {
 
   function confirmDelete(segment: SegmentListItem): void {
     if (deleteMutation.isPending) return;
-    confirmSegmentDeletion(segment.name, async () => {
+    confirmSegmentDeletion(modal.confirm, segment.name, async () => {
       setActionError(undefined);
       try {
         await deleteMutation.mutateAsync(segment.id);

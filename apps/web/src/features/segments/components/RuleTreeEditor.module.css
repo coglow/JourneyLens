@@ -101,7 +101,7 @@
 }
 
 .exclusionTitle {
-  color: #e2780e;
+  color: var(--ant-color-warning-text);
 }
 
 .exclusionContents {

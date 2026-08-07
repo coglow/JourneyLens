@@ -64,8 +64,8 @@ export function toFlowEdge(edge: JourneyDraftEdge): Edge {
     ...(edge.branch
       ? {
           label: JOURNEY_BRANCH_LABELS[edge.branch],
-          labelStyle: { fontSize: 12, fontWeight: 600 },
-          labelBgStyle: { fill: '#fff', fillOpacity: 0.98 },
+          labelStyle: { fontSize: 12, fontWeight: 600, fill: 'var(--ant-color-text)' },
+          labelBgStyle: { fill: 'var(--ant-color-bg-container)', fillOpacity: 0.98 },
           labelBgPadding: [4, 3],
           labelBgBorderRadius: 4,
         }

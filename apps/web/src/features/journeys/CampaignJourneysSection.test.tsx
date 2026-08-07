@@ -1,3 +1,4 @@
+import { ThemeProvider } from '@/app/ThemeProvider';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
@@ -104,13 +105,15 @@ function renderApp(initialPath = `/campaigns/${campaignId}`) {
   }
 
   render(
-    <ConfigProvider locale={zhCN}>
-      <AuthProvider>
-        <QueryProvider>
-          <CaptureQueryClient />
-        </QueryProvider>
-      </AuthProvider>
-    </ConfigProvider>,
+    <ThemeProvider>
+      <ConfigProvider locale={zhCN}>
+        <AuthProvider>
+          <QueryProvider>
+            <CaptureQueryClient />
+          </QueryProvider>
+        </AuthProvider>
+      </ConfigProvider>
+    </ThemeProvider>,
   );
   return router;
 }
@@ -479,7 +482,7 @@ describe('活动旅程管理', () => {
     fireEvent.click(screen.getByRole('button', { name: '关闭' }));
     fireEvent.click(await screen.findByRole('button', { name: '放弃填写' }));
 
-    await waitFor(() => expect(document.activeElement).toBe(createButton));
+    await waitFor(() => expect(document.activeElement === createButton).toBe(true));
     expect(mock.history.post).toHaveLength(0);
   }, 15_000);
 

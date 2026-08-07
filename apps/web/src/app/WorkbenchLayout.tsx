@@ -1,3 +1,5 @@
+import { ThemeToggle } from '@/components/ThemeToggle';
+import { useColorMode } from '@/app/ThemeProvider';
 import {
   AppstoreOutlined,
   BarChartOutlined,
@@ -78,6 +80,7 @@ export function WorkbenchLayout({
   onLogout,
   children,
 }: WorkbenchLayoutProps) {
+  const { mode, switching, toggleMode } = useColorMode();
   const { token } = theme.useToken();
   const navigate = useNavigate();
   const location = useLocation();
@@ -150,6 +153,7 @@ export function WorkbenchLayout({
                   {account.displayName}
                 </Typography.Text>
               </Flex>
+              <ThemeToggle mode={mode} switching={switching} onToggle={toggleMode} />
               <Button htmlType="button" loading={loggingOut} onClick={onLogout}>
                 退出登录
               </Button>

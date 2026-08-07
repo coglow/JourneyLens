@@ -8,7 +8,7 @@ import {
   Flex,
   Form,
   Input,
-  Modal,
+  App as AntApp,
   Select,
   Typography,
 } from 'antd';
@@ -69,6 +69,7 @@ export function CampaignFormDrawer({
   onSaved,
   restoreFocus,
 }: CampaignFormDrawerProps) {
+  const { modal } = AntApp.useApp();
   const [form] = Form.useForm<CampaignFormValues>();
   const [error, setError] = useState<string>();
   const initialValues = useRef<CampaignFormValues>({
@@ -141,7 +142,7 @@ export function CampaignFormDrawer({
     }
 
     let discardConfirmed = false;
-    Modal.confirm({
+    modal.confirm({
       title: editing ? '放弃修改？' : '放弃填写？',
       content: '已填写的内容不会保存。',
       okText: editing ? '放弃修改' : '放弃填写',
