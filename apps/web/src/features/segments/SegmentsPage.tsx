@@ -37,6 +37,7 @@ import { ListPageLayout } from '@/components/ListPageLayout';
 import { PageHeader } from '@/components/PageHeader';
 import { useListPagination, useSyncListPage } from '@/hooks/use-list-pagination';
 import { formatDateTime } from '@/utils/format-date-time';
+import { tableScrollX } from '@/utils/table-scroll';
 import { summarizeSegmentRule } from './segment-rules';
 import { applySegmentEstimate, segmentQueryKeys } from './segment-queries';
 import { SEGMENT_IN_USE_MESSAGE, confirmSegmentDeletion } from './segment-delete';
@@ -385,6 +386,19 @@ export function SegmentsPage() {
     if (segmentId !== undefined) editButtonRefs.current.get(segmentId)?.focus();
   }
 
+  const columns = getSegmentColumns(location.search, {
+    busy: actionBusy,
+    ...(estimateMutation.isPending ? { estimatingId: estimateMutation.variables } : {}),
+    ...(deleteMutation.isPending ? { deletingId: deleteMutation.variables } : {}),
+    onEstimate: estimateSavedSegment,
+    onEdit: editSegment,
+    onDelete: confirmDelete,
+    setEditButton: (id, button) => {
+      if (button === null) editButtonRefs.current.delete(id);
+      else editButtonRefs.current.set(id, button);
+    },
+  });
+
   return (
     <section aria-label="全部分群">
       {messageContextHolder}
@@ -488,21 +502,10 @@ export function SegmentsPage() {
           {list !== undefined && (
             <Table<SegmentListItem>
               rowKey="id"
-              columns={getSegmentColumns(location.search, {
-                busy: actionBusy,
-                ...(estimateMutation.isPending ? { estimatingId: estimateMutation.variables } : {}),
-                ...(deleteMutation.isPending ? { deletingId: deleteMutation.variables } : {}),
-                onEstimate: estimateSavedSegment,
-                onEdit: editSegment,
-                onDelete: confirmDelete,
-                setEditButton: (id, button) => {
-                  if (button === null) editButtonRefs.current.delete(id);
-                  else editButtonRefs.current.set(id, button);
-                },
-              })}
+              columns={columns}
               dataSource={list.data}
               pagination={false}
-              scroll={{ x: 1440 }}
+              scroll={{ x: tableScrollX(columns) }}
               size="middle"
               tableLayout="fixed"
               loading={listQuery.isFetching}

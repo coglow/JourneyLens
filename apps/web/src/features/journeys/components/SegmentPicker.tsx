@@ -8,6 +8,7 @@ import { ApiError, getApiErrorMessage, isSessionExpired } from '@/services/api';
 import { segmentQueryKeys } from '@/features/segments/segment-queries';
 import { SegmentRuleView } from '@/features/segments/components/SegmentRuleView';
 import { formatDateTime } from '@/utils/format-date-time';
+import { tableScrollX } from '@/utils/table-scroll';
 
 type Props = {
   value?: string | null;
@@ -166,7 +167,7 @@ export function SegmentPicker({ value, onChange }: Props) {
                 columns={columns}
                 dataSource={pageData.data}
                 pagination={false}
-                scroll={{ x: 610 }}
+                scroll={{ x: tableScrollX(columns) }}
                 tableLayout="fixed"
                 loading={listQuery.isFetching}
                 locale={{

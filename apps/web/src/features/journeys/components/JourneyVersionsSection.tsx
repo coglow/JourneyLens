@@ -7,6 +7,7 @@ import { useListPagination, useSyncListPage } from '@/hooks/use-list-pagination'
 import { getApiErrorMessage, isSessionExpired } from '@/services/api';
 import { getJourneyVersions } from '@/services/journeys';
 import { formatDateTime } from '@/utils/format-date-time';
+import { tableScrollX } from '@/utils/table-scroll';
 import { journeyVersionQueryKeys } from '../journey-queries';
 
 type Props = { journeyId: string };
@@ -98,7 +99,7 @@ export function JourneyVersionsSection({ journeyId }: Props) {
           <>
             <Table<JourneyVersionSummary>
               size="small"
-              scroll={{ x: 620 }}
+              scroll={{ x: tableScrollX(columns) }}
               rowKey="id"
               columns={columns}
               dataSource={list.data}

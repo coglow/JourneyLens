@@ -107,7 +107,7 @@ describe('活动运行概览', () => {
     expect(screen.getByText('12')).toBeDefined();
   });
 
-  it('首次读取失败不显示零值，重试成功后显示真实空值', async () => {
+  it('首次读取失败不显示零值，重试成功后显示真实统计', async () => {
     mock.onGet(`/campaigns/${campaignId}/overview`).replyOnce(500, {
       error: { code: 'INTERNAL_ERROR', message: '服务暂时不可用', requestId: 'test-request-id' },
     });
@@ -123,10 +123,10 @@ describe('活动运行概览', () => {
     renderSection();
 
     expect(await screen.findByText('运行概览暂时无法读取，请重试')).toBeDefined();
-    expect(screen.queryByText('还没有执行记录')).toBeNull();
+    expect(screen.queryByText('执行总次数')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: /重\s*试/ }));
 
-    expect(await screen.findByText('还没有执行记录')).toBeDefined();
+    expect(await screen.findByRole('link', { name: '执行总次数 0，查看全部执行' })).toBeDefined();
     // 未设置目标时没有“达成次数”的含义，不能显示成 0 次。
     expect(screen.queryByText('目标达成次数')).toBeNull();
   });

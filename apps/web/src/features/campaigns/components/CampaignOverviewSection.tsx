@@ -14,7 +14,6 @@ import {
   Spin,
   Statistic,
   Tooltip,
-  Typography,
   theme,
 } from 'antd';
 import { Link } from 'react-router';
@@ -40,6 +39,23 @@ function executionsPath(campaignId: string, status?: ExecutionStatus): string {
   return `/executions?${params.toString()}`;
 }
 
+/** 指标标题带口径说明：点击或悬停说明图标后才展开，避免默认占满卡片。 */
+function MetricTitle({ text, help }: { text: string; help: string }) {
+  return (
+    <Flex align="center" gap={4}>
+      <span>{text}</span>
+      <Tooltip title={help} placement="right" trigger={['hover', 'focus']}>
+        <Button
+          type="text"
+          size="small"
+          aria-label={`${text}说明`}
+          icon={<InfoCircleOutlined aria-hidden="true" />}
+        />
+      </Tooltip>
+    </Flex>
+  );
+}
+
 export function CampaignOverviewSection({ campaignId }: Props) {
   const queryClient = useQueryClient();
   const { token } = theme.useToken();
@@ -61,23 +77,13 @@ export function CampaignOverviewSection({ campaignId }: Props) {
   const retry = <Button onClick={() => void query.refetch()}>重试</Button>;
   // null 表示活动未设置目标，与“有目标但还没有人达成”的 0 区分开。
   const goalReachedCount = query.data?.goalReachedCount ?? null;
+  const primaryTitleStyle = { marginBottom: 4, color: token.colorTextSecondary, fontSize: 14 };
+  const primaryValueStyle = { fontSize: 30, lineHeight: 1.25 };
 
   return (
     <Card
-      title={
-        <Flex align="center" gap={4}>
-          <span>运行概览</span>
-          <Tooltip title={overviewHelp} placement="right" trigger={['hover', 'focus']}>
-            <Button
-              type="text"
-              size="small"
-              aria-label="运行概览说明"
-              icon={<InfoCircleOutlined aria-hidden="true" />}
-            />
-          </Tooltip>
-        </Flex>
-      }
-      style={{ flex: 1 }}
+      styles={{ root: { flex: 1, minWidth: 0 } }}
+      title={<MetricTitle text="运行概览" help={overviewHelp} />}
       extra={
         <Flex align="center" gap={12} wrap>
           <Button
@@ -111,64 +117,49 @@ export function CampaignOverviewSection({ campaignId }: Props) {
             />
           )}
 
-          <Row gutter={[16, 16]}>
-            <Col xs={24} sm={goalReachedCount === null ? 12 : 8}>
+          <Row gutter={[16, 16]} className={styles.primaryMetrics ?? ''}>
+            <Col span={12} className={styles.primaryMetric ?? ''}>
               <Link
-                className={styles.metricLink}
+                className={`${styles.metricLink ?? ''} ${styles.primaryMetricLink ?? ''}`}
                 to={executionsPath(campaignId)}
                 aria-label={`执行总次数 ${query.data.executionCount}，查看全部执行`}
               >
                 <Statistic
                   title="执行总次数"
                   value={query.data.executionCount}
-                  styles={{ content: { color: token.colorPrimary } }}
+                  styles={{
+                    title: primaryTitleStyle,
+                    content: { ...primaryValueStyle, color: token.colorPrimary },
+                  }}
                 />
               </Link>
             </Col>
-            <Col xs={24} sm={goalReachedCount === null ? 12 : 8}>
+            <Col span={12} className={styles.primaryMetric ?? ''}>
               <Statistic
-                title={
-                  <Flex align="center" gap={4}>
-                    <span>参与用户数</span>
-                    <Tooltip title={audienceHelp} placement="right" trigger={['hover', 'focus']}>
-                      <Button
-                        type="text"
-                        size="small"
-                        aria-label="参与用户数说明"
-                        icon={<InfoCircleOutlined aria-hidden="true" />}
-                      />
-                    </Tooltip>
-                  </Flex>
-                }
+                title={<MetricTitle text="参与用户数" help={audienceHelp} />}
                 value={query.data.audienceCount}
+                styles={{ title: primaryTitleStyle, content: primaryValueStyle }}
               />
             </Col>
-            {/* 未设置目标时不显示达成次数，不用 0 表示“没有这个含义”。 */}
-            {goalReachedCount !== null && (
-              <Col xs={24} sm={8}>
-                <Statistic
-                  title={
-                    <Flex align="center" gap={4}>
-                      <span>目标达成次数</span>
-                      <Tooltip title={goalHelp} placement="right" trigger={['hover', 'focus']}>
-                        <Button
-                          type="text"
-                          size="small"
-                          aria-label="目标达成次数说明"
-                          icon={<InfoCircleOutlined aria-hidden="true" />}
-                        />
-                      </Tooltip>
-                    </Flex>
-                  }
-                  value={goalReachedCount}
-                />
-              </Col>
-            )}
           </Row>
+
+          {/* 未设置目标时不显示达成次数，不用 0 表示“没有这个含义”。 */}
+          {goalReachedCount !== null && (
+            <div className={styles.goalMetric ?? ''}>
+              <Statistic
+                title={<MetricTitle text="目标达成次数" help={goalHelp} />}
+                value={goalReachedCount}
+                styles={{
+                  title: { marginBottom: 2, color: token.colorTextTertiary, fontSize: 13 },
+                  content: { fontSize: 20, lineHeight: 1.25 },
+                }}
+              />
+            </div>
+          )}
 
           <Divider />
 
-          <div className={styles.statusGrid}>
+          <div className={styles.statusGrid ?? ''}>
             {EXECUTION_STATUSES.map((status) => {
               const label = executionStatusLabels[status];
               const count = query.data.statusCounts[status];
@@ -177,22 +168,21 @@ export function CampaignOverviewSection({ campaignId }: Props) {
                 <Flex key={status} className={styles.statusMetric ?? ''} vertical gap={8}>
                   <Badge status={executionStatusBadges[status]} text={label} />
                   <Link
-                    className={styles.metricLink}
+                    className={styles.metricLink ?? ''}
                     to={executionsPath(campaignId, status)}
                     aria-label={`${label} ${count}，查看${label}的执行`}
                   >
-                    <Statistic value={count} styles={{ content: { color: token.colorPrimary } }} />
+                    <Statistic
+                      value={count}
+                      styles={{
+                        content: { fontSize: 20, lineHeight: 1.2, color: token.colorPrimary },
+                      }}
+                    />
                   </Link>
                 </Flex>
               );
             })}
           </div>
-
-          {query.data.executionCount === 0 && query.error === null && (
-            <Typography.Text className={styles.emptyNote ?? ''} type="secondary">
-              还没有执行记录
-            </Typography.Text>
-          )}
         </>
       )}
     </Card>

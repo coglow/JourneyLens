@@ -9,20 +9,52 @@
   outline-offset: 3px;
 }
 
-.metricLink:hover :global(.ant-statistic-content-value) {
-  color: var(--ant-color-primary-hover, #4096ff);
+.metricLink:hover {
+  text-decoration: underline;
+}
+
+.primaryMetrics {
+  align-items: stretch;
+}
+
+.primaryMetric {
+  min-width: 0;
+}
+
+.primaryMetric:nth-child(2) {
+  border-inline-start: 1px solid var(--ant-color-border-secondary);
+  padding-inline-start: 16px;
+}
+
+.primaryMetricLink {
+  display: block;
+}
+
+.goalMetric {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--ant-color-border-secondary);
 }
 
 .statusGrid {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  row-gap: 16px;
+  row-gap: 14px;
 }
 
 .statusMetric {
   min-width: 0;
   align-items: flex-start;
   text-align: start;
+  padding-inline: 12px;
+}
+
+.statusMetric:first-child {
+  padding-inline-start: 0;
+}
+
+.statusMetric:nth-child(n + 2) {
+  border-inline-start: 1px solid var(--ant-color-border-secondary);
 }
 
 .statusMetric .metricLink {
@@ -33,15 +65,31 @@
   .statusGrid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
+
+  .statusMetric:nth-child(3n + 1) {
+    padding-inline-start: 0;
+    border-inline-start: 0;
+  }
+
+  .statusMetric:nth-child(3n + 2),
+  .statusMetric:nth-child(3n) {
+    border-inline-start: 1px solid var(--ant-color-border-secondary);
+    padding-inline-start: 12px;
+  }
 }
 
 @media (max-width: 479px) {
   .statusGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-}
 
-.emptyNote {
-  display: block;
-  margin-top: 16px;
+  .statusMetric:nth-child(2n + 1) {
+    padding-inline-start: 0;
+    border-inline-start: 0;
+  }
+
+  .statusMetric:nth-child(2n) {
+    border-inline-start: 1px solid var(--ant-color-border-secondary);
+    padding-inline-start: 12px;
+  }
 }

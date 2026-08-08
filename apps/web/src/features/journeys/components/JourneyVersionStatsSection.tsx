@@ -24,6 +24,7 @@ import {
   executionStatusLabels,
 } from '@/features/executions/execution-status';
 import { journeyNodeTypeLabels } from '@/features/journeys/journey-node-options';
+import { tableScrollX } from '@/utils/table-scroll';
 import styles from './JourneyVersionStatsSection.module.css';
 
 /** 分支分布只对条件节点与等待行为节点有意义，两类计数来自步骤记录。 */
@@ -198,7 +199,7 @@ export function JourneyVersionStatsTable({ query, nodes, onLocate }: TableSectio
           dataSource={nodes}
           rowKey="nodeId"
           pagination={false}
-          scroll={{ x: 1000, y: tableBodyHeight }}
+          scroll={{ x: tableScrollX(columns), y: tableBodyHeight }}
           locale={{ emptyText: <Empty description="没有找到匹配的步骤" /> }}
         />
       </div>

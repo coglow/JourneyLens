@@ -1,0 +1,23 @@
+.page {
+  width: 100%;
+  max-width: 1440px;
+  min-width: 0;
+  margin: 0 auto;
+}
+
+.campaignName {
+  overflow-wrap: anywhere;
+}
+
+/* 两张卡片等高：列容器撑满，卡片自身再占满列宽。 */
+.summaryColumn {
+  display: flex;
+  min-width: 0;
+}
+
+/* 创建信息与业务信息之间的分隔，由内容分组决定，antd 没有对应开关。 */
+.creationGroup {
+  margin-top: 24px;
+  padding-top: 12px;
+  border-top: 1px solid var(--ant-color-border-secondary);
+}

@@ -3,6 +3,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import {
   Alert,
   Button,
+  Card,
   Empty,
   Flex,
   Form,
@@ -32,6 +33,7 @@ import { deleteJourney, getJourneys } from '@/services/journeys';
 import { journeyQueryKeys } from '../journey-queries';
 import { JourneyFormDrawer } from './JourneyFormDrawer';
 import { formatDateTime } from '@/utils/format-date-time';
+import { tableScrollX } from '@/utils/table-scroll';
 
 type Props = { campaignId: string; campaignStatus: CampaignStatus };
 type FilterValues = { q?: string };
@@ -172,9 +174,6 @@ export function CampaignJourneysSection({ campaignId, campaignStatus }: Props) {
     setDrawerOpen(true);
   }
 
-  // 列宽合计：操作列只在可写时出现，两种情况的表格总宽度不同。
-  const tableScrollX = writable ? 1170 : 1020;
-
   const columns: NonNullable<TableProps<JourneyListItem>['columns']> = [
     {
       title: '旅程名称',
@@ -188,7 +187,7 @@ export function CampaignJourneysSection({ campaignId, campaignStatus }: Props) {
             returnTo: `${location.pathname}${location.search}`,
             returnState: location.state,
           }}
-          style={{ fontWeight: 600 }}
+          style={{ fontWeight: 600, overflowWrap: 'anywhere' }}
         >
           {name}
         </Link>
@@ -213,7 +212,10 @@ export function CampaignJourneysSection({ campaignId, campaignStatus }: Props) {
       width: 220,
       render: (segment: JourneyListItem['segment']) =>
         segment ? (
-          <Link to={`/segments/${segment.id}`} style={{ fontWeight: 600 }}>
+          <Link
+            to={`/segments/${segment.id}`}
+            style={{ fontWeight: 600, overflowWrap: 'anywhere' }}
+          >
             {segment.name}
           </Link>
         ) : (
@@ -293,106 +295,108 @@ export function CampaignJourneysSection({ campaignId, campaignStatus }: Props) {
   ];
 
   return (
-    <section id="journeys" aria-label="活动旅程" style={{ marginTop: 24 }}>
-      <Flex vertical gap={16}>
-        <Flex justify="space-between" align="center" gap={16} wrap>
-          <Typography.Title level={3} style={{ margin: 0 }}>
-            旅程
-          </Typography.Title>
-          {writable && (
-            <Button
-              ref={createButtonRef}
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={openCreate}
-            >
-              新建旅程
-            </Button>
-          )}
-        </Flex>
-        <Form form={form} layout="inline" onFinish={applySearch}>
-          <Form.Item name="q" label="关键词">
-            <Input
-              allowClear
-              maxLength={100}
-              placeholder="搜索旅程名称"
-              prefix={<SearchOutlined aria-hidden="true" />}
-              style={{ width: 280 }}
-            />
-          </Form.Item>
-          <Button type="primary" htmlType="submit">
-            查 询
-          </Button>
-        </Form>
-        {deleteError && (
-          <Alert
-            type="error"
-            showIcon
-            title={deleteError.message}
-            action={
-              <Link
-                to={`/journeys/${deleteError.journeyId}`}
-                state={{ returnTo: `${location.pathname}${location.search}` }}
+    <section id="journeys" aria-label="活动旅程">
+      <Card>
+        <Flex vertical gap={16}>
+          <Flex justify="space-between" align="center" gap={16} wrap>
+            <Typography.Title level={3} style={{ margin: 0 }}>
+              旅程
+            </Typography.Title>
+            {writable && (
+              <Button
+                ref={createButtonRef}
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={openCreate}
               >
-                查看旅程
-              </Link>
-            }
-            closable={{ onClose: () => setDeleteError(undefined) }}
-          />
-        )}
-        {loadError && (
-          <Alert
-            type="error"
-            showIcon
-            title={loadError}
-            action={
-              <Button type="link" onClick={() => void listQuery.refetch()}>
-                重试
+                新建旅程
               </Button>
-            }
-          />
-        )}
-        {list === undefined && listQuery.isPending ? (
-          <Flex
-            justify="center"
-            role="status"
-            aria-label="正在读取旅程"
-            style={{ padding: '48px 0' }}
-          >
-            <Spin />
+            )}
           </Flex>
-        ) : list !== undefined ? (
-          <>
-            <Table<JourneyListItem>
-              rowKey="id"
-              columns={columns}
-              dataSource={list.data}
-              pagination={false}
-              scroll={{ x: tableScrollX }}
-              tableLayout="fixed"
-              loading={listQuery.isFetching}
-              locale={{
-                emptyText: loadError ? null : (
-                  <Empty description={query ? '没有符合条件的旅程' : '暂无旅程'} />
-                ),
-              }}
-            />
-            <Flex justify="end">
-              <Pagination
-                current={list.page.page}
-                pageSize={list.page.pageSize}
-                total={list.page.total}
-                pageSizeOptions={[...PAGE_SIZES]}
-                showSizeChanger={{ id: 'journey-page-size', 'aria-label': '每页条数' }}
-                showQuickJumper
-                disabled={listQuery.isFetching}
-                showTotal={(total) => `共 ${total} 条`}
-                onChange={setPagination}
+          <Form form={form} layout="inline" onFinish={applySearch}>
+            <Form.Item name="q" label="关键词">
+              <Input
+                allowClear
+                maxLength={100}
+                placeholder="搜索旅程名称"
+                prefix={<SearchOutlined aria-hidden="true" />}
+                style={{ width: 280 }}
               />
+            </Form.Item>
+            <Button type="primary" htmlType="submit">
+              查 询
+            </Button>
+          </Form>
+          {deleteError && (
+            <Alert
+              type="error"
+              showIcon
+              title={deleteError.message}
+              action={
+                <Link
+                  to={`/journeys/${deleteError.journeyId}`}
+                  state={{ returnTo: `${location.pathname}${location.search}` }}
+                >
+                  查看旅程
+                </Link>
+              }
+              closable={{ onClose: () => setDeleteError(undefined) }}
+            />
+          )}
+          {loadError && (
+            <Alert
+              type="error"
+              showIcon
+              title={loadError}
+              action={
+                <Button type="link" onClick={() => void listQuery.refetch()}>
+                  重试
+                </Button>
+              }
+            />
+          )}
+          {list === undefined && listQuery.isPending ? (
+            <Flex
+              justify="center"
+              role="status"
+              aria-label="正在读取旅程"
+              style={{ padding: '48px 0' }}
+            >
+              <Spin />
             </Flex>
-          </>
-        ) : null}
-      </Flex>
+          ) : list !== undefined ? (
+            <>
+              <Table<JourneyListItem>
+                rowKey="id"
+                columns={columns}
+                dataSource={list.data}
+                pagination={false}
+                scroll={{ x: tableScrollX(columns) }}
+                tableLayout="fixed"
+                loading={listQuery.isFetching}
+                locale={{
+                  emptyText: loadError ? null : (
+                    <Empty description={query ? '没有符合条件的旅程' : '暂无旅程'} />
+                  ),
+                }}
+              />
+              <Flex justify="end">
+                <Pagination
+                  current={list.page.page}
+                  pageSize={list.page.pageSize}
+                  total={list.page.total}
+                  pageSizeOptions={[...PAGE_SIZES]}
+                  showSizeChanger={{ id: 'journey-page-size', 'aria-label': '每页条数' }}
+                  showQuickJumper
+                  disabled={listQuery.isFetching}
+                  showTotal={(total) => `共 ${total} 条`}
+                  onChange={setPagination}
+                />
+              </Flex>
+            </>
+          ) : null}
+        </Flex>
+      </Card>
       <JourneyFormDrawer
         open={drawerOpen}
         campaignId={campaignId}

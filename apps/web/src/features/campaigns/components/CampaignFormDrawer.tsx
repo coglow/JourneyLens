@@ -289,11 +289,7 @@ export function CampaignFormDrawer({
           </>
         ) : (
           <Form.Item label="活动目标">
-            <Typography.Text>
-              {campaign?.goal === undefined || campaign.goal === null
-                ? '未设置目标'
-                : campaignGoalText(campaign.goal)}
-            </Typography.Text>
+            <Typography.Text>{campaignGoalText(campaign?.goal ?? null)}</Typography.Text>
             <Typography.Paragraph type="secondary" style={{ marginBottom: 0, marginTop: 4 }}>
               已有发布旅程，目标不能修改
             </Typography.Paragraph>

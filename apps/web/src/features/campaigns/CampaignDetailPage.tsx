@@ -11,6 +11,8 @@ import {
   App as AntApp,
   Row,
   Spin,
+  theme,
+  Typography,
 } from 'antd';
 import { canEditCampaign, type CampaignDetail } from '@journeylens/shared';
 import { useLocation, useNavigate, useParams } from 'react-router';
@@ -34,6 +36,7 @@ import { campaignStatusBadges, campaignStatusLabels } from './campaign-status';
 import { CampaignFormDrawer } from './components/CampaignFormDrawer';
 import { CampaignOverviewSection } from './components/CampaignOverviewSection';
 import { CampaignJourneysSection } from '@/features/journeys/components/CampaignJourneysSection';
+import styles from './CampaignDetailPage.module.css';
 
 type TransitionConfirm = {
   action: CampaignTransition;
@@ -47,6 +50,7 @@ type TransitionConfirm = {
 
 export function CampaignDetailPage() {
   const { modal } = AntApp.useApp();
+  const { token } = theme.useToken();
   const { id = '' } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
@@ -254,7 +258,7 @@ export function CampaignDetailPage() {
   }
 
   return (
-    <section aria-label="活动详情" style={{ maxWidth: 1440, margin: '0 auto' }}>
+    <section aria-label="活动详情" className={styles.page ?? ''}>
       <Flex vertical gap={16}>
         <PageHeader
           back={
@@ -272,7 +276,7 @@ export function CampaignDetailPage() {
               '活动详情'
             ) : (
               <Flex align="center" gap={12} wrap>
-                <span>{campaign.name}</span>
+                <span className={styles.campaignName ?? ''}>{campaign.name}</span>
                 <Badge
                   status={campaignStatusBadges[campaign.status]}
                   text={campaignStatusLabels[campaign.status]}
@@ -393,7 +397,7 @@ export function CampaignDetailPage() {
         )}
 
         {campaign === undefined && (
-          <Card>
+          <Card styles={{ root: { width: '100%', minWidth: 0 } }}>
             {campaignQuery.isPending && (
               <Flex
                 justify="center"
@@ -419,31 +423,59 @@ export function CampaignDetailPage() {
         {campaign !== undefined && (
           <>
             <Row gutter={[16, 16]} align="stretch">
-              <Col xs={24} md={8} style={{ display: 'flex' }}>
-                <Card title="活动资料" style={{ flex: 1 }}>
-                  <Descriptions column={1} layout="horizontal" colon={false}>
-                    <Descriptions.Item label="说明">
-                      {campaign.description ?? '未填写'}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="目标">
-                      {campaign.goal === null ? '未设置目标' : campaignGoalText(campaign.goal)}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="预算">
-                      {campaign.budget?.amount ?? '未设置'}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="创建者">
-                      {campaign.createdBy.displayName}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="创建时间">
-                      {formatDateTime(campaign.createdAt)}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="更新时间">
-                      {formatDateTime(campaign.updatedAt)}
-                    </Descriptions.Item>
-                  </Descriptions>
+              <Col xs={24} md={8} className={styles.summaryColumn ?? ''}>
+                <Card title="活动资料" styles={{ root: { width: '100%', minWidth: 0 } }}>
+                  <Flex vertical gap={10}>
+                    <Typography.Text strong>业务信息</Typography.Text>
+                    <Descriptions
+                      column={1}
+                      layout="horizontal"
+                      colon={false}
+                      size="small"
+                      styles={{
+                        label: { color: token.colorTextTertiary },
+                        content: { overflowWrap: 'anywhere' },
+                      }}
+                    >
+                      <Descriptions.Item label="说明">
+                        {campaign.description ?? '未填写'}
+                      </Descriptions.Item>
+                      <Descriptions.Item label="目标">
+                        {campaignGoalText(campaign.goal)}
+                      </Descriptions.Item>
+                      <Descriptions.Item label="预算">
+                        {campaign.budget?.amount ?? '未设置'}
+                      </Descriptions.Item>
+                    </Descriptions>
+                  </Flex>
+                  <Flex vertical gap={10} className={styles.creationGroup ?? ''}>
+                    <Typography.Text strong type="secondary">
+                      创建信息
+                    </Typography.Text>
+                    <Descriptions
+                      column={1}
+                      layout="horizontal"
+                      colon={false}
+                      size="small"
+                      styles={{
+                        label: { color: token.colorTextTertiary, fontSize: 13 },
+                        content: { color: token.colorTextTertiary, fontSize: 13 },
+                      }}
+                    >
+                      <Descriptions.Item label="创建者">
+                        {campaign.createdBy.displayName}
+                      </Descriptions.Item>
+                      <Descriptions.Item label="创建时间">
+                        {formatDateTime(campaign.createdAt)}
+                      </Descriptions.Item>
+                      <Descriptions.Item label="更新时间">
+                        {formatDateTime(campaign.updatedAt)}
+                      </Descriptions.Item>
+                    </Descriptions>
+                  </Flex>
                 </Card>
               </Col>
-              <Col xs={24} md={16} style={{ display: 'flex' }}>
+              <Col xs={24} md={16} className={styles.summaryColumn ?? ''}>
                 <CampaignOverviewSection campaignId={campaign.id} />
               </Col>
             </Row>

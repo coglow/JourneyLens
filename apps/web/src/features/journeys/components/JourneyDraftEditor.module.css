@@ -449,7 +449,6 @@
   border-inline-start-color: var(--ant-color-text-secondary, #666);
 }
 
-/* 模拟路径沿用参考项目的琥珀色；正在定位的节点随后显示选中态。 */
 .canvasNode[data-simulation-state='traversed'] {
   border-color: var(--ant-color-warning, #faad14);
   background: color-mix(
@@ -466,7 +465,6 @@
   color: var(--ant-color-warning-text, #ad6800);
 }
 
-/* 选中节点参照参考项目的画布选中态：主题色边框、浅色底、外圈高亮和主题色图标。 */
 .canvasNode[data-selected='true'] {
   border-color: var(--ant-color-primary, #1677ff);
   background: var(--ant-color-primary-bg, #e6f4ff);

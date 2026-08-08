@@ -18,6 +18,7 @@ import { getApiErrorMessage, isSessionExpired } from '@/services/api';
 import { getCampaign, getCampaigns } from '@/services/campaigns';
 import { getJourneyStatsList } from '@/services/journeys';
 import { formatDateTime } from '@/utils/format-date-time';
+import { tableScrollX } from '@/utils/table-scroll';
 import { journeyStatsQueryKeys } from './journey-queries';
 
 type FilterValues = { q?: string; campaignId?: string };
@@ -231,7 +232,7 @@ export function JourneyStatsPage() {
                 columns={columns}
                 dataSource={list.data}
                 pagination={false}
-                scroll={{ x: 860 }}
+                scroll={{ x: tableScrollX(columns) }}
                 loading={listQuery.isFetching}
                 locale={{
                   emptyText: loadError ? null : (

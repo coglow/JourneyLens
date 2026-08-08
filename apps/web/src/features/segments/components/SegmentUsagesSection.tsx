@@ -9,6 +9,7 @@ import { getSegmentUsages } from '@/services/segments';
 import { campaignStatusBadges, campaignStatusLabels } from '@/features/campaigns/campaign-status';
 import { segmentQueryKeys } from '../segment-queries';
 import { formatDateTime } from '@/utils/format-date-time';
+import { tableScrollX } from '@/utils/table-scroll';
 
 type Props = { segmentId: string };
 
@@ -127,7 +128,7 @@ export function SegmentUsagesSection({ segmentId }: Props) {
             columns={columns}
             dataSource={list.data}
             pagination={false}
-            scroll={{ x: 770 }}
+            scroll={{ x: tableScrollX(columns) }}
             tableLayout="fixed"
             loading={usagesQuery.isFetching}
             locale={{ emptyText: loadError ? null : <Empty description="暂无引用旅程" /> }}
