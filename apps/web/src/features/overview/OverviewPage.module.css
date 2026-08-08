@@ -234,17 +234,3 @@
     border-top: 1px solid var(--ant-color-border-secondary, #f0f0f0);
   }
 }
-
-@media (max-width: 600px) {
-  .metrics {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .metric + .metric {
-    border-top: 1px solid var(--ant-color-border-secondary, #f0f0f0);
-  }
-
-  .metric + .metric::before {
-    content: none;
-  }
-}

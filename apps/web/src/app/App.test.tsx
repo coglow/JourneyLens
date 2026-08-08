@@ -6,6 +6,7 @@ import MockAdapter from 'axios-mock-adapter';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { AuthProvider } from '@/features/auth/auth-provider';
 import { apiClient } from '@/services/api';
+import { DesktopOnlyGate } from './DesktopOnlyGate';
 import { appRoutes } from './router';
 import { QueryProvider } from './QueryProvider';
 
@@ -59,11 +60,13 @@ function renderApp(initialPath = '/') {
 
   render(
     <ThemeProvider>
-      <AuthProvider>
-        <QueryProvider>
-          <CaptureQueryClient />
-        </QueryProvider>
-      </AuthProvider>
+      <DesktopOnlyGate>
+        <AuthProvider>
+          <QueryProvider>
+            <CaptureQueryClient />
+          </QueryProvider>
+        </AuthProvider>
+      </DesktopOnlyGate>
     </ThemeProvider>,
   );
   return router;
@@ -363,5 +366,85 @@ describe('登录与会话路由', () => {
     expect(screen.getByText('JourneyLens 管理员')).toBeTruthy();
     expect(screen.getByRole('button', { name: '退出登录' })).toBeTruthy();
     expect(router.state.location.pathname).toBe('/overview');
+  });
+});
+
+describe('窗口宽度门槛', () => {
+  const NOTICE = '为了您更好的操作体验，请使用电脑浏览器打开本页面';
+
+  /** 只替换门槛使用的媒体查询，其余查询保持测试默认结果。 */
+  function mockNarrowViewport(initial: boolean) {
+    const original = window.matchMedia;
+    const query = '(max-width: 767.98px)';
+    const changes = new EventTarget();
+    const media = {
+      ...original(query),
+      matches: initial,
+      addEventListener: changes.addEventListener.bind(changes),
+      removeEventListener: changes.removeEventListener.bind(changes),
+    };
+    vi.spyOn(window, 'matchMedia').mockImplementation((value) =>
+      value === query ? media : original(value),
+    );
+    return (matches: boolean) => {
+      act(() => {
+        media.matches = matches;
+        changes.dispatchEvent(Object.assign(new Event('change'), { matches }));
+      });
+    };
+  }
+
+  it('首次窄屏打开登录页只给提示，不请求会话', async () => {
+    mockNarrowViewport(true);
+    renderApp('/login');
+
+    expect(await screen.findByText(NOTICE)).toBeTruthy();
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    expect(screen.queryByLabelText('邮箱')).toBeNull();
+    expect(mock.history.get).toHaveLength(0);
+  });
+
+  it('首次窄屏打开工作台只给提示，不请求业务数据', async () => {
+    mockNarrowViewport(true);
+    renderApp('/overview');
+
+    expect(await screen.findByText(NOTICE)).toBeTruthy();
+    expect(screen.queryByRole('main')).toBeNull();
+    expect(mock.history.get).toHaveLength(0);
+  });
+
+  it('宽屏填写后缩窄保留输入内容，恢复宽屏可以继续', async () => {
+    const setMatches = mockNarrowViewport(false);
+    mock.onGet('/userinfo').replyOnce(401, unauthorizedBody());
+    renderApp('/login');
+
+    const email = (await screen.findByLabelText('邮箱')) as HTMLInputElement;
+    fireEvent.change(email, { target: { value: 'operator@example.com' } });
+
+    setMatches(true);
+    expect(await screen.findByText(NOTICE)).toBeTruthy();
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    expect((screen.getByLabelText('邮箱') as HTMLInputElement).value).toBe('operator@example.com');
+
+    setMatches(false);
+    expect(screen.queryByText(NOTICE)).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect((screen.getByLabelText('邮箱') as HTMLInputElement).value).toBe('operator@example.com');
+    expect(mock.history.get.map((request) => request.url)).toEqual(['/userinfo']);
+  });
+
+  it('首次窄屏进入后放宽，正常渲染页面且不残留对话框', async () => {
+    const setMatches = mockNarrowViewport(true);
+    mock.onGet('/userinfo').replyOnce(401, unauthorizedBody());
+    renderApp('/login');
+
+    expect(await screen.findByText(NOTICE)).toBeTruthy();
+    expect(screen.queryByLabelText('邮箱')).toBeNull();
+
+    setMatches(false);
+
+    expect(await screen.findByLabelText('邮箱')).toBeTruthy();
+    expect(screen.queryByText(NOTICE)).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 });

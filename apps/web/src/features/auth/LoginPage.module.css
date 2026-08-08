@@ -160,26 +160,3 @@
     background: var(--ant-color-bg-container);
   }
 }
-
-@media (max-width: 480px) {
-  .page {
-    padding: 64px 20px 32px;
-  }
-
-  .themeToggle {
-    top: 16px;
-    right: 16px;
-  }
-
-  .introduction h2 {
-    font-size: 24px;
-  }
-
-  .introduction :global(.ant-typography) {
-    font-size: 14px;
-  }
-
-  .loginPanel {
-    padding: 28px 24px;
-  }
-}

@@ -2036,3 +2036,165 @@ describe('旅程编排页面', () => {
     expect((await screen.findByRole('tooltip')).textContent).toContain('不满足');
   }, 20_000);
 });
+
+describe('编排中屏设置抽屉', () => {
+  function mockCompact(initial: boolean) {
+    const original = window.matchMedia;
+    const changes = new EventTarget();
+    const query = '(max-width: 1250px)';
+    const media = {
+      ...original(query),
+      matches: initial,
+      addEventListener: changes.addEventListener.bind(changes),
+      removeEventListener: changes.removeEventListener.bind(changes),
+    };
+    vi.spyOn(window, 'matchMedia').mockImplementation((value) =>
+      value === query ? media : original(value),
+    );
+    return (matches: boolean) =>
+      act(() => {
+        media.matches = matches;
+        changes.dispatchEvent(new Event('change'));
+      });
+  }
+
+  afterEach(() => vi.restoreAllMocks());
+
+  it('点击步骤打开抽屉，关闭后可再次打开且保留修改', async () => {
+    mockCompact(true);
+    vi.mocked(getJourney).mockResolvedValue({ ...journey, draftDefinition: aiCandidate });
+    renderEditor();
+    const node = await screen.findByLabelText('结束：AI 结束');
+    expect(screen.queryByRole('complementary', { name: '步骤设置' })).toBeNull();
+    fireEvent.click(node);
+    const drawer = await screen.findByRole('dialog');
+    fireEvent.change(within(drawer).getByLabelText('节点名称'), { target: { value: '完成回访' } });
+    fireEvent.click(within(drawer).getByRole('button', { name: '关闭' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    fireEvent.click(screen.getByLabelText('结束：完成回访'));
+    expect(((await screen.findByLabelText('节点名称')) as HTMLInputElement).value).toBe('完成回访');
+  });
+
+  it('宽屏和中屏往返保留画布元素及配置值', async () => {
+    const setCompact = mockCompact(false);
+    vi.mocked(getJourney).mockResolvedValue({ ...journey, draftDefinition: aiCandidate });
+    renderEditor();
+    const node = await screen.findByLabelText('结束：AI 结束');
+    fireEvent.click(node);
+    fireEvent.change(screen.getByLabelText('结束说明'), { target: { value: '保留编辑内容' } });
+    setCompact(true);
+    expect(screen.queryByLabelText('结束说明')).toBeNull();
+    fireEvent.click(node);
+    expect(((await screen.findByLabelText('结束说明')) as HTMLTextAreaElement).value).toBe(
+      '保留编辑内容',
+    );
+    setCompact(false);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.getByLabelText('结束：AI 结束')).toBe(node);
+    expect((screen.getByLabelText('结束说明') as HTMLTextAreaElement).value).toBe('保留编辑内容');
+  });
+
+  it('键盘选中步骤也可打开设置', async () => {
+    mockCompact(true);
+    vi.mocked(getJourney).mockResolvedValue({ ...journey, draftDefinition: aiCandidate });
+    renderEditor();
+    const node = await screen.findByLabelText('结束：AI 结束');
+    fireEvent.keyDown(node, { key: 'Enter' });
+    expect(await screen.findByRole('dialog')).toBeTruthy();
+    expect(screen.getByLabelText('结束说明')).toBeTruthy();
+  });
+});
+
+describe('画布缩小时自动适配', () => {
+  const originalResizeObserver = window.ResizeObserver;
+  afterEach(() => {
+    window.ResizeObserver = originalResizeObserver;
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  async function setupResize() {
+    const observers: {
+      element: Element;
+      callback: ResizeObserverCallback;
+      disconnect: ReturnType<typeof vi.fn>;
+    }[] = [];
+    window.ResizeObserver = class {
+      callback: ResizeObserverCallback;
+      disconnect = vi.fn();
+      constructor(callback: ResizeObserverCallback) {
+        this.callback = callback;
+      }
+      observe(element: Element) {
+        observers.push({ element, callback: this.callback, disconnect: this.disconnect });
+      }
+      unobserve() {}
+    };
+    const hooks = await import('@/features/journeys/hooks/useJourneyCanvas');
+    const original = hooks.useJourneyCanvas;
+    let canvas: ReturnType<typeof original>;
+    vi.spyOn(hooks, 'useJourneyCanvas').mockImplementation(() => {
+      canvas = original();
+      return canvas;
+    });
+    vi.mocked(getJourney).mockResolvedValue({ ...journey, draftDefinition: aiCandidate });
+    const view = renderEditor();
+    await screen.findByLabelText('结束：AI 结束');
+    const fitView = vi.fn().mockResolvedValue(true);
+    canvas!.flowInstance.current!.fitView = fitView;
+    const element = screen
+      .getByRole('main', { name: '旅程画布' })
+      .querySelector('[tabindex="-1"]')!;
+    const observer = observers.find((item) => item.element === element)!;
+    vi.useFakeTimers();
+    return {
+      ...view,
+      fitView,
+      observer,
+      resize(width: number, height: number) {
+        act(() =>
+          observer.callback(
+            [{ contentRect: { width, height } } as ResizeObserverEntry],
+            {} as ResizeObserver,
+          ),
+        );
+      },
+      advance(ms: number) {
+        act(() => vi.advanceTimersByTime(ms));
+      },
+    };
+  }
+
+  it('首次测量和放大不适配，连续缩小在稳定后适配一次且不修改草稿', async () => {
+    const view = await setupResize();
+    view.resize(1000, 700);
+    view.resize(1100, 800);
+    view.advance(200);
+    expect(view.fitView).not.toHaveBeenCalled();
+    view.resize(900, 800);
+    view.advance(100);
+    view.resize(800, 750);
+    view.advance(149);
+    expect(view.fitView).not.toHaveBeenCalled();
+    view.advance(1);
+    expect(view.fitView).toHaveBeenCalledExactlyOnceWith({ padding: 0.18 });
+    expect(saveJourneyDraft).not.toHaveBeenCalled();
+  });
+
+  it('只缩小高度也会适配，放大或卸载取消等待中的适配', async () => {
+    const view = await setupResize();
+    view.resize(1000, 700);
+    view.resize(1000, 600);
+    view.advance(150);
+    expect(view.fitView).toHaveBeenCalledTimes(1);
+    view.resize(1000, 500);
+    view.resize(1000, 700);
+    view.advance(200);
+    expect(view.fitView).toHaveBeenCalledTimes(1);
+    view.resize(900, 600);
+    view.unmount();
+    view.advance(200);
+    expect(view.fitView).toHaveBeenCalledTimes(1);
+    expect(view.observer.disconnect).toHaveBeenCalled();
+  });
+});

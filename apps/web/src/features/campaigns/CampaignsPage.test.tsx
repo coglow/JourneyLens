@@ -566,7 +566,7 @@ describe('活动列表与创建', () => {
     mock.onGet('/campaigns').replyOnce(401, unauthorizedBody);
     const router = renderApp();
 
-    expect(await screen.findByRole('heading', { name: '登录 JourneyLens' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: '登录工作台' })).toBeTruthy();
     expect(router.state.location.pathname).toBe('/login');
   });
 
@@ -581,7 +581,7 @@ describe('活动列表与创建', () => {
     fireEvent.change(await screen.findByLabelText('活动名称'), { target: { value: '春季活动' } });
     fireEvent.click(screen.getByRole('button', { name: '创建活动' }));
 
-    expect(await screen.findByRole('heading', { name: '登录 JourneyLens' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: '登录工作台' })).toBeTruthy();
     expect(router.state.location.pathname).toBe('/login');
   });
 
@@ -876,7 +876,7 @@ describe('活动列表与创建', () => {
     mock.onGet('/userinfo').reply(200, { data: account });
     mock.onGet(`/campaigns/${campaign.id}`).replyOnce(401, unauthorizedBody);
     const router = renderApp(`/campaigns/${campaign.id}`);
-    expect(await screen.findByRole('heading', { name: '登录 JourneyLens' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: '登录工作台' })).toBeTruthy();
     expect(router.state.location.pathname).toBe('/login');
   });
 

@@ -120,7 +120,7 @@ describe('行为记录列表', () => {
     mock.onGet('/events').reply(401, {});
     const router = renderApp('/events');
 
-    expect(await screen.findByRole('heading', { name: '登录 JourneyLens' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: '登录工作台' })).toBeTruthy();
     expect(router.state.location.pathname).toBe('/login');
   });
 });
