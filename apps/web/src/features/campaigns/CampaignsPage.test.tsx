@@ -36,6 +36,7 @@ const summary = {
   name: campaign.name,
   description: campaign.description,
   budget: campaign.budget,
+  goal: campaign.goal,
   status: campaign.status,
   updatedAt: campaign.updatedAt,
   createdBy: campaign.createdBy,
@@ -126,6 +127,7 @@ describe('活动列表与创建', () => {
       id: '2d4f4d57-9d59-4ed5-a2fa-d71733cebb61',
       name: '有旅程的草稿',
       journeyCount: 1,
+      goal: { eventType: 'purchase_completed', sameProduct: true },
     };
     const stopped = {
       ...summary,
@@ -148,6 +150,9 @@ describe('活动列表与创建', () => {
     const stoppedRow = screen.getByRole('row', { name: /已停止活动/ });
     const pausedRow = screen.getByRole('row', { name: /已暂停活动/ });
     const deletableRow = screen.getByRole('row', { name: /可删除活动/ });
+    expect(screen.getByRole('columnheader', { name: '目标' })).toBeDefined();
+    expect(within(linkedRow).getByText('完成购买（只算同一件商品）')).toBeDefined();
+    expect(within(deletableRow).getByText('未设置目标')).toBeDefined();
     expect(within(linkedRow).getByRole('button', { name: '删除' }).hasAttribute('disabled')).toBe(
       true,
     );
@@ -374,6 +379,46 @@ describe('活动列表与创建', () => {
     expect((screen.getByLabelText('关键词') as HTMLInputElement).value).toBe('');
   }, 20_000);
 
+  it('目标从网址恢复，查询时组合条件并回到第一页，重置清除目标', async () => {
+    mock.onGet('/userinfo').reply(200, { data: account });
+    mock
+      .onGet('/campaigns')
+      .replyOnce(200, listBody([summary], { page: 2, pageSize: 20, total: 21 }));
+    mock.onGet('/campaigns').reply(200, listBody([], { pageSize: 20 }));
+    const router = renderApp('/campaigns?q=spring&status=draft&goal=none&page=2&pageSize=20');
+    await screen.findByRole('link', { name: campaign.name });
+    expect(listParams()[0]).toEqual({
+      q: 'spring',
+      status: 'draft',
+      goal: 'none',
+      page: 2,
+      pageSize: 20,
+    });
+    const goalSelect = screen.getByRole('combobox', { name: '目标' });
+    expect(goalSelect.closest('.ant-select')?.textContent).toContain('未设置目标');
+    fireEvent.mouseDown(goalSelect);
+    fireEvent.click(await screen.findByTitle('完成购买'));
+    expect(listParams()).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: /^查\s*询$/ }));
+    await waitFor(() =>
+      expect(listParams()).toContainEqual({
+        q: 'spring',
+        status: 'draft',
+        goal: 'purchase_completed',
+        pageSize: 20,
+      }),
+    );
+    expect(new URLSearchParams(router.state.location.search).get('goal')).toBe(
+      'purchase_completed',
+    );
+    expect(new URLSearchParams(router.state.location.search).has('page')).toBe(false);
+    expect(await screen.findByText('没有符合条件的活动')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /^重\s*置$/ }));
+    await waitFor(() => expect(listParams()).toContainEqual({ pageSize: 20 }));
+    expect(new URLSearchParams(router.state.location.search).has('goal')).toBe(false);
+    expect(await screen.findByText('暂无活动')).toBeTruthy();
+  });
+
   it('网址中的每页条数不合法时明确提示，不静默改成 10 条', async () => {
     mock.onGet('/userinfo').reply(200, { data: account });
     const router = renderApp('/campaigns?pageSize=17');
@@ -549,7 +594,7 @@ describe('活动列表与创建', () => {
     mock
       .onGet('/campaigns')
       .replyOnce(200, listBody([summary], { page: 2, pageSize: 20, total: 21 }));
-    const router = renderApp('/campaigns?q=spring&status=draft&page=2&pageSize=20');
+    const router = renderApp('/campaigns?q=spring&status=draft&goal=none&page=2&pageSize=20');
 
     fireEvent.click(await screen.findByRole('link', { name: campaign.name }));
     expect(await screen.findByText('未填写')).toBeTruthy();
@@ -558,15 +603,29 @@ describe('活动列表与创建', () => {
       within(detailsCard as HTMLElement).getByText(campaign.createdBy.displayName),
     ).toBeTruthy();
     expect(router.state.location.pathname).toBe(`/campaigns/${campaign.id}`);
-    expect(listParams()[0]).toEqual({ q: 'spring', status: 'draft', page: 2, pageSize: 20 });
+    expect(listParams()[0]).toEqual({
+      q: 'spring',
+      status: 'draft',
+      goal: 'none',
+      page: 2,
+      pageSize: 20,
+    });
     expect(mock.history.get.map((request) => request.url)).toContain(`/campaigns/${campaign.id}`);
 
     fireEvent.click(screen.getByRole('button', { name: '返回活动列表' }));
     expect(await screen.findByRole('link', { name: campaign.name })).toBeTruthy();
     expect(router.state.location.pathname).toBe('/campaigns');
-    expect(router.state.location.search).toBe('?q=spring&status=draft&page=2&pageSize=20');
+    expect(router.state.location.search).toBe(
+      '?q=spring&status=draft&goal=none&page=2&pageSize=20',
+    );
     expect(listParams()).toHaveLength(2);
-    expect(listParams()[1]).toEqual({ q: 'spring', status: 'draft', page: 2, pageSize: 20 });
+    expect(listParams()[1]).toEqual({
+      q: 'spring',
+      status: 'draft',
+      goal: 'none',
+      page: 2,
+      pageSize: 20,
+    });
   });
 
   it('重新进入已缓存的详情时保留内容，刷新失败显示提示并可重试', async () => {

@@ -1,4 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { campaignListResponseSchema } from '@journeylens/shared';
 import {
   startTestDatabase,
   testAccountId,
@@ -116,6 +117,7 @@ describe('活动 API', () => {
             status: 'draft',
             createdBy: { id: testAccountId, displayName: '测试运营账号' },
             journeyCount: 0,
+            goal: null,
           },
         ],
         page: { page: 1, pageSize: 10, total: 1 },
@@ -144,6 +146,92 @@ describe('活动 API', () => {
       });
       expect(missing.statusCode).toBe(404);
       expect(missing.json().error.message).toBe('活动不存在');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('列表返回真实目标及同商品限制，未设置目标返回 null', async () => {
+    await seedCampaigns(3);
+    await db.prisma.campaign.update({
+      where: { id: '00000000-0000-4000-8000-000000000001' },
+      data: { goalEventType: 'purchase_completed', goalSameProduct: true },
+    });
+    await db.prisma.campaign.update({
+      where: { id: '00000000-0000-4000-8000-000000000002' },
+      data: { goalEventType: 'registration_completed', goalSameProduct: false },
+    });
+    const { app } = makeApp(db);
+    try {
+      const cookie = await signedInCookie(app);
+      const listed = await app.inject({
+        method: 'GET',
+        url: '/api/campaigns',
+        headers: { cookie },
+      });
+      expect(listed.statusCode).toBe(200);
+      const { data } = campaignListResponseSchema.parse(listed.json());
+      expect(data.map(({ goal }) => goal)).toEqual([
+        null,
+        { eventType: 'registration_completed', sameProduct: false },
+        { eventType: 'purchase_completed', sameProduct: true },
+      ]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('按目标筛选并可组合关键词和状态，未设置目标单独查询，非法目标被拒绝', async () => {
+    const goals = [
+      { name: '购买同商品', goalEventType: 'purchase_completed', goalSameProduct: true },
+      { name: '购买任意商品', goalEventType: 'purchase_completed' },
+      { name: '预约活动', goalEventType: 'reservation_created' },
+      { name: '注册活动', goalEventType: 'registration_completed' },
+      { name: '订阅活动', goalEventType: 'subscription_started' },
+      { name: '没有目标', goalEventType: null },
+    ] as const;
+    await db.prisma.campaign.createMany({
+      data: goals.map((goal) => ({ ...goal, createdById: testAccountId })),
+    });
+    const { app } = makeApp(db);
+    try {
+      const cookie = await signedInCookie(app);
+      for (const [goal, total] of [
+        ['purchase_completed', 2],
+        ['reservation_created', 1],
+        ['registration_completed', 1],
+        ['subscription_started', 1],
+        ['none', 1],
+      ] as const) {
+        const response = await app.inject({
+          method: 'GET',
+          url: `/api/campaigns?goal=${goal}`,
+          headers: { cookie },
+        });
+        expect(response.statusCode).toBe(200);
+        const body = campaignListResponseSchema.parse(response.json());
+        expect(body.page.total).toBe(total);
+        expect(body.data).toHaveLength(total);
+        expect(
+          body.data.every((item) =>
+            goal === 'none' ? item.goal === null : item.goal?.eventType === goal,
+          ),
+        ).toBe(true);
+      }
+      const combined = await app.inject({
+        method: 'GET',
+        url: `/api/campaigns?goal=purchase_completed&status=draft&q=${encodeURIComponent('同商品')}&page=2&pageSize=20`,
+        headers: { cookie },
+      });
+      expect(combined.json().page).toEqual({ page: 1, pageSize: 20, total: 1 });
+      expect(combined.json().data[0].name).toBe('购买同商品');
+      const invalid = await app.inject({
+        method: 'GET',
+        url: '/api/campaigns?goal=unknown',
+        headers: { cookie },
+      });
+      expect(invalid.statusCode).toBe(400);
+      expect(invalid.json().error.message).toContain('目标');
     } finally {
       await app.close();
     }

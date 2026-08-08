@@ -29,6 +29,7 @@ const campaignSummary = {
   name: '演示活动',
   description: null,
   budget: null,
+  goal: null,
   status: 'running',
   updatedAt: '2026-07-30T08:00:00.000Z',
   createdBy: { id: account.id, displayName: account.displayName },

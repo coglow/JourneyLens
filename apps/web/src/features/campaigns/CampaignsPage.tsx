@@ -21,6 +21,8 @@ import { PlusOutlined, SearchOutlined } from '@ant-design/icons';
 import type { TableProps } from 'antd';
 import {
   CAMPAIGN_STATUSES,
+  CAMPAIGN_GOAL_EVENT_TYPES,
+  JOURNEY_EVENT_TYPE_LABELS,
   PAGE_SIZES,
   canEditCampaign,
   type CampaignListQueryInput,
@@ -41,7 +43,9 @@ import { ListPageLayout } from '@/components/ListPageLayout';
 import { PageHeader } from '@/components/PageHeader';
 import { useListPagination, useSyncListPage } from '@/hooks/use-list-pagination';
 import { formatDateTime } from '@/utils/format-date-time';
+import { tableScrollX } from '@/utils/table-scroll';
 import { campaignQueryKeys } from './campaign-queries';
+import { campaignGoalText } from './campaign-goal';
 import { campaignStatusBadges, campaignStatusLabels } from './campaign-status';
 import { CampaignFormDrawer } from './components/CampaignFormDrawer';
 
@@ -50,11 +54,18 @@ type RefreshNotice = 'created' | 'saved' | 'deleted';
 type FilterValues = {
   q?: string;
   status?: CampaignStatus | 'all';
+  goal?: CampaignListQueryInput['goal'] | 'all';
 };
 
 const statusOptions = [
   { label: '全部', value: 'all' },
   ...CAMPAIGN_STATUSES.map((status) => ({ label: campaignStatusLabels[status], value: status })),
+];
+
+const goalOptions = [
+  { label: '全部', value: 'all' as const },
+  { label: '未设置目标', value: 'none' as const },
+  ...CAMPAIGN_GOAL_EVENT_TYPES.map((value) => ({ label: JOURNEY_EVENT_TYPE_LABELS[value], value })),
 ];
 
 function getDeleteDisabledReason(campaign: CampaignListItem): string | undefined {
@@ -99,6 +110,18 @@ function getCampaignColumns(
         ),
     },
     {
+      title: '目标',
+      dataIndex: 'goal',
+      key: 'goal',
+      width: 260,
+      render: (goal: CampaignListItem['goal']) => (
+        // 未设置目标时弱化显示，文案统一由 campaignGoalText 给出。
+        <Typography.Text {...(goal === null ? { type: 'secondary' as const } : {})}>
+          {campaignGoalText(goal)}
+        </Typography.Text>
+      ),
+    },
+    {
       title: '状态',
       dataIndex: 'status',
       key: 'status',
@@ -127,13 +150,6 @@ function getCampaignColumns(
       render: (count: number) => count.toLocaleString('zh-CN'),
     },
     {
-      title: '创建人',
-      dataIndex: 'createdBy',
-      key: 'createdBy',
-      width: 140,
-      render: (createdBy: CampaignListItem['createdBy']) => createdBy.displayName,
-    },
-    {
       title: '更新时间',
       dataIndex: 'updatedAt',
       key: 'updatedAt',
@@ -148,22 +164,30 @@ function getCampaignColumns(
       width: 150,
       fixed: 'end',
       render: (_value: unknown, campaign: CampaignListItem) => {
+        // 能否编辑只由 canEditCampaign 决定，这里只负责给出对应的说明文案。
+        const editable = canEditCampaign(campaign.status);
+        const editDisabledReason = editable
+          ? undefined
+          : campaign.status === 'running'
+            ? '请先暂停活动再编辑'
+            : '已停止的活动不能编辑';
         const deleteDisabledReason = getDeleteDisabledReason(campaign);
         const deleteDisabled = deleteDisabledReason !== undefined || actionsDisabled;
 
         return (
           <Flex align="center" justify="center" gap={4}>
-            <Button
-              type="link"
-              loading={editingCampaignId === campaign.id}
-              disabled={
-                !canEditCampaign(campaign.status) ||
-                (actionsDisabled && editingCampaignId !== campaign.id)
-              }
-              onClick={(event) => onEdit(campaign, event.currentTarget)}
-            >
-              编辑
-            </Button>
+            <Tooltip title={editDisabledReason}>
+              <span>
+                <Button
+                  type="link"
+                  loading={editingCampaignId === campaign.id}
+                  disabled={!editable || (actionsDisabled && editingCampaignId !== campaign.id)}
+                  onClick={(event) => onEdit(campaign, event.currentTarget)}
+                >
+                  编辑
+                </Button>
+              </span>
+            </Tooltip>
             <Divider vertical />
             {deleteDisabledReason ? (
               <Tooltip title={deleteDisabledReason}>
@@ -219,11 +243,14 @@ export function CampaignsPage() {
   const query = searchParams.get('q') ?? '';
   const rawStatus = searchParams.get('status');
   const status = CAMPAIGN_STATUSES.find((value) => value === rawStatus) ?? 'all';
+  const goal =
+    goalOptions.find((option) => option.value === searchParams.get('goal'))?.value ?? 'all';
   const { page, pageSize, pageParam, pageSizeParam, setPagination } = useListPagination();
 
   const queryInput: CampaignListQueryInput = {
     q: query || undefined,
     status: status === 'all' ? undefined : status,
+    goal: goal === 'all' ? undefined : goal,
     page: pageParam,
     pageSize: pageSizeParam,
   };
@@ -236,8 +263,8 @@ export function CampaignsPage() {
 
   // 网址变化（从详情返回、浏览器前进后退）时回填筛选表单；编辑表单不写网址。
   useEffect(() => {
-    form.setFieldsValue({ q: query, status });
-  }, [form, query, status]);
+    form.setFieldsValue({ q: query, status, goal });
+  }, [form, query, status, goal]);
 
   useEffect(() => {
     if (location.state !== 'campaign-deleted') return;
@@ -352,17 +379,20 @@ export function CampaignsPage() {
       else next.delete('q');
       if (!values.status || values.status === 'all') next.delete('status');
       else next.set('status', values.status);
+      if (!values.goal || values.goal === 'all') next.delete('goal');
+      else next.set('goal', values.goal);
       next.delete('page');
       return next;
     });
   }
 
   function resetFilters(): void {
-    form.setFieldsValue({ q: '', status: 'all' });
+    form.setFieldsValue({ q: '', status: 'all', goal: 'all' });
     setSearchParams((current) => {
       const next = new URLSearchParams(current);
       next.delete('q');
       next.delete('status');
+      next.delete('goal');
       next.delete('page');
       return next;
     });
@@ -377,7 +407,7 @@ export function CampaignsPage() {
     editingCampaignId,
     actionsDisabled,
   );
-  const listHasNoMatch = query !== '' || status !== 'all';
+  const listHasNoMatch = query !== '' || status !== 'all' || goal !== 'all';
 
   return (
     <section aria-label="全部活动">
@@ -415,6 +445,11 @@ export function CampaignsPage() {
               <Col {...listFilterColProps}>
                 <Form.Item name="status" label="状态">
                   <Select allowClear options={statusOptions} style={{ width: '100%' }} />
+                </Form.Item>
+              </Col>
+              <Col {...listFilterColProps}>
+                <Form.Item name="goal" label="目标">
+                  <Select allowClear options={goalOptions} style={{ width: '100%' }} />
                 </Form.Item>
               </Col>
             </ListFilterBar>
@@ -496,7 +531,7 @@ export function CampaignsPage() {
               columns={columns}
               dataSource={list.data}
               pagination={false}
-              scroll={{ x: 1300 }}
+              scroll={{ x: tableScrollX(columns) }}
               tableLayout="fixed"
               size="middle"
               loading={listQuery.isFetching}

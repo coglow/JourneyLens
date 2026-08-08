@@ -1,4 +1,4 @@
-import { Prisma, type PrismaClient } from '@prisma/client';
+import { Prisma, type JourneyEventType, type PrismaClient } from '@prisma/client';
 import {
   campaignGoalEventTypeSchema,
   EDITABLE_CAMPAIGN_STATUSES,
@@ -27,20 +27,31 @@ const campaignDetailSelect = {
 
 type CampaignRecord = Prisma.CampaignGetPayload<{ select: typeof campaignDetailSelect }>;
 
+/** 预算统一保留两位小数；未设置预算返回 null。 */
+function budgetOf(budget: Prisma.Decimal | null) {
+  return budget === null ? null : { amount: budget.toFixed(2) };
+}
+
+/** 目标列还原成对外结构；未设置目标返回 null，详情与列表共用同一形状。 */
+function goalOf(columns: {
+  goalEventType: JourneyEventType | null;
+  goalSameProduct: boolean;
+}): CampaignGoal | null {
+  if (columns.goalEventType === null) return null;
+  // 目标类型受数据库约束限制在四类内，解析一次同时收窄类型。
+  return {
+    eventType: campaignGoalEventTypeSchema.parse(columns.goalEventType),
+    sameProduct: columns.goalSameProduct,
+  };
+}
+
 function serializeCampaign(campaign: CampaignRecord) {
   const { journeys, goalEventType, goalSameProduct, ...rest } = campaign;
   const published = journeys.some((journey) => journey._count.versions > 0);
   return {
     ...rest,
-    budget: campaign.budget === null ? null : { amount: campaign.budget.toFixed(2) },
-    // 目标类型受数据库约束限制在四类内，解析一次同时收窄类型。
-    goal:
-      goalEventType === null
-        ? null
-        : {
-            eventType: campaignGoalEventTypeSchema.parse(goalEventType),
-            sameProduct: goalSameProduct,
-          },
+    budget: budgetOf(campaign.budget),
+    goal: goalOf({ goalEventType, goalSameProduct }),
     // 首次发布任一旅程后目标固定，包括原本未设置目标的活动。
     goalEditable: campaign.status === 'draft' && !published,
   };
@@ -89,6 +100,7 @@ export class CampaignService {
   async list(input: CampaignListQuery) {
     const filters: Prisma.CampaignWhereInput = {
       ...(input.status ? { status: input.status } : {}),
+      ...(input.goal ? { goalEventType: input.goal === 'none' ? null : input.goal } : {}),
       ...(input.q
         ? {
             OR: [
@@ -112,6 +124,8 @@ export class CampaignService {
         description: true,
         budget: true,
         status: true,
+        goalEventType: true,
+        goalSameProduct: true,
         updatedAt: true,
         createdBy: { select: { id: true, displayName: true } },
         _count: { select: { journeys: true } },
@@ -119,12 +133,14 @@ export class CampaignService {
     });
 
     // 列表需要展示删除是否可用，因此一并返回阻止删除的旅程数量。
-    // 预算与详情保持同样的结构，金额统一保留两位小数。
-    const data = campaigns.map(({ _count, budget, ...campaign }) => ({
-      ...campaign,
-      budget: budget === null ? null : { amount: budget.toFixed(2) },
-      journeyCount: _count.journeys,
-    }));
+    const data = campaigns.map(
+      ({ _count, budget, goalEventType, goalSameProduct, ...campaign }) => ({
+        ...campaign,
+        budget: budgetOf(budget),
+        goal: goalOf({ goalEventType, goalSameProduct }),
+        journeyCount: _count.journeys,
+      }),
+    );
 
     return {
       data,

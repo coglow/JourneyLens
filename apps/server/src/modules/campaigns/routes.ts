@@ -35,7 +35,7 @@ export function registerCampaignRoutes(
       throw new ApiError(
         400,
         'BAD_REQUEST',
-        messages.length > 0 ? messages.join('；') : '请检查搜索词、活动状态和分页条件',
+        messages.length > 0 ? messages.join('；') : '请检查搜索词、活动状态、目标和分页条件',
       );
     }
     return service.list(query.data);

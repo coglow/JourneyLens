@@ -115,6 +115,7 @@ export const campaignListQuerySchema = z
       .transform((value) => value || undefined)
       .optional(),
     status: campaignStatusSchema.optional(),
+    goal: z.enum([...CAMPAIGN_GOAL_EVENT_TYPES, 'none']).optional(),
   })
   .strict();
 
@@ -138,11 +139,12 @@ export const campaignRefSchema = z
 
 const campaignBaseSchema = campaignRefSchema.extend({ updatedAt: z.iso.datetime() }).strict();
 
-// 列表直接带说明、预算和创建人，页面按列展示时无需为每行再读详情。
+// 列表直接带说明、预算和目标，页面按列展示时无需为每行再读详情。
 const campaignListItemSchema = campaignBaseSchema
   .extend({
     description: campaignDescriptionSchema,
     budget: campaignBudgetSchema.nullable(),
+    goal: campaignGoalSchema.nullable(),
     createdBy: campaignAccountRefSchema,
     journeyCount: z.number().int().nonnegative(),
   })

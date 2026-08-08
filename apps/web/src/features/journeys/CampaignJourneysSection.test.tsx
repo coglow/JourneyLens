@@ -39,6 +39,7 @@ const campaignListItem = {
   name: campaign.name,
   description: campaign.description,
   budget: campaign.budget,
+  goal: campaign.goal,
   status: campaign.status,
   updatedAt: campaign.updatedAt,
   createdBy: campaign.createdBy,
