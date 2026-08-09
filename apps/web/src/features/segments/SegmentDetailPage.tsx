@@ -31,6 +31,7 @@ import { SegmentFormDrawer } from '@/features/segments/components/SegmentFormDra
 import { SegmentRuleView } from '@/features/segments/components/SegmentRuleView';
 import { SegmentUsagesSection } from '@/features/segments/components/SegmentUsagesSection';
 import { formatDateTime } from '@/utils/format-date-time';
+import { readReturnTo } from '@/utils/return-to';
 import styles from './SegmentDetailPage.module.css';
 
 type RefreshError = { message: string; needsReload: boolean };
@@ -66,6 +67,8 @@ export function SegmentDetailPage() {
     location.state.returnTo.startsWith('?')
       ? location.state.returnTo
       : '';
+  // 旅程详情等页面会带着自己的地址进入，此时返回来源页而不是分群列表。
+  const returnTarget = readReturnTo(location.state);
 
   const detailQuery = useQuery({
     queryKey: segmentQueryKeys.detail(id),
@@ -177,9 +180,15 @@ export function SegmentDetailPage() {
             <Button
               type="link"
               style={{ paddingInline: 0 }}
-              onClick={() => navigate(`/segments${returnTo}`)}
+              onClick={() => {
+                if (returnTarget === undefined) {
+                  navigate(`/segments${returnTo}`);
+                  return;
+                }
+                navigate(returnTarget.path, { state: returnTarget.state });
+              }}
             >
-              返回分群列表
+              {returnTarget === undefined ? '返回分群列表' : '返回上一步'}
             </Button>
           }
           title={segment?.name ?? '分群详情'}

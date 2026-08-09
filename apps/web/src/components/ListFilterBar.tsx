@@ -20,8 +20,7 @@ export function ListFilterBar<Values>({
   return (
     <Form
       form={form}
-      layout="horizontal"
-      labelCol={{ flex: '80px' }}
+      layout="vertical"
       labelAlign="left"
       onFinish={onSearch}
       className={styles.form}

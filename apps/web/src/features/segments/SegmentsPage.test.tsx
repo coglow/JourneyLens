@@ -58,12 +58,14 @@ function detailBody() {
   };
 }
 
-function renderApp(initialPath = '/segments') {
+function renderApp(initialPath = '/segments', state?: unknown) {
   mock.onGet(/\/segments\/[^/]+\/usages$/).reply(200, {
     data: [],
     page: { page: 1, pageSize: 10, total: 0 },
   });
-  const router = createMemoryRouter(appRoutes, { initialEntries: [initialPath] });
+  const router = createMemoryRouter(appRoutes, {
+    initialEntries: [state === undefined ? initialPath : { pathname: initialPath, state }],
+  });
 
   function CaptureQueryClient() {
     queryClient = useQueryClient();
@@ -401,6 +403,68 @@ describe('分群列表', () => {
     await waitFor(() => {
       expect(router.state.location.pathname).toBe('/segments');
       expect(router.state.location.search).toBe('?q=member');
+    });
+  }, 15_000);
+
+  it('从旅程详情进入分群详情时返回原来的旅程详情', async () => {
+    const journeyId = '88a0f727-a226-4cb4-9495-74364f8d0e33';
+    mock.onGet('/userinfo').reply(200, { data: account });
+    mock.onGet(`/segments/${segment.id}`).reply(200, { data: detailBody() });
+    mock.onGet(`/journeys/${journeyId}`).reply(200, {
+      data: {
+        id: journeyId,
+        name: '欢迎旅程',
+        description: null,
+        revision: 1,
+        campaign: { id: segment.id, name: '春季活动', status: 'paused' },
+        segment: { id: segment.id, name: segment.name, revision: 1, rules: segment.rules },
+        draftDefinition: null,
+        createdAt: segment.updatedAt,
+        updatedAt: segment.updatedAt,
+        createdBy: { id: account.id, displayName: account.displayName },
+        updatedBy: { id: account.id, displayName: account.displayName },
+      },
+    });
+    mock.onGet(`/journeys/${journeyId}/versions`).reply(200, {
+      data: [],
+      page: { page: 1, pageSize: 10, total: 0 },
+    });
+    const router = renderApp(`/segments/${segment.id}`, { returnTo: `/journeys/${journeyId}` });
+
+    fireEvent.click(await screen.findByRole('button', { name: '返回上一步' }));
+    await waitFor(() => expect(router.state.location.pathname).toBe(`/journeys/${journeyId}`));
+  }, 15_000);
+
+  it('旅程详情打开入口人群时把旅程地址交给分群详情', async () => {
+    const journeyId = '88a0f727-a226-4cb4-9495-74364f8d0e33';
+    mock.onGet('/userinfo').reply(200, { data: account });
+    mock.onGet(`/segments/${segment.id}`).reply(200, { data: detailBody() });
+    mock.onGet(`/journeys/${journeyId}`).reply(200, {
+      data: {
+        id: journeyId,
+        name: '欢迎旅程',
+        description: null,
+        revision: 1,
+        campaign: { id: segment.id, name: '春季活动', status: 'paused' },
+        segment: { id: segment.id, name: segment.name, revision: 1, rules: segment.rules },
+        draftDefinition: null,
+        createdAt: segment.updatedAt,
+        updatedAt: segment.updatedAt,
+        createdBy: { id: account.id, displayName: account.displayName },
+        updatedBy: { id: account.id, displayName: account.displayName },
+      },
+    });
+    mock.onGet(`/journeys/${journeyId}/versions`).reply(200, {
+      data: [],
+      page: { page: 1, pageSize: 10, total: 0 },
+    });
+    const router = renderApp(`/journeys/${journeyId}`, { returnTo: '/campaigns/abc' });
+
+    fireEvent.click(await screen.findByRole('link', { name: segment.name }));
+    await waitFor(() => expect(router.state.location.pathname).toBe(`/segments/${segment.id}`));
+    expect(router.state.location.state).toEqual({
+      returnTo: `/journeys/${journeyId}`,
+      returnState: { returnTo: '/campaigns/abc' },
     });
   }, 15_000);
 

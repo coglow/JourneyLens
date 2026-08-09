@@ -1,13 +1,11 @@
-import { useState } from 'react';
-import { Alert, Button, Flex, Spin, Tag, Typography } from 'antd';
+import { Alert, Button, Descriptions, Flex, Spin, Tag, Typography } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useLocation, useNavigate, useParams } from 'react-router';
 import { PageHeader } from '@/components/PageHeader';
 import { ApiError, getApiErrorMessage, isSessionExpired } from '@/services/api';
 import { canEditCampaign } from '@journeylens/shared';
-import { campaignStatusLabels } from '@/features/campaigns/campaign-status';
+import { campaignStatusBadges, campaignStatusLabels } from '@/features/campaigns/campaign-status';
 import { getJourney } from '@/services/journeys';
-import { EntrySegmentRulesDrawer } from '@/features/journeys/components/EntrySegmentRulesDrawer';
 import { JourneyVersionsSection } from '@/features/journeys/components/JourneyVersionsSection';
 import { formatDateTime } from '@/utils/format-date-time';
 import { readReturnTo } from '@/utils/return-to';
@@ -18,7 +16,6 @@ export function JourneyDetailPage() {
   const { id = '' } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
-  const [rulesOpen, setRulesOpen] = useState(false);
   const query = useQuery({
     queryKey: journeyQueryKeys.detail(id),
     queryFn: ({ signal }) => getJourney(id, signal),
@@ -72,45 +69,54 @@ export function JourneyDetailPage() {
           }
         />
         {journey !== undefined && (
-          <>
-            <div className={styles.metadata}>
-              <section className={styles.metadataItem} aria-label="所属活动">
-                <Typography.Text type="secondary">所属活动</Typography.Text>
-                <Link to={`/campaigns/${journey.campaign.id}`}>{journey.campaign.name}</Link>
-                <Tag>{campaignStatusLabels[journey.campaign.status]}</Tag>
-              </section>
-              <section className={styles.metadataItem} aria-label="入口人群">
-                <Typography.Text type="secondary">入口人群</Typography.Text>
-                {journey.segment ? (
-                  <>
-                    <Link to={`/segments/${journey.segment.id}`}>{journey.segment.name}</Link>
-                    <Button type="link" size="small" onClick={() => setRulesOpen(true)}>
-                      查看完整规则
-                    </Button>
-                  </>
-                ) : (
-                  <Typography.Text>不限人群</Typography.Text>
-                )}
-              </section>
-            </div>
-            <div className={styles.metadata}>
-              <div className={styles.metadataItem}>
-                <Typography.Text type="secondary">说明</Typography.Text>
-                <Typography.Text type="secondary">
-                  {journey.description ?? '未填写'}
-                </Typography.Text>
+          <div className={styles.details}>
+            <div className={styles.businessDetails}>
+              <div className={styles.metadata}>
+                <section className={styles.metadataItem} aria-label="所属活动">
+                  <Typography.Text type="secondary">所属活动</Typography.Text>
+                  <div className={styles.metadataValue}>
+                    <Link to={`/campaigns/${journey.campaign.id}`}>{journey.campaign.name}</Link>
+                    <Tag color={campaignStatusBadges[journey.campaign.status]}>
+                      {campaignStatusLabels[journey.campaign.status]}
+                    </Tag>
+                  </div>
+                </section>
+                <section className={styles.metadataItem} aria-label="入口人群">
+                  <Typography.Text type="secondary">入口人群</Typography.Text>
+                  <div className={styles.metadataValue}>
+                    {journey.segment ? (
+                      <Link
+                        to={`/segments/${journey.segment.id}`}
+                        state={{ returnTo: `/journeys/${journey.id}`, returnState: location.state }}
+                      >
+                        {journey.segment.name}
+                      </Link>
+                    ) : (
+                      <Typography.Text>不限人群</Typography.Text>
+                    )}
+                  </div>
+                </section>
               </div>
-              <Typography.Text type="secondary">
-                创建者：{journey.createdBy.displayName}
-              </Typography.Text>
-              <Typography.Text type="secondary">
-                创建于 {formatDateTime(journey.createdAt)}
-              </Typography.Text>
-              <Typography.Text type="secondary">
-                更新于 {formatDateTime(journey.updatedAt)}
-              </Typography.Text>
+              <section className={styles.description} aria-label="旅程说明">
+                <Typography.Text type="secondary">旅程说明</Typography.Text>
+                <Typography.Text>{journey.description ?? '未填写'}</Typography.Text>
+              </section>
             </div>
-          </>
+            <aside className={styles.creationInfo} aria-label="创建信息">
+              <Typography.Text type="secondary">创建信息</Typography.Text>
+              <Descriptions column={1} size="small" colon={false}>
+                <Descriptions.Item label="创建者">
+                  {journey.createdBy.displayName}
+                </Descriptions.Item>
+                <Descriptions.Item label="创建时间">
+                  {formatDateTime(journey.createdAt)}
+                </Descriptions.Item>
+                <Descriptions.Item label="更新时间">
+                  {formatDateTime(journey.updatedAt)}
+                </Descriptions.Item>
+              </Descriptions>
+            </aside>
+          </div>
         )}
       </header>
       {journey !== undefined && refreshError && (
@@ -141,20 +147,7 @@ export function JourneyDetailPage() {
           action={<Button onClick={() => void query.refetch()}>重试</Button>}
         />
       )}
-      {journey !== undefined && (
-        <>
-          <JourneyVersionsSection journeyId={journey.id} />
-          {journey.segment && (
-            <EntrySegmentRulesDrawer
-              open={rulesOpen}
-              title="入口分群规则"
-              name={journey.segment.name}
-              rules={journey.segment.rules}
-              onClose={() => setRulesOpen(false)}
-            />
-          )}
-        </>
-      )}
+      {journey !== undefined && <JourneyVersionsSection journeyId={journey.id} />}
     </section>
   );
 }
