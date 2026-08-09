@@ -109,7 +109,7 @@ describe('旅程画布连接操作', () => {
     vi.restoreAllMocks();
   });
 
-  it('问题定位交给画布按节点标识适配，保留缩放和焦点选择且不产生修改历史', () => {
+  it.each([0.4, 1.4])('问题定位将节点居中，保持缩放 %s 且不产生修改历史', (zoom) => {
     vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
       callback(0);
       return 0;
@@ -123,15 +123,20 @@ describe('旅程画布连接操作', () => {
     act(() => result.current.resetDefinition(initial));
     const fitView = vi.fn().mockResolvedValue(true);
     const setCenter = vi.fn();
-    Object.assign(result.current.flowInstance.current!, { fitView, setCenter });
+    Object.assign(result.current.flowInstance.current!, {
+      fitView,
+      setCenter,
+      getZoom: () => zoom,
+    });
 
     act(() => result.current.selectNodeForIssue('condition'));
 
     expect(fitView).toHaveBeenCalledExactlyOnceWith({
       nodes: [{ id: 'condition' }],
-      minZoom: 1.1,
-      maxZoom: 1.1,
-      duration: 250,
+      minZoom: zoom,
+      maxZoom: zoom,
+      duration: 200,
+      interpolate: 'linear',
     });
     expect(setCenter).not.toHaveBeenCalled();
     expect(result.current.selectedNode?.id).toBe('condition');

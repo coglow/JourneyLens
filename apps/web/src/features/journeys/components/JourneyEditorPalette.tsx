@@ -1,5 +1,5 @@
-import { RobotOutlined } from '@ant-design/icons';
-import { Button, Flex, Tooltip, Typography } from 'antd';
+import { QuestionCircleOutlined, RobotOutlined } from '@ant-design/icons';
+import { Button, Flex, Popover, Tooltip, Typography } from 'antd';
 import type { JourneyNodeType } from '@journeylens/shared';
 import { journeyNodeOptions } from '@/features/journeys/journey-node-options';
 import styles from './JourneyDraftEditor.module.css';
@@ -52,34 +52,73 @@ export function JourneyEditorPalette({
             </Button>
           </span>
         </Tooltip>
-        <Typography.Text type="secondary" className={styles.keyboardHint ?? ''}>
-          生成旅程初稿
-        </Typography.Text>
       </div>
       <Typography.Title level={4} className={styles.panelTitle ?? ''}>
         手动添加步骤
       </Typography.Title>
-      <Flex vertical gap={8} className={styles.paletteList}>
-        {journeyNodeOptions.map((option) => (
-          <Button
-            key={option.value}
-            type="text"
-            block
-            aria-label={`添加${option.label}`}
-            className={`${styles.paletteItem ?? ''} ${styles[`tone_${option.value}`] ?? ''}`}
-            disabled={!canEdit || nodeLimitReached || (option.value === 'start' && hasStart)}
-            onClick={() => onAddNode(option.value)}
-          >
-            <span className={styles.paletteIcon}>{option.icon}</span>
-            <span className={styles.paletteText}>
-              <Typography.Text strong>{option.label}</Typography.Text>
-              <Typography.Text type="secondary">{option.description}</Typography.Text>
-            </span>
-          </Button>
-        ))}
+      <Flex vertical className={styles.paletteList}>
+        {journeyNodeOptions.map((option) => {
+          const startAlreadyAdded = option.value === 'start' && hasStart;
+          const button = (
+            <Button
+              key={option.value}
+              type="text"
+              block
+              aria-label={`添加${option.label}`}
+              className={`${styles.paletteItem ?? ''} ${styles[`tone_${option.value}`] ?? ''}`}
+              disabled={!canEdit || nodeLimitReached || startAlreadyAdded}
+              title={
+                !canEdit ? '当前旅程只能查看' : nodeLimitReached ? '步骤数量已达上限' : undefined
+              }
+              onClick={() => onAddNode(option.value)}
+            >
+              <span className={styles.paletteIcon}>{option.icon}</span>
+              <span className={styles.paletteText}>
+                <Typography.Text strong>{option.label}</Typography.Text>
+                <Typography.Text type="secondary">{option.description}</Typography.Text>
+              </span>
+              {startAlreadyAdded && <span className={styles.addedLabel}>已添加</span>}
+            </Button>
+          );
+
+          return startAlreadyAdded ? (
+            <Tooltip
+              key={option.value}
+              title="这条旅程已经有开始步骤，不能重复添加。"
+              placement="right"
+            >
+              <span className={styles.disabledButtonTrigger ?? ''}>{button}</span>
+            </Tooltip>
+          ) : (
+            button
+          );
+        })}
       </Flex>
       <div className={styles.paletteActions}>
-        <Typography.Text strong>编辑</Typography.Text>
+        <Flex align="center" gap={4}>
+          <Typography.Text strong>快捷操作</Typography.Text>
+          <Popover
+            placement="right"
+            trigger={['hover', 'focus']}
+            title="查看快捷键"
+            content={
+              <div className={styles.keyboardHint}>
+                <div>Ctrl / ⌘ + Z：撤销</div>
+                <div>Ctrl / ⌘ + Shift + Z：重做</div>
+                <div>Ctrl / ⌘ + C / V：复制、粘贴</div>
+                <div>Delete：删除；输入框内不生效。</div>
+                <div>从节点的连接点拖到空白处，选择下一步。</div>
+              </div>
+            }
+          >
+            <Button
+              type="text"
+              size="small"
+              aria-label="查看快捷键"
+              icon={<QuestionCircleOutlined />}
+            />
+          </Popover>
+        </Flex>
         <div className={styles.editActionRow}>
           <Button
             autoInsertSpace={false}
@@ -114,22 +153,7 @@ export function JourneyEditorPalette({
             删除
           </Button>
         </div>
-        {canEdit ? (
-          <>
-            <Typography.Text type="secondary" className={styles.keyboardHint ?? ''}>
-              快捷键：Ctrl+Z 撤销
-              <br />
-              Ctrl+Shift+Z 重做
-              <br />
-              Ctrl+C/V 复制粘贴
-              <br />
-              Delete 删除；输入框内不生效。
-            </Typography.Text>
-            <Typography.Text type="secondary" className={styles.keyboardHint ?? ''}>
-              从节点的连接点拖到空白处，选择下一步。
-            </Typography.Text>
-          </>
-        ) : (
+        {!canEdit && (
           <Typography.Text type="secondary" className={styles.keyboardHint ?? ''}>
             只读：可以查看画布、步骤设置和旅程模拟，不能复制、粘贴或修改。
           </Typography.Text>

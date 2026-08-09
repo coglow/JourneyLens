@@ -39,7 +39,7 @@ function NodeFields({
   if (node.type === 'start') {
     return (
       <>
-        <Typography.Text strong>进入行为</Typography.Text>
+        <Typography.Text type="secondary">进入行为</Typography.Text>
         <Select
           aria-label="进入行为"
           value={node.entryBehavior}
@@ -68,7 +68,7 @@ function NodeFields({
   if (node.type === 'wait') {
     return (
       <>
-        <Typography.Text strong>等待时长</Typography.Text>
+        <Typography.Text type="secondary">等待时长</Typography.Text>
         <JourneyDurationInput
           label="等待时长"
           seconds={node.waitSeconds}
@@ -95,7 +95,7 @@ function NodeFields({
       (startBehavior === undefined || journeyEventHasProductId(startBehavior));
     return (
       <>
-        <Typography.Text strong>等待行为</Typography.Text>
+        <Typography.Text type="secondary">等待行为</Typography.Text>
         <Select
           aria-label="等待行为类型"
           value={node.eventType}
@@ -113,7 +113,7 @@ function NodeFields({
             })
           }
         />
-        <Typography.Text strong>最长等待时间（秒）</Typography.Text>
+        <Typography.Text type="secondary">最长等待时间（秒）</Typography.Text>
         <InputNumber
           aria-label="最长等待时间（秒）"
           min={1}
@@ -164,7 +164,7 @@ function NodeFields({
 
   return (
     <>
-      <Typography.Text strong>结束说明</Typography.Text>
+      <Typography.Text type="secondary">结束说明</Typography.Text>
       <Input.TextArea
         aria-label="结束说明"
         rows={4}

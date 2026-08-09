@@ -1,6 +1,6 @@
 import { ThemeProvider } from '@/app/ThemeProvider';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider, useLocation } from 'react-router';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
@@ -192,8 +192,6 @@ describe('已发布版本详情', () => {
       '已发布内容固定保存，不随当前编排或入口分群的修改而变化。',
     );
     expect(screen.getByTestId('rf__node-n-message')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: '切换为深色模式' }));
-    expect(document.querySelector('.react-flow')?.classList.contains('dark')).toBe(true);
 
     // 历史版本只读：只有名称查找框，没有配置输入、保存或恢复入口。
     expect(screen.getByRole('combobox', { name: '按步骤名称查找' })).toBeTruthy();
@@ -464,7 +462,14 @@ describe('已发布版本详情', () => {
     fireEvent.change(search, { target: { value: '发送' } });
     expect(await screen.findByRole('cell', { name: '发送邮件' })).toBeTruthy();
     expect(screen.queryByRole('cell', { name: '开始' })).toBeNull();
+    const viewport = document.querySelector('.react-flow__viewport')!;
+    const previousZoom = viewport.getAttribute('style')?.match(/scale\(([^)]+)\)/)?.[1];
+    expect(previousZoom).toBeDefined();
     fireEvent.click(screen.getByRole('button', { name: '发送邮件' }));
+    await act(async () => {
+      await new Promise(requestAnimationFrame);
+    });
+    expect(viewport.getAttribute('style')?.match(/scale\(([^)]+)\)/)?.[1]).toBe(previousZoom);
 
     expect(screen.getByRole('tab', { name: '流程视图' }).getAttribute('aria-selected')).toBe(
       'true',
@@ -533,7 +538,14 @@ describe('已发布版本详情', () => {
     fireEvent.focus(search);
     fireEvent.change(search, { target: { value: '重复' } });
     const result = await screen.findByText(/第\s*2\s*步/);
+    const viewport = document.querySelector('.react-flow__viewport')!;
+    const previousZoom = viewport.getAttribute('style')?.match(/scale\(([^)]+)\)/)?.[1];
+    expect(previousZoom).toBeDefined();
     fireEvent.click(result);
+    await act(async () => {
+      await new Promise(requestAnimationFrame);
+    });
+    expect(viewport.getAttribute('style')?.match(/scale\(([^)]+)\)/)?.[1]).toBe(previousZoom);
 
     expect(screen.getByRole('tab', { name: '流程视图' }).getAttribute('aria-selected')).toBe(
       'true',

@@ -84,19 +84,30 @@ export function JourneyVersionStatsSummary({ query }: SummaryProps) {
       )}
       <div className={styles.summaryGrid} aria-label="版本运行汇总">
         <div className={styles.summaryMetric ?? ''}>
-          <Typography.Text type="secondary">执行次数</Typography.Text>
+          <Typography.Text type="secondary" className={styles.metricTitle ?? ''}>
+            执行次数
+          </Typography.Text>
           <Statistic
             value={stats.executionCount}
             styles={{ content: { color: token.colorText } }}
           />
         </div>
         <div className={styles.summaryMetric ?? ''}>
-          <Typography.Text type="secondary">参与用户数</Typography.Text>
+          <Typography.Text type="secondary" className={styles.metricTitle ?? ''}>
+            参与用户数
+          </Typography.Text>
           <Statistic value={stats.audienceCount} styles={{ content: { color: token.colorText } }} />
         </div>
         {EXECUTION_STATUSES.map((status) => (
           <div key={status} className={styles.summaryMetric ?? ''}>
-            <Badge status={executionStatusBadges[status]} text={executionStatusLabels[status]} />
+            <Badge
+              status={executionStatusBadges[status]}
+              className={styles.statusDot ?? ''}
+              aria-hidden
+            />
+            <Typography.Text className={styles.metricTitle ?? ''}>
+              {executionStatusLabels[status]}
+            </Typography.Text>
             <Statistic
               value={stats.statusCounts[status]}
               styles={{ content: { color: token.colorText } }}
@@ -155,21 +166,28 @@ export function JourneyVersionStatsTable({ query, nodes, onLocate }: TableSectio
       title: '类型',
       key: 'nodeType',
       width: 100,
+      align: 'center',
       render: (_, node) => journeyNodeTypeLabels[node.nodeType],
     },
-    { title: '进入', dataIndex: 'entered', key: 'entered', width: 80, align: 'right' },
+    { title: '进入', dataIndex: 'entered', key: 'entered', width: 80, align: 'center' },
     {
       title: '已完成',
       key: 'completed',
       width: 180,
-      align: 'right',
+      align: 'center',
       render: (_, node) =>
         node.nodeType === 'message' ? `消息触达 ${node.completed} 次` : node.completed,
     },
-    { title: '当前等待中', dataIndex: 'waiting', key: 'waiting', width: 110, align: 'right' },
-    { title: '失败', dataIndex: 'failed', key: 'failed', width: 80, align: 'right' },
-    { title: '已停止', dataIndex: 'stopped', key: 'stopped', width: 90, align: 'right' },
-    { title: '分支分布', key: 'branch', width: 180, render: (_, node) => branchText(node) },
+    { title: '当前等待中', dataIndex: 'waiting', key: 'waiting', width: 110, align: 'center' },
+    { title: '失败', dataIndex: 'failed', key: 'failed', width: 80, align: 'center' },
+    { title: '已停止', dataIndex: 'stopped', key: 'stopped', width: 90, align: 'center' },
+    {
+      title: '分支分布',
+      key: 'branch',
+      width: 180,
+      align: 'center',
+      render: (_, node) => branchText(node),
+    },
   ];
 
   if (query.data === undefined) {

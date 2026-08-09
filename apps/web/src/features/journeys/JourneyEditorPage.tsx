@@ -1,4 +1,3 @@
-import { ThemeToggle } from '@/components/ThemeToggle';
 import { useColorMode } from '@/app/ThemeProvider';
 import {
   useEffect,
@@ -8,7 +7,15 @@ import {
   useSyncExternalStore,
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react';
-import { ApartmentOutlined, ArrowLeftOutlined, ExperimentOutlined } from '@ant-design/icons';
+import {
+  ApartmentOutlined,
+  ArrowLeftOutlined,
+  ExperimentOutlined,
+  FullscreenOutlined,
+  FullscreenExitOutlined,
+  MenuFoldOutlined,
+  MenuUnfoldOutlined,
+} from '@ant-design/icons';
 import {
   Alert,
   Button,
@@ -100,7 +107,7 @@ function getCompact() {
 }
 
 export function JourneyEditorPage() {
-  const { mode, switching, toggleMode } = useColorMode();
+  const { mode } = useColorMode();
   const { id = '', view = 'editor' } = useParams();
   const simulationPage = view === 'simulation';
   const aiDraftPage = view === 'ai-draft';
@@ -108,6 +115,9 @@ export function JourneyEditorPage() {
   const navigate = useNavigate();
   const compact = useSyncExternalStore(subscribeCompact, getCompact);
   const [inspectorOpen, setInspectorOpen] = useState(false);
+  // 专注只改变工作区布局，退出时恢复右栏原先的收起状态，不改动草稿和观看位置。
+  const [focused, setFocused] = useState(false);
+  const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
   const [quickAdd, setQuickAdd] = useState<QuickAddState | null>(null);
 
   const canvas = useJourneyCanvas();
@@ -272,6 +282,7 @@ export function JourneyEditorPage() {
     : (productWarning?.message ?? warnings[0]?.message);
   const showSimulationPage =
     simulationPage && (initializedId !== id || simulationBlockReason === undefined);
+  const inspectorInDrawer = showSimulationPage || compact || focused;
 
   useEffect(() => {
     const element = canvasElement.current;
@@ -296,7 +307,17 @@ export function JourneyEditorPage() {
       clearTimeout(timer);
     };
     // 数据载入和起草/模拟切换会挂载或移除画布，需要重新绑定实际容器。
-  }, [initializedId, aiDraftPage, showSimulationPage, canvasElement, flowInstance]);
+    // 收放侧栏时重新开始测量，首次尺寸不触发整图缩放；窗口继续缩小时沿用自动适配。
+  }, [
+    initializedId,
+    aiDraftPage,
+    showSimulationPage,
+    canvasElement,
+    flowInstance,
+    focused,
+    inspectorCollapsed,
+    compact,
+  ]);
 
   useEffect(() => {
     if (simulationPage && initializedId === id && simulationBlockReason !== undefined) {
@@ -306,13 +327,19 @@ export function JourneyEditorPage() {
 
   // 编辑入口统一检查只读状态；只有操作确实生效后才清除上一次保存反馈。
   function edit(action: () => boolean): void {
-    if (canEdit && action()) draft.clearSaveError();
+    if (canEdit && !showSimulationPage && action()) draft.clearSaveError();
+  }
+
+  // 使用抽屉时保留右栏原先的收起状态，只有普通布局才展开侧栏。
+  function openInspector(): void {
+    if (inspectorInDrawer) setInspectorOpen(true);
+    else setInspectorCollapsed(false);
   }
 
   /** 模拟结果在当前画布定位；编辑页的问题定位仍聚焦对应步骤设置。 */
   function locateNode(nodeId: string): void {
     canvas.selectNodeForIssue(nodeId, !showSimulationPage);
-    if (compact && !showSimulationPage) setInspectorOpen(true);
+    if (!showSimulationPage) openInspector();
   }
 
   function openSimulation(): void {
@@ -330,15 +357,16 @@ export function JourneyEditorPage() {
   }
 
   function handleCanvasKeyDown(event: ReactKeyboardEvent<HTMLElement>): void {
-    if (showSimulationPage || aiDraftPage) return;
+    if (aiDraftPage) return;
     const target = event.target;
     if (
-      compact &&
+      inspectorInDrawer &&
       (event.key === 'Enter' || event.key === ' ') &&
       target instanceof Element &&
       target.closest('.react-flow__node, .react-flow__edge')
     )
-      setInspectorOpen(true);
+      openInspector();
+    if (showSimulationPage) return;
     if (
       target instanceof HTMLElement &&
       (target.isContentEditable ||
@@ -487,6 +515,17 @@ export function JourneyEditorPage() {
       <Tabs
         className={styles.inspectorTabs ?? ''}
         activeKey="settings"
+        tabBarExtraContent={
+          !inspectorInDrawer && (
+            <Button
+              type="text"
+              size="small"
+              aria-label="收起步骤设置"
+              icon={<MenuFoldOutlined />}
+              onClick={() => setInspectorCollapsed(true)}
+            />
+          )
+        }
         items={[
           {
             key: 'settings',
@@ -497,7 +536,7 @@ export function JourneyEditorPage() {
                   {selectedNode ? (
                     <JourneyNodeSettings
                       node={selectedNode.data.draftNode}
-                      disabled={!canEdit}
+                      disabled={!canEdit || showSimulationPage}
                       waitSecondsError={waitSecondsError}
                       startBehavior={startBehavior}
                       hasUniqueStart={hasUniqueStart}
@@ -537,7 +576,7 @@ export function JourneyEditorPage() {
                     />
                   )}
                 </div>
-                {selectedNode && (
+                {selectedNode && !showSimulationPage && (
                   <Button
                     danger
                     block
@@ -585,7 +624,6 @@ export function JourneyEditorPage() {
           </div>
         </div>
         <Flex align="center" gap={12} className={styles.topbarActions}>
-          <ThemeToggle mode={mode} switching={switching} onToggle={toggleMode} />
           <Typography.Text
             role="status"
             className={`${styles.saveStatus ?? ''} ${dirty ? (styles.saveStatusDirty ?? '') : ''}`}
@@ -692,8 +730,10 @@ export function JourneyEditorPage() {
             className={`${styles.editorWorkspace ?? ''} ${
               showSimulationPage ? (styles.simulationWorkspace ?? '') : ''
             }`}
+            data-focused={!showSimulationPage && focused}
+            data-inspector-hidden={!showSimulationPage && inspectorCollapsed}
           >
-            {!showSimulationPage && (
+            {!showSimulationPage && !focused && (
               <JourneyEditorPalette
                 canEdit={canEdit}
                 nodeLimitReached={nodes.length >= JOURNEY_NODE_LIMIT}
@@ -742,6 +782,15 @@ export function JourneyEditorPage() {
                         自动排列
                       </Button>
                     </Popconfirm>
+                    <Button
+                      icon={focused ? <FullscreenExitOutlined /> : <FullscreenOutlined />}
+                      onClick={() => {
+                        setInspectorOpen(false);
+                        setFocused(!focused);
+                      }}
+                    >
+                      {focused ? '退出专注' : '专注画布'}
+                    </Button>
                   </Flex>
                 )}
               </header>
@@ -758,10 +807,11 @@ export function JourneyEditorPage() {
                   onConnectEnd={handleConnectEnd}
                   onSelectionChange={onSelectionChange}
                   onNodeClick={() => {
-                    if (compact) setInspectorOpen(true);
+                    // 模拟页复用步骤设置抽屉，只读查看配置，不改变模拟资料或执行结果。
+                    if (inspectorInDrawer) openInspector();
                   }}
                   onEdgeClick={() => {
-                    if (compact) setInspectorOpen(true);
+                    if (!showSimulationPage && inspectorInDrawer) openInspector();
                   }}
                   onInit={(instance) => {
                     flowInstance.current = instance;
@@ -777,8 +827,8 @@ export function JourneyEditorPage() {
                   }}
                   nodesDraggable={canEdit && !showSimulationPage}
                   nodesConnectable={canEdit && !showSimulationPage}
-                  elementsSelectable={!showSimulationPage}
-                  nodesFocusable={!showSimulationPage}
+                  elementsSelectable
+                  nodesFocusable
                   edgesFocusable={!showSimulationPage}
                   deleteKeyCode={null}
                   minZoom={0.25}
@@ -786,12 +836,33 @@ export function JourneyEditorPage() {
                   fitView
                   fitViewOptions={fitViewOptions}
                   defaultEdgeOptions={defaultEdgeOptions}
-                  ariaLabelConfig={flowAriaLabels}
+                  ariaLabelConfig={
+                    showSimulationPage
+                      ? {
+                          ...flowAriaLabels,
+                          'node.a11yDescription.default': '按 Enter 或空格查看步骤配置。',
+                          'node.a11yDescription.keyboardDisabled': '按 Enter 或空格查看步骤配置。',
+                        }
+                      : flowAriaLabels
+                  }
                   className={styles.flow}
                   proOptions={{ hideAttribution: true }}
                 >
                   <Background gap={22} size={1} />
-                  <Controls position="top-right" showFitView showInteractive={false} />
+                  {!showSimulationPage && ((!compact && inspectorCollapsed) || focused) && (
+                    <Panel position="top-right" className={styles.inspectorToggle}>
+                      <Button
+                        size="small"
+                        aria-label="展开步骤设置"
+                        icon={<MenuUnfoldOutlined />}
+                        disabled={focused && !hasSelection}
+                        onClick={openInspector}
+                      >
+                        步骤设置
+                      </Button>
+                    </Panel>
+                  )}
+                  <Controls position="bottom-right" showFitView showInteractive={false} />
                   {nodes.length === 0 && (
                     <Panel position="top-center">
                       <div className={styles.emptyCanvas}>
@@ -865,28 +936,26 @@ export function JourneyEditorPage() {
                   onLocate={locateNode}
                 />
               </aside>
-            ) : compact ? (
-              // 关闭时卸载抽屉，避免残留 dialog 影响画布快捷键判断。
-              inspectorOpen &&
-              hasSelection && (
-                <Drawer
-                  title="步骤设置"
-                  open
-                  size={380}
-                  onClose={() => {
-                    setInspectorOpen(false);
-                    canvasElement.current?.focus();
-                  }}
-                  afterOpenChange={(open) => {
-                    if (open) nodeSettingsHeading.current?.focus();
-                  }}
-                  styles={{ body: { padding: 0 } }}
-                >
-                  {settingsPanel}
-                </Drawer>
-              )
-            ) : (
+            ) : !inspectorInDrawer && !inspectorCollapsed ? (
               settingsPanel
+            ) : null}
+            {/* 关闭时卸载抽屉；模拟页的配置和删除入口均按只读处理。 */}
+            {inspectorInDrawer && inspectorOpen && hasSelection && (
+              <Drawer
+                title="步骤设置"
+                open
+                size={380}
+                onClose={() => {
+                  setInspectorOpen(false);
+                  canvasElement.current?.focus();
+                }}
+                afterOpenChange={(open) => {
+                  if (open) nodeSettingsHeading.current?.focus();
+                }}
+                styles={{ body: { padding: 0 } }}
+              >
+                {settingsPanel}
+              </Drawer>
             )}
           </div>
 

@@ -12,26 +12,34 @@
 }
 
 .summaryMetric {
-  display: flex;
+  /* 圆点单独占列，标题、数字和占比共用文字列；占比出现时也保持各列顶部对齐。 */
+  display: grid;
   min-width: 0;
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: center;
-  gap: 2px;
+  grid-template-columns: 6px minmax(0, 1fr);
+  align-content: start;
+  gap: 2px 8px;
   padding-inline: 16px;
   border-inline-end: 1px solid var(--ant-color-border-secondary, #f0f0f0);
 }
 
-.summaryMetric:first-child {
-  padding-inline-start: 4px;
+.metricTitle {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.statusDot {
+  grid-column: 1;
+  grid-row: 1;
+  align-self: center;
 }
 
 .summaryMetric:last-child {
   border-inline-end: 0;
-  padding-inline-end: 4px;
 }
 
 .summaryMetric :global(.ant-statistic) {
+  grid-column: 2;
+  grid-row: 2;
   margin: 0;
 }
 
@@ -42,6 +50,8 @@
 }
 
 .ratio {
+  grid-column: 2;
+  grid-row: 3;
   font-size: 12px;
   line-height: 1.3;
 }
@@ -85,13 +95,6 @@
   flex: 1;
 }
 
-.notes {
-  flex: 0 0 auto;
-  margin: 8px 0 0;
-  font-size: 12px;
-  line-height: 1.6;
-}
-
 @media (max-width: 1199px) {
   .summaryGrid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -100,9 +103,5 @@
 
   .summaryMetric:nth-child(4) {
     border-inline-end: 0;
-  }
-
-  .summaryMetric:nth-child(5) {
-    padding-inline-start: 4px;
   }
 }

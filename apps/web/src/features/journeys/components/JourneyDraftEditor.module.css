@@ -83,7 +83,7 @@
   min-width: 0;
   min-height: 0;
   flex: 1;
-  grid-template-columns: minmax(245px, 260px) minmax(0, 1fr) minmax(280px, 330px);
+  grid-template-columns: minmax(220px, 240px) minmax(0, 1fr) minmax(280px, 330px);
   gap: 12px;
 }
 
@@ -105,9 +105,9 @@
 .palette {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
   overflow: auto;
-  padding: 18px 14px;
+  padding: 14px 12px;
 }
 
 .panelTitle {
@@ -124,12 +124,13 @@
 
 .paletteItem {
   display: flex !important;
-  min-height: 72px;
+  min-height: 58px;
+  height: auto;
   justify-content: flex-start !important;
-  gap: 12px;
-  padding: 12px !important;
-  border-radius: 9px;
-  background: var(--ant-color-bg-layout, #f7f8fa);
+  gap: 8px;
+  padding: 8px !important;
+  border-radius: 6px;
+  background: var(--ant-color-bg-container, #fff);
   text-align: left;
   white-space: normal;
 }
@@ -137,34 +138,32 @@
 .paletteList {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
 }
 
-.paletteItem:hover {
+.paletteItem:not(:disabled):hover {
   background: var(--ant-color-primary-bg, #e6f4ff) !important;
 }
 
 .paletteIcon {
   display: grid;
-  width: 38px;
-  height: 38px;
-  flex: 0 0 38px;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
   place-items: center;
-  border-radius: 10px;
-  background: var(--ant-color-bg-container, #fff);
   font-size: 18px;
 }
 
 .tone_start .paletteIcon {
-  color: var(--ant-color-primary, #1677ff);
+  color: var(--ant-color-success, #52c41a);
 }
 
 .tone_condition .paletteIcon {
-  color: var(--ant-purple-6);
+  color: var(--ant-color-warning, #faad14);
 }
 
 .tone_wait .paletteIcon {
-  color: var(--ant-color-warning, #fa8c16);
+  color: var(--ant-color-info, #1677ff);
 }
 
 .tone_wait_for_event .paletteIcon {
@@ -172,7 +171,7 @@
 }
 
 .tone_message .paletteIcon {
-  color: var(--ant-color-info, #1677ff);
+  color: var(--ant-purple-6);
 }
 
 .tone_end .paletteIcon {
@@ -370,8 +369,9 @@
   background: var(--ant-color-bg-container, #fff);
 }
 
+/* 模拟步骤可点击查看只读配置，用手形提示查看入口。 */
 .simulationWorkspace .canvasNode {
-  cursor: default;
+  cursor: pointer;
 }
 
 /* 页签内容区独自滚动，面板展开证据时不会出现第二层滚动条。 */
@@ -606,4 +606,39 @@
   .simulationInspector {
     min-height: 360px;
   }
+}
+
+/* 收起后的列直接移除，画布实例保持挂载，选择、撤销历史和当前视角都留在原处。 */
+.editorWorkspace[data-inspector-hidden='true'] {
+  grid-template-columns: minmax(220px, 240px) minmax(0, 1fr);
+}
+
+.editorWorkspace[data-focused='true'] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.paletteItem:disabled {
+  background: var(--ant-color-bg-container, #fff);
+}
+
+.paletteItem:disabled .paletteText :global(.ant-typography),
+.paletteItem:disabled .paletteIcon {
+  color: var(--ant-color-text-disabled);
+}
+
+.addedLabel {
+  margin-inline-start: auto;
+  flex: 0 0 auto;
+  color: var(--ant-color-text-tertiary);
+  font-size: 12px;
+}
+
+/* 恢复入口贴着右栏原来的边缘，不与排列、专注等画布操作混在一起。 */
+.inspectorToggle {
+  margin: 16px 0 0 !important;
+}
+
+.inspectorToggle button {
+  border-start-end-radius: 0;
+  border-end-end-radius: 0;
 }

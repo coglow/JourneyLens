@@ -143,9 +143,7 @@ export function JourneyPublishDialog({ journeyId, revision, blockReason, onReadL
           {success !== undefined ? (
             <>
               <Alert type="success" showIcon title={`已发布第 ${success.versionNumber} 版`} />
-              <Typography.Text type="secondary">
-                版本已保存固定内容，不会启动活动或发送消息。
-              </Typography.Text>
+              <Typography.Text type="secondary">版本已保存固定内容。</Typography.Text>
               <Link to={`/journeys/${journeyId}/versions/${success.id}`}>查看该版本</Link>
             </>
           ) : check.isPending ? (
@@ -170,9 +168,7 @@ export function JourneyPublishDialog({ journeyId, revision, blockReason, onReadL
             />
           ) : fresh !== undefined ? (
             <>
-              <Typography.Text>
-                发布后将保存这份内容的固定版本，不会启动活动或发送消息。
-              </Typography.Text>
+              <Typography.Text>发布后将保存这份内容的固定版本，不会自动启动活动。</Typography.Text>
               <Descriptions bordered column={1} size="small">
                 <Descriptions.Item label="旅程名称">{fresh.name}</Descriptions.Item>
                 <Descriptions.Item label="旅程说明">

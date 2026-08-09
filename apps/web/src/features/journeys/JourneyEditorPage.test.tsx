@@ -148,13 +148,119 @@ afterEach(() => {
 });
 
 describe('旅程编排页面', () => {
-  it('编排切换主题保留画布节点，进入和返回 AI 起草沿用主题且不保存草稿', async () => {
+  it('侧栏收放与专注切换保留步骤、选中项和草稿，不触发保存', async () => {
+    vi.mocked(getJourney).mockResolvedValue({ ...journey, draftDefinition: aiCandidate });
+    renderEditor();
+    const node = await screen.findByLabelText('结束：AI 结束');
+    fireEvent.click(node);
+    fireEvent.click(screen.getByRole('button', { name: '收起步骤设置' }));
+    expect(screen.queryByRole('complementary', { name: '步骤设置' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /专注画布/ }));
+    expect(screen.queryByRole('complementary', { name: '添加步骤' })).toBeNull();
+    expect(screen.getByRole('button', { name: '保存编排' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /展开步骤设置/ }));
+    const drawer = await screen.findByRole('dialog');
+    expect((within(drawer).getByLabelText('节点名称') as HTMLInputElement).value).toBe('AI 结束');
+    fireEvent.click(within(drawer).getByRole('button', { name: '关闭' }));
+    fireEvent.click(screen.getByRole('button', { name: /退出专注/ }));
+    expect(screen.getByRole('complementary', { name: '添加步骤' })).toBeTruthy();
+    expect(screen.queryByRole('complementary', { name: '步骤设置' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /展开步骤设置/ }));
+    expect((screen.getByLabelText('节点名称') as HTMLInputElement).value).toBe('AI 结束');
+    expect(screen.getByLabelText('结束：AI 结束')).toBe(node);
+    expect(saveJourneyDraft).not.toHaveBeenCalled();
+  });
+
+  it('专注模式点击节点自动打开对应设置，关闭后再次点击仍可打开', async () => {
+    vi.mocked(getJourney).mockResolvedValue({ ...journey, draftDefinition: aiCandidate });
+    renderEditor();
+    const end = await screen.findByLabelText('结束：AI 结束');
+    fireEvent.click(screen.getByRole('button', { name: /专注画布/ }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    fireEvent.click(end);
+    let drawer = await screen.findByRole('dialog');
+    expect((within(drawer).getByLabelText('节点名称') as HTMLInputElement).value).toBe('AI 结束');
+    fireEvent.click(within(drawer).getByRole('button', { name: '关闭' }));
+    fireEvent.click(end);
+    drawer = await screen.findByRole('dialog');
+    expect((within(drawer).getByLabelText('节点名称') as HTMLInputElement).value).toBe('AI 结束');
+    fireEvent.click(within(drawer).getByRole('button', { name: '关闭' }));
+    fireEvent.click(screen.getByLabelText('开始：AI 开始'));
+    drawer = await screen.findByRole('dialog');
+    expect((within(drawer).getByLabelText('节点名称') as HTMLInputElement).value).toBe('AI 开始');
+    expect(screen.getByRole('button', { name: /退出专注/ })).toBeTruthy();
+    expect(saveJourneyDraft).not.toHaveBeenCalled();
+  });
+
+  it('专注模式点击连线打开设置，关闭后可用键盘重开且不修改草稿', async () => {
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(236);
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(104);
+    const originalResizeObserver = window.ResizeObserver;
+    window.ResizeObserver = class {
+      constructor(private callback: ResizeObserverCallback) {}
+      observe(target: Element) {
+        if (target.classList.contains('react-flow__node'))
+          requestAnimationFrame(() => this.callback([{ target } as ResizeObserverEntry], this));
+      }
+      unobserve() {}
+      disconnect() {}
+    };
+    try {
+      vi.mocked(getJourney).mockResolvedValue({ ...journey, draftDefinition: aiCandidate });
+      renderEditor();
+      await screen.findByLabelText('结束：AI 结束');
+      fireEvent.click(screen.getByRole('button', { name: /专注画布/ }));
+      const edge = await screen.findByTestId('rf__edge-ai-edge');
+      fireEvent.click(edge);
+      let drawer = await screen.findByRole('dialog');
+      expect(within(drawer).getByText('AI 开始 → AI 结束')).toBeTruthy();
+      expect(within(drawer).getByRole('button', { name: '删除连线' })).toBeTruthy();
+      fireEvent.click(within(drawer).getByRole('button', { name: '关闭' }));
+      fireEvent.keyDown(edge, { key: 'Enter' });
+      drawer = await screen.findByRole('dialog');
+      expect(within(drawer).getByText('AI 开始 → AI 结束')).toBeTruthy();
+      expect(saveJourneyDraft).not.toHaveBeenCalled();
+    } finally {
+      cleanup();
+      window.ResizeObserver = originalResizeObserver;
+      vi.restoreAllMocks();
+    }
+  });
+
+  it('模拟页点击节点打开只读配置，关闭重开和键盘查看不修改草稿', async () => {
+    vi.mocked(getJourney).mockResolvedValue({ ...journey, draftDefinition: aiCandidate });
+    const { router } = renderEditor();
+    await screen.findByLabelText('结束：AI 结束');
+    fireEvent.click(screen.getByRole('button', { name: '打开旅程模拟' }));
+    fireEvent.click(await screen.findByLabelText('结束：AI 结束'));
+    let drawer = await screen.findByRole('dialog');
+    const name = within(drawer).getByLabelText('节点名称') as HTMLInputElement;
+    expect(name.value).toBe('AI 结束');
+    expect(name.disabled).toBe(true);
+    expect((within(drawer).getByLabelText('结束说明') as HTMLTextAreaElement).disabled).toBe(true);
+    expect(within(drawer).queryByRole('button', { name: '删除步骤及相关连线' })).toBeNull();
+    fireEvent.change(name, { target: { value: '不能修改' } });
+    fireEvent.keyDown(name, { key: 'Delete' });
+    fireEvent.click(within(drawer).getByRole('button', { name: '关闭' }));
+    fireEvent.click(screen.getByLabelText('结束：AI 结束'));
+    drawer = await screen.findByRole('dialog');
+    expect((within(drawer).getByLabelText('节点名称') as HTMLInputElement).value).toBe('AI 结束');
+    fireEvent.click(within(drawer).getByRole('button', { name: '关闭' }));
+    const start = screen.getByLabelText('开始：AI 开始');
+    fireEvent.keyDown(start, { key: 'Enter' });
+    drawer = await screen.findByRole('dialog');
+    expect((within(drawer).getByLabelText('节点名称') as HTMLInputElement).value).toBe('AI 开始');
+    expect(router.state.location.pathname).toBe(`/journeys/${journeyId}/simulation`);
+    expect(saveJourneyDraft).not.toHaveBeenCalled();
+    expect(simulateJourney).not.toHaveBeenCalled();
+  });
+
+  it('编排隐藏主题切换入口，进入和返回 AI 起草沿用当前主题且不保存草稿', async () => {
+    document.documentElement.dataset.colorMode = 'dark';
     const { router } = renderEditor();
     await screen.findByRole('heading', { name: '欢迎旅程' });
-    const nodes = document.querySelectorAll('.react-flow__node');
-    fireEvent.click(screen.getByRole('button', { name: '切换为深色模式' }));
+    expect(screen.queryByRole('button', { name: /切换为.*模式/ })).toBeNull();
     expect(document.querySelector('.react-flow')?.classList.contains('dark')).toBe(true);
-    expect(document.querySelectorAll('.react-flow__node')[0]).toBe(nodes[0]);
     expect(vi.mocked(saveJourneyDraft)).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: /AI 生成旅程/ }));
     await screen.findByRole('heading', { name: 'AI 起草' });
@@ -692,6 +798,34 @@ describe('旅程编排页面', () => {
     fireEvent.click(screen.getByRole('button', { name: /复制/ }));
     fireEvent.keyDown(editor, { key: 'v', ctrlKey: true });
     await waitFor(() => expect(screen.getAllByLabelText('结束：结束')).toHaveLength(2));
+  });
+
+  it('已经有开始步骤时悬停提示不能重复添加', async () => {
+    vi.mocked(getJourney).mockResolvedValue({
+      ...journey,
+      draftDefinition: {
+        layoutDirection: 'vertical',
+        nodes: [
+          {
+            id: 'start',
+            type: 'start',
+            name: '开始',
+            position: { x: 0, y: 0 },
+            entryBehavior: 'product_viewed',
+          },
+        ],
+        edges: [],
+      },
+    });
+    renderEditor();
+    await screen.findByRole('heading', { name: '欢迎旅程' });
+
+    const startButton = screen.getByRole('button', { name: '添加开始旅程' });
+    expect((startButton as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.mouseEnter(startButton.parentElement!);
+    expect((await screen.findByRole('tooltip')).textContent).toBe(
+      '这条旅程已经有开始步骤，不能重复添加。',
+    );
   });
 
   it('撤销重做快捷键不依赖页面空白、工具栏按钮或节点焦点', async () => {
@@ -1816,6 +1950,17 @@ describe('旅程编排页面', () => {
     expect(await screen.findByText('已到达结束步骤', {}, { timeout: 2000 })).toBeTruthy();
     expect(document.querySelectorAll('[data-simulation-state="traversed"]')).toHaveLength(3);
 
+    fireEvent.click(screen.getByTestId('rf__node-n-message'));
+    const settings = await screen.findByRole('dialog');
+    expect((within(settings).getByLabelText('消息内容') as HTMLTextAreaElement).disabled).toBe(
+      true,
+    );
+    fireEvent.click(within(settings).getByRole('button', { name: '关闭' }));
+    expect(screen.getByText('已到达结束步骤')).toBeTruthy();
+    expect(document.querySelectorAll('[data-simulation-state="traversed"]')).toHaveLength(3);
+    expect(simulateJourney).toHaveBeenCalledTimes(1);
+    expect(saveJourneyDraft).not.toHaveBeenCalled();
+
     fireEvent.click(screen.getAllByRole('button', { name: '定位' })[1]!);
     expect(router.state.location.pathname).toBe(`/journeys/${journeyId}/simulation`);
     expect(screen.getByRole('button', { name: '返回编排' })).toBeTruthy();
@@ -2153,10 +2298,13 @@ describe('画布缩小时自动适配', () => {
       observer,
       resize(width: number, height: number) {
         act(() =>
-          observer.callback(
-            [{ contentRect: { width, height } } as ResizeObserverEntry],
-            {} as ResizeObserver,
-          ),
+          observers
+            .filter((item) => item.element === element)
+            .at(-1)!
+            .callback(
+              [{ contentRect: { width, height } } as ResizeObserverEntry],
+              {} as ResizeObserver,
+            ),
         );
       },
       advance(ms: number) {
@@ -2164,6 +2312,22 @@ describe('画布缩小时自动适配', () => {
       },
     };
   }
+
+  it('专注及侧栏恢复后的首次测量不重新适配整图', async () => {
+    const view = await setupResize();
+    view.resize(800, 700);
+    fireEvent.click(screen.getByRole('button', { name: /专注画布/ }));
+    view.resize(1200, 700);
+    fireEvent.click(screen.getByRole('button', { name: /退出专注/ }));
+    view.resize(800, 700);
+    fireEvent.click(screen.getByRole('button', { name: '收起步骤设置' }));
+    view.resize(1100, 700);
+    fireEvent.click(screen.getByRole('button', { name: /展开步骤设置/ }));
+    view.resize(800, 700);
+    view.advance(200);
+    expect(view.fitView).not.toHaveBeenCalled();
+    expect(saveJourneyDraft).not.toHaveBeenCalled();
+  });
 
   it('首次测量和放大不适配，连续缩小在稳定后适配一次且不修改草稿', async () => {
     const view = await setupResize();

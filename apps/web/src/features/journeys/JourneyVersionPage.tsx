@@ -1,4 +1,3 @@
-import { ThemeToggle } from '@/components/ThemeToggle';
 import { useColorMode } from '@/app/ThemeProvider';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -48,12 +47,7 @@ import {
 } from '@/features/journeys/components/JourneyVersionStatsSection';
 import { PageHeader } from '@/components/PageHeader';
 import { fitViewOptions } from '@/features/journeys/hooks/useJourneyCanvas';
-import {
-  NODE_HEIGHT,
-  NODE_WIDTH,
-  toFlowEdge,
-  toFlowNode,
-} from '@/features/journeys/journey-canvas';
+import { centerJourneyNode, toFlowEdge, toFlowNode } from './journey-canvas';
 import { journeyNodeDetails } from '@/features/journeys/journey-node-details';
 import { journeyVersionQueryKeys } from '@/features/journeys/journey-queries';
 import {
@@ -91,7 +85,7 @@ type VersionPageState = {
 };
 
 export function JourneyVersionPage() {
-  const { mode, switching, toggleMode } = useColorMode();
+  const { mode } = useColorMode();
   const { id = '', versionId = '' } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
@@ -210,15 +204,10 @@ export function JourneyVersionPage() {
     if (node === undefined) return;
     setSelectedNodeId(node.id);
     setActiveView('flow');
-    // 搜索定位优先保留目标步骤，避免随后整图适配把节点再次缩小到角落。
+    // 从明细切回画布后只平移目标节点，阻止首次整图适配改变当前缩放。
     didFitFlow.current = true;
     window.requestAnimationFrame(() => {
-      // 明确选择步骤时只平移到目标节点，保留用户当前缩放比例。
-      void flowInstance.current?.setCenter(
-        node.position.x + NODE_WIDTH / 2,
-        node.position.y + NODE_HEIGHT / 2,
-        { duration: 250 },
-      );
+      centerJourneyNode(flowInstance.current, nodeId);
     });
   }
 
@@ -287,7 +276,6 @@ export function JourneyVersionPage() {
           }
           actions={
             <Flex gap={8} wrap>
-              <ThemeToggle mode={mode} switching={switching} onToggle={toggleMode} />
               <Button
                 icon={<ReloadOutlined aria-hidden />}
                 loading={statsQuery.isFetching}

@@ -180,12 +180,10 @@
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: var(--ant-color-primary-bg, #e6f4ff);
+  width: 28px;
+  height: 28px;
   color: var(--ant-color-primary, #1677ff);
-  font-size: 18px;
+  font-size: 16px;
 }
 
 .stepStatsGrid {
@@ -250,13 +248,6 @@
   border-radius: 8px;
   background: var(--ant-color-fill-quaternary, #fafafa);
   line-height: 1.7;
-}
-
-.flowNote {
-  flex: 0 0 auto;
-  padding-top: 8px;
-  font-size: 12px;
-  line-height: 1.5;
 }
 
 @media (max-width: 1199px) {

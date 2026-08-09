@@ -14,7 +14,7 @@ import {
   type JourneyLayoutDirection,
   type JourneyNodeType,
 } from '@journeylens/shared';
-import { type Connection, type Edge } from '@xyflow/react';
+import type { Connection, Edge, ReactFlowInstance } from '@xyflow/react';
 import type { JourneyCanvasFlowNode } from '@/features/journeys/components/JourneyCanvasNode';
 
 export const EMPTY_DEFINITION: JourneyDraftDefinition = {
@@ -39,6 +39,22 @@ export type DraftIssue = {
 type Point = { x: number; y: number };
 type Rect = { left: number; top: number; right: number; bottom: number };
 export type OpenPositionResult = { status: 'found'; position: Point } | { status: 'not-found' };
+
+/** 保持当前缩放，只将目标节点平移到中央；调用方在画布可见后的下一帧执行。 */
+export function centerJourneyNode(
+  instance: ReactFlowInstance<JourneyCanvasFlowNode, Edge> | null,
+  nodeId: string,
+): void {
+  if (instance === null) return;
+  const zoom = instance.getZoom();
+  void instance.fitView({
+    nodes: [{ id: nodeId }],
+    minZoom: zoom,
+    maxZoom: zoom,
+    duration: 200,
+    interpolate: 'linear',
+  });
+}
 
 /** 草稿保存业务字段，画布额外携带连接点、标签和选中状态。 */
 export function toFlowNode(

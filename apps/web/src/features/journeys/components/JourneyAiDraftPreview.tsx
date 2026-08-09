@@ -15,12 +15,7 @@ import type { JourneyDraftDefinition } from '@journeylens/shared';
 import { JourneyCanvasNode, type JourneyCanvasFlowNode } from './JourneyCanvasNode';
 import { JourneyEdge } from './JourneyEdge';
 import { buildAiDraftChecklist } from '@/features/journeys/journey-ai-draft-checklist';
-import {
-  NODE_HEIGHT,
-  NODE_WIDTH,
-  toFlowEdge,
-  toFlowNode,
-} from '@/features/journeys/journey-canvas';
+import { centerJourneyNode, toFlowEdge, toFlowNode } from '@/features/journeys/journey-canvas';
 import { journeyNodeDetails } from '@/features/journeys/journey-node-details';
 import { fitViewOptions } from '@/features/journeys/hooks/useJourneyCanvas';
 import { journeyNodeTypeLabels } from '@/features/journeys/journey-node-options';
@@ -60,14 +55,11 @@ export function JourneyAiDraftPreview({ definition }: Props) {
   function locateNode(nodeId: string): void {
     const node = definition.nodes.find((item) => item.id === nodeId);
     if (node === undefined) return;
+    // 从清单返回画布时保留缩放，只将目标节点平移到中央。
     setView('canvas');
     setSelectedNodeId(nodeId);
     window.requestAnimationFrame(() => {
-      void flowInstance.current?.setCenter(
-        node.position.x + NODE_WIDTH / 2,
-        node.position.y + NODE_HEIGHT / 2,
-        { zoom: 1, duration: 200 },
-      );
+      centerJourneyNode(flowInstance.current, nodeId);
     });
   }
 

@@ -21,6 +21,7 @@ import {
 } from '@xyflow/react';
 import type { JourneyCanvasFlowNode } from '@/features/journeys/components/JourneyCanvasNode';
 import {
+  centerJourneyNode,
   findOpenPosition,
   getNextStepIssue,
   isConnectionReady,
@@ -489,13 +490,7 @@ export function useJourneyCanvas() {
   const selectNodeForIssue = useCallback(
     (nodeId: string, focusSettings = true): void => {
       window.requestAnimationFrame(() => {
-        // 按实际节点边界定位，保留原来的缩放和动画时长，避免重复计算固定尺寸的中心。
-        void flowInstance.current?.fitView({
-          nodes: [{ id: nodeId }],
-          minZoom: 1.1,
-          maxZoom: 1.1,
-          duration: 250,
-        });
+        centerJourneyNode(flowInstance.current, nodeId);
       });
       selectOnly([nodeId], []);
       focusSettingsAfterSelect.current = focusSettings;

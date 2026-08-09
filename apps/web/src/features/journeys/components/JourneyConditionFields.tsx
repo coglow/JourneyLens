@@ -79,7 +79,7 @@ function ConditionSourceSelect({
 
   return (
     <Flex vertical gap={8}>
-      <Typography.Text strong>判断来源</Typography.Text>
+      <Typography.Text type="secondary">判断来源</Typography.Text>
       <Select
         aria-label="判断来源"
         disabled={disabled}

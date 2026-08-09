@@ -1,5 +1,5 @@
 import { ThemeProvider } from '@/app/ThemeProvider';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { Modal } from 'antd';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { JourneyDraftDefinition } from '@journeylens/shared';
@@ -138,9 +138,17 @@ describe('AI 起草页面', () => {
     expect(within(drawer).getByText('欢迎按需查看商品详情。')).toBeTruthy();
     fireEvent.click(within(drawer).getByRole('button', { name: /关闭|Close/ }));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    const viewport = document.querySelector('.react-flow__viewport')!;
+    const previousZoom = viewport.getAttribute('style')?.match(/scale\(([^)]+)\)/)?.[1];
+    expect(previousZoom).toBeDefined();
     fireEvent.click(screen.getByRole('radio', { name: '设置清单' }));
     fireEvent.click(await screen.findByRole('button', { name: '在画布中定位短信提醒' }));
     expect(await screen.findByRole('dialog')).toBeTruthy();
+    await act(async () => {
+      await new Promise(requestAnimationFrame);
+    });
+    expect(viewport.getAttribute('style')?.match(/scale\(([^)]+)\)/)?.[1]).toBe(previousZoom);
+    expect(screen.getByTestId('rf__node-n2').classList.contains('selected')).toBe(true);
     expect(generate).toHaveBeenCalledTimes(1);
     expect(onApply).not.toHaveBeenCalled();
   });
