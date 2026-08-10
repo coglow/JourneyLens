@@ -7,14 +7,20 @@ import type {
   JourneyDraftDefinition,
   JourneyVersionDetail,
   JourneyVersionStats,
+  JourneySimulationResult,
 } from '@journeylens/shared';
 import { JourneyVersionPage } from './JourneyVersionPage';
-import { getJourneyVersion, getJourneyVersionStats } from '@/services/journeys';
+import {
+  getJourneyVersion,
+  getJourneyVersionStats,
+  simulateJourneyVersion,
+} from '@/services/journeys';
 import { ApiError } from '@/services/api';
 
 vi.mock('@/services/journeys', () => ({
   getJourneyVersion: vi.fn(),
   getJourneyVersionStats: vi.fn(),
+  simulateJourneyVersion: vi.fn(),
 }));
 
 const accountId = 'd15a0f12-9f6c-4d63-98e4-d5dbe50c9120';
@@ -144,6 +150,10 @@ function renderPage(initialEntries: InitialEntry[]) {
   const router = createMemoryRouter(
     [
       { path: '/journeys/:id/versions/:versionId', element: <JourneyVersionPage /> },
+      {
+        path: '/journeys/:id/versions/:versionId/simulation',
+        element: <JourneyVersionPage simulationPage />,
+      },
       { path: '/journeys/:id', element: <SearchEcho /> },
       { path: '/journey-stats', element: <StatsListEcho /> },
     ],
@@ -173,6 +183,121 @@ afterEach(() => {
 });
 
 describe('已发布版本详情', () => {
+  it('从发布版本进入模拟，展示路径和只读配置，返回后保留版本及原列表页码', async () => {
+    const result: JourneySimulationResult = {
+      outcome: 'completed',
+      user: { displayName: '张三' },
+      admission: {
+        entryBehavior: {
+          expected: 'app_session_started',
+          actual: 'app_session_started',
+          matched: true,
+        },
+        segment: {
+          id: segmentId,
+          name: '版本验收人群',
+          rules: ageRule,
+          matched: true,
+        },
+      },
+      steps: [
+        {
+          order: 1,
+          nodeId: 'n-start',
+          nodeName: '开始',
+          nodeType: 'start',
+          elapsedSeconds: 0,
+          entryBehavior: 'app_session_started',
+        },
+        {
+          order: 2,
+          nodeId: 'n-message',
+          nodeName: '发送邮件',
+          nodeType: 'message',
+          elapsedSeconds: 0,
+          channel: 'email',
+          subject: '版本验收',
+          body: '第一版正文',
+        },
+        {
+          order: 3,
+          nodeId: 'n-end',
+          nodeName: '结束',
+          nodeType: 'end',
+          elapsedSeconds: 0,
+          note: '完成触达',
+        },
+      ],
+      traversedEdgeIds: ['e-1', 'e-2'],
+      elapsedSeconds: 0,
+    };
+    vi.mocked(simulateJourneyVersion).mockResolvedValue(result);
+    const router = renderPage([
+      {
+        pathname: `/journeys/${journeyId}/versions/${versionId}`,
+        state: { versionListSearch: '?page=2' },
+      },
+    ]);
+    fireEvent.click(await screen.findByRole('button', { name: '旅程模拟' }));
+
+    expect(await screen.findByRole('region', { name: '旅程模拟' })).toBeTruthy();
+    expect(router.state.location.pathname).toBe(
+      `/journeys/${journeyId}/versions/${versionId}/simulation`,
+    );
+    expect(screen.getByText('第 1 版')).toBeTruthy();
+    expect(screen.queryByText(/进入 \d+ 次/)).toBeNull();
+    expect(screen.queryByRole('tab', { name: '统计明细' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '开始模拟' }));
+
+    expect(await screen.findByText('已到达结束步骤', {}, { timeout: 4000 })).toBeTruthy();
+    expect(document.querySelectorAll('[data-simulation-state="traversed"]')).toHaveLength(3);
+    expect(screen.getAllByRole('button', { name: '定位' })).toHaveLength(3);
+    expect(simulateJourneyVersion).toHaveBeenCalledWith(
+      journeyId,
+      versionId,
+      expect.objectContaining({
+        entryEvent: expect.objectContaining({ type: 'app_session_started' }),
+      }),
+    );
+    fireEvent.click(screen.getByTestId('rf__node-n-message'));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('发送邮件')).toBeTruthy();
+    expect(within(dialog).getByText('第一版正文')).toBeTruthy();
+    expect(within(dialog).queryByRole('textbox')).toBeNull();
+    fireEvent.click(within(dialog).getByRole('button', { name: '关闭' }));
+    fireEvent.keyDown(screen.getByTestId('rf__node-n-message'), { key: 'Enter', code: 'Enter' });
+    const reopened = await screen.findByRole('dialog');
+    expect(within(reopened).getByText('第一版正文')).toBeTruthy();
+    fireEvent.click(within(reopened).getByRole('button', { name: '关闭' }));
+    fireEvent.click(screen.getAllByRole('button', { name: '定位' })[1]!);
+    expect(router.state.location.pathname).toBe(
+      `/journeys/${journeyId}/versions/${versionId}/simulation`,
+    );
+    expect(screen.getByText('已到达结束步骤')).toBeTruthy();
+    expect(getJourneyVersionStats).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', { name: '返回发布版本' }));
+    expect(await screen.findByRole('region', { name: '已发布版本' })).toBeTruthy();
+    expect(screen.getByText('进入 4 次')).toBeTruthy();
+    expect(document.querySelectorAll('[data-simulation-state="traversed"]')).toHaveLength(0);
+    expect(getJourneyVersionStats).toHaveBeenCalledTimes(2);
+    fireEvent.click(screen.getByRole('button', { name: '返回版本列表' }));
+    expect(await screen.findByText('版本列表?page=2')).toBeTruthy();
+  });
+
+  it('直接进入版本模拟不读取运行统计，请求失败后保留入口并允许重试', async () => {
+    vi.mocked(simulateJourneyVersion).mockRejectedValue(
+      new ApiError(500, 'INTERNAL_ERROR', '暂时无法完成模拟，请重试'),
+    );
+    renderPage([`/journeys/${journeyId}/versions/${versionId}/simulation`]);
+    fireEvent.click(await screen.findByRole('button', { name: '开始模拟' }));
+    expect(await screen.findByText('暂时无法完成模拟，请重试')).toBeTruthy();
+    expect(getJourneyVersionStats).not.toHaveBeenCalled();
+    expect((screen.getByRole('button', { name: '开始模拟' }) as HTMLButtonElement).disabled).toBe(
+      false,
+    );
+    expect(screen.getByRole('button', { name: '返回发布版本' })).toBeTruthy();
+  });
+
   it('展示发布时的名称、分群规则和只读画布，不提供编辑控件', async () => {
     renderPage([`/journeys/${journeyId}/versions/${versionId}`]);
 
@@ -558,17 +683,17 @@ describe('已发布版本详情', () => {
     expect((search as HTMLInputElement).value).toBe('重复');
   });
 
-  it('切换视图保留明细表滚动容器', async () => {
+  it('切换视图保留明细表和横向滚动位置', async () => {
     renderPage([`/journeys/${journeyId}/versions/${versionId}`]);
     fireEvent.click(await screen.findByRole('tab', { name: '统计明细' }));
     await screen.findByRole('cell', { name: '发送邮件' });
-    const tableBody = document.querySelector('.ant-table-body') as HTMLDivElement;
-    tableBody.scrollTop = 80;
+    const tableContent = document.querySelector('.ant-table-content') as HTMLDivElement;
+    tableContent.scrollLeft = 80;
 
     fireEvent.click(screen.getByRole('tab', { name: '流程视图' }));
     fireEvent.click(screen.getByRole('tab', { name: '统计明细' }));
 
-    expect(document.querySelector('.ant-table-body')).toBe(tableBody);
-    expect(tableBody.scrollTop).toBe(80);
+    expect(document.querySelector('.ant-table-content')).toBe(tableContent);
+    expect(tableContent.scrollLeft).toBe(80);
   });
 });

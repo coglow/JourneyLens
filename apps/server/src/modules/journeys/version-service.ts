@@ -12,11 +12,14 @@ import {
   type JourneyVersionSnapshot,
   type JourneyVersionStats,
   type JourneyVersionSummary,
+  type JourneySimulationScenario,
+  type JourneySimulationResult,
   type SegmentRule,
 } from '@journeylens/shared';
 import { ApiError } from '../../errors.js';
 import { lockCampaignForJourneyWrite } from '../campaigns/campaign-lock.js';
 import { aggregateNodeStats } from './version-stats.js';
+import { JourneySimulationMessageError, simulateJourney } from './simulation.js';
 
 const versionSummarySelect = {
   id: true,
@@ -290,6 +293,27 @@ export class JourneyVersionService {
     });
     if (record === null) throw versionNotFound();
     return serializeDetail(record);
+  }
+
+  /** 只用发布时固定保存的流程和入口人群试算，不读取当前草稿，也不产生运行记录。 */
+  async simulate(
+    journeyId: string,
+    versionId: string,
+    scenario: JourneySimulationScenario,
+  ): Promise<JourneySimulationResult> {
+    const { snapshot } = await this.get(journeyId, versionId);
+    try {
+      return simulateJourney({
+        definition: snapshot.definition,
+        segment: snapshot.entrySegment,
+        scenario,
+      });
+    } catch (error) {
+      if (error instanceof JourneySimulationMessageError) {
+        throw new ApiError(400, 'BAD_REQUEST', error.message);
+      }
+      throw error;
+    }
   }
 
   /**

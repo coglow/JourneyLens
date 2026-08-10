@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   journeySimulationRequestSchema,
   journeySimulationScenarioSchema,
+  journeyVersionSimulationRequestSchema,
   simulationEvidenceValueSchema,
 } from './journey-simulation.js';
 
@@ -48,6 +49,19 @@ const definition = {
 };
 
 describe('模拟资料契约', () => {
+  it('发布版本只接受模拟资料，拒绝页面提交流程或入口人群覆盖发布内容', () => {
+    expect(journeyVersionSimulationRequestSchema.safeParse({ scenario }).success).toBe(true);
+    for (const extra of [{ draftDefinition: definition }, { entrySegment: null }]) {
+      expect(journeyVersionSimulationRequestSchema.safeParse({ scenario, ...extra }).success).toBe(
+        false,
+      );
+    }
+    expect(
+      journeyVersionSimulationRequestSchema.safeParse({ scenario: { ...scenario, user: null } })
+        .success,
+    ).toBe(false);
+  });
+
   it('接受缺少字段、空值、数字 0、false 和空数组等合法资料', () => {
     expect(
       journeySimulationScenarioSchema.safeParse({

@@ -2,11 +2,12 @@ import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import { MutationCache, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { journeyDraftDefinitionSchema, type JourneySimulationResult } from '@journeylens/shared';
-import { simulateJourney } from '@/services/journeys';
+import { simulateJourney, simulateJourneyVersion } from '@/services/journeys';
 import { useJourneySimulation } from './useJourneySimulation';
 
 vi.mock('@/services/journeys', () => ({
   simulateJourney: vi.fn(),
+  simulateJourneyVersion: vi.fn(),
 }));
 
 const journeyId = '00000000-0000-4000-8302-000000000001';
@@ -76,6 +77,7 @@ function renderSimulation(initialProps: Props = props, client = createClient()) 
 
 beforeEach(() => {
   vi.mocked(simulateJourney).mockReset();
+  vi.mocked(simulateJourneyVersion).mockReset();
 });
 
 afterEach(() => {
@@ -84,6 +86,40 @@ afterEach(() => {
 });
 
 describe('模拟状态', () => {
+  it('发布版本使用版本模拟请求，切换同一旅程的版本后忽略旧响应并重置资料', async () => {
+    let finish: ((value: JourneySimulationResult) => void) | undefined;
+    vi.mocked(simulateJourneyVersion).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const firstVersionId = '00000000-0000-4000-8305-000000000001';
+    const { result: hook, rerender } = renderSimulation({ ...props, versionId: firstVersionId });
+    act(() =>
+      hook.current.setScenario((current) => ({
+        ...current,
+        user: { ...current.user, displayName: '旧版资料' },
+      })),
+    );
+    const submittedScenario = hook.current.scenario;
+    act(() => void hook.current.start());
+    await waitFor(() =>
+      expect(simulateJourneyVersion).toHaveBeenCalledWith(
+        journeyId,
+        firstVersionId,
+        submittedScenario,
+      ),
+    );
+    expect(simulateJourney).not.toHaveBeenCalled();
+
+    rerender({ ...props, versionId: '00000000-0000-4000-8305-000000000002' });
+    await act(async () => finish?.(makeResult('旧版资料')));
+    expect(hook.current.result).toBeNull();
+    expect(hook.current.scenario.user.displayName).toBe('张三');
+    expect(hook.current.pending).toBe(false);
+  });
+
   it('第一步立即展示，之后每满半秒推进一步，全部展示后才结束', async () => {
     vi.useFakeTimers();
     const result = makeResult();

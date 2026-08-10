@@ -29,6 +29,7 @@ const segmentId = '00000000-0000-4000-8401-000000000001';
 const journeyId = '00000000-0000-4000-8402-000000000001';
 const missingJourneyId = '00000000-0000-4000-8402-000000000099';
 const audienceId = '00000000-0000-4000-8403-000000000001';
+const versionId = '00000000-0000-4000-8404-000000000001';
 
 const adultRule = {
   kind: 'compare',
@@ -123,6 +124,149 @@ function simulate(app: TestApp, cookie: string, payload: unknown, targetJourneyI
     payload: JSON.stringify(payload),
   });
 }
+
+function simulateVersion(
+  app: TestApp,
+  cookie: string,
+  payload: unknown,
+  targetJourneyId = journeyId,
+  targetVersionId = versionId,
+) {
+  return app.inject({
+    method: 'POST',
+    url: `/api/journeys/${targetJourneyId}/versions/${targetVersionId}/simulate`,
+    headers: jsonHeaders(cookie),
+    payload: JSON.stringify(payload),
+  });
+}
+
+async function seedVersion(
+  entrySegment: unknown = { id: segmentId, name: '成年用户', revision: 1, rules: adultRule },
+) {
+  await seedCampaign();
+  await seedSegment();
+  await seedJourney();
+  return db.prisma.journeyVersion.create({
+    data: {
+      id: versionId,
+      journeyId,
+      versionNumber: 1,
+      sourceRevision: 1,
+      sourceSegmentRevision: entrySegment === null ? null : 1,
+      publishedAt: testNow,
+      publishedById: testAccountId,
+      snapshot: {
+        name: '模拟旅程',
+        description: null,
+        definition: completeDraft,
+        entrySegment,
+      } as Prisma.InputJsonValue,
+    },
+  });
+}
+
+describe('已发布版本模拟', () => {
+  it('草稿、人群和活动状态变化后仍按发布内容计算，不改变版本或产生运行数据', async () => {
+    const versionBefore = await seedVersion();
+    await db.prisma.journey.update({
+      where: { id: journeyId },
+      data: { draftDefinition: { ...completeDraft, nodes: [] }, revision: { increment: 1 } },
+    });
+    await db.prisma.segment.update({
+      where: { id: segmentId },
+      data: { rules: { ...adultRule, right: 30 }, revision: { increment: 1 } },
+    });
+    await db.prisma.campaign.update({ where: { id: campaignId }, data: { status: 'stopped' } });
+    const journeyBefore = await db.prisma.journey.findUniqueOrThrow({ where: { id: journeyId } });
+    const segmentBefore = await db.prisma.segment.findUniqueOrThrow({ where: { id: segmentId } });
+    const { app } = makeApp(db);
+    const cookie = await signedInCookie(app);
+    const statsUrl = `/api/journeys/${journeyId}/versions/${versionId}/stats`;
+    const statsBefore = (
+      await app.inject({ method: 'GET', url: statsUrl, headers: { cookie } })
+    ).json();
+
+    const response = await simulateVersion(app, cookie, { scenario });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data).toMatchObject({
+      outcome: 'completed',
+      admission: { segment: { name: '成年用户', rules: adultRule, matched: true } },
+      steps: [{ nodeId: 'start' }, { nodeId: 'condition', matched: true }, { nodeId: 'adult' }],
+      traversedEdgeIds: ['to-condition', 'age-met'],
+    });
+    const rejected = await simulateVersion(app, cookie, {
+      scenario: { ...scenario, user: { ...scenario.user, attributes: { age: 16 } } },
+    });
+    expect(rejected.json().data).toMatchObject({
+      outcome: 'not_entered',
+      admission: { segment: { matched: false } },
+      steps: [],
+    });
+
+    expect(await db.prisma.journeyVersion.findUniqueOrThrow({ where: { id: versionId } })).toEqual(
+      versionBefore,
+    );
+    expect(await db.prisma.journey.findUniqueOrThrow({ where: { id: journeyId } })).toEqual(
+      journeyBefore,
+    );
+    expect(await db.prisma.segment.findUniqueOrThrow({ where: { id: segmentId } })).toEqual(
+      segmentBefore,
+    );
+    expect(await db.prisma.execution.count()).toBe(0);
+    expect(await db.prisma.executionStep.count()).toBe(0);
+    expect(await db.prisma.audienceUser.count()).toBe(0);
+    expect(
+      (await app.inject({ method: 'GET', url: statsUrl, headers: { cookie } })).json(),
+    ).toEqual(statsBefore);
+  });
+
+  it('发布时不限人群的版本不受当前入口人群限制', async () => {
+    await seedVersion(null);
+    await db.prisma.segment.update({
+      where: { id: segmentId },
+      data: { rules: { ...adultRule, right: 30 } },
+    });
+    const { app } = makeApp(db);
+    const response = await simulateVersion(app, await signedInCookie(app), { scenario });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data).toMatchObject({
+      outcome: 'completed',
+      admission: { segment: null },
+    });
+  });
+
+  it('要求登录和有效资料，拒绝覆盖发布流程，版本不存在或不属于该旅程时返回不存在', async () => {
+    await seedVersion();
+    const { app } = makeApp(db);
+    expect((await simulateVersion(app, '', { scenario })).statusCode).toBe(401);
+    const cookie = await signedInCookie(app);
+    for (const payload of [
+      { scenario: {} },
+      { scenario, draftDefinition: completeDraft },
+      { scenario, entrySegment: null },
+    ]) {
+      expect((await simulateVersion(app, cookie, payload)).statusCode).toBe(400);
+    }
+    expect(
+      (await simulateVersion(app, cookie, { scenario }, journeyId, 'invalid')).statusCode,
+    ).toBe(400);
+    expect(
+      (await simulateVersion(app, cookie, { scenario }, journeyId, missingJourneyId)).statusCode,
+    ).toBe(404);
+    await db.prisma.journey.create({
+      data: {
+        id: missingJourneyId,
+        campaignId,
+        name: '另一旅程',
+        createdById: testAccountId,
+        updatedById: testAccountId,
+      },
+    });
+    expect((await simulateVersion(app, cookie, { scenario }, missingJourneyId)).statusCode).toBe(
+      404,
+    );
+  });
+});
 
 describe('旅程模拟接口', () => {
   it('登录后旧的模拟受众读取入口也不再可用', async () => {

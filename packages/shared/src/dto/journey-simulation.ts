@@ -283,6 +283,11 @@ export const journeySimulationRequestSchema = z
   })
   .strict();
 
+/** 发布版本的流程和入口人群由服务端读取，页面只提交本次模拟资料。 */
+export const journeyVersionSimulationRequestSchema = z
+  .object({ scenario: journeySimulationScenarioSchema })
+  .strict();
+
 export const simulationEventTypeSchema = eventTypeSchema;
 
 export type JourneySimulationScenario = z.infer<typeof journeySimulationScenarioSchema>;

@@ -1,4 +1,3 @@
-import { useLayoutEffect, useRef, useState } from 'react';
 import type { UseQueryResult } from '@tanstack/react-query';
 import {
   EXECUTION_STATUSES,
@@ -131,25 +130,6 @@ type TableSectionProps = {
 };
 
 export function JourneyVersionStatsTable({ query, nodes, onLocate }: TableSectionProps) {
-  const tableViewportRef = useRef<HTMLDivElement>(null);
-  const [tableBodyHeight, setTableBodyHeight] = useState(360);
-
-  useLayoutEffect(() => {
-    const viewport = tableViewportRef.current;
-    if (viewport === null || query.data === undefined) return;
-
-    // 表格区域随视口变化时同步可滚动高度，让表头固定在主体内。
-    const updateHeight = (): void => {
-      const header = viewport.querySelector('thead');
-      const headerHeight = header?.getBoundingClientRect().height ?? 44;
-      setTableBodyHeight(Math.max(120, viewport.clientHeight - headerHeight));
-    };
-    updateHeight();
-    const observer = new ResizeObserver(updateHeight);
-    observer.observe(viewport);
-    return () => observer.disconnect();
-  }, [nodes.length, query.data]);
-
   const columns: NonNullable<TableProps<JourneyVersionNodeStats>['columns']> = [
     {
       title: '步骤',
@@ -209,18 +189,16 @@ export function JourneyVersionStatsTable({ query, nodes, onLocate }: TableSectio
           该版本还没有执行记录
         </Typography.Text>
       )}
-      <div className={styles.tableViewport} ref={tableViewportRef}>
-        <Table<JourneyVersionNodeStats>
-          className={styles.table ?? ''}
-          size="small"
-          columns={columns}
-          dataSource={nodes}
-          rowKey="nodeId"
-          pagination={false}
-          scroll={{ x: tableScrollX(columns), y: tableBodyHeight }}
-          locale={{ emptyText: <Empty description="没有找到匹配的步骤" /> }}
-        />
-      </div>
+      {/* 明细按全部步骤自然展开，纵向阅读交给页面；列较多时保留横向滚动。 */}
+      <Table<JourneyVersionNodeStats>
+        size="small"
+        columns={columns}
+        dataSource={nodes}
+        rowKey="nodeId"
+        pagination={false}
+        scroll={{ x: tableScrollX(columns) }}
+        locale={{ emptyText: <Empty description="没有找到匹配的步骤" /> }}
+      />
     </div>
   );
 }

@@ -15,6 +15,7 @@ import {
   journeyVersionListQuerySchema,
   journeyVersionParamsSchema,
   journeyVersionPublishSchema,
+  journeyVersionSimulationRequestSchema,
   isJourneyMessageVariableError,
 } from '@journeylens/shared';
 import { ApiError } from '../../errors.js';
@@ -243,6 +244,22 @@ export function registerJourneyRoutes(
     if (!params.success) throw new ApiError(400, 'BAD_REQUEST', '版本链接无效');
 
     return { data: await versionService.getStats(params.data.id, params.data.versionId) };
+  });
+
+  app.post('/api/journeys/:id/versions/:versionId/simulate', async (request) => {
+    const params = journeyVersionParamsSchema.safeParse(request.params);
+    if (!params.success) throw new ApiError(400, 'BAD_REQUEST', '版本链接无效');
+
+    const input = journeyVersionSimulationRequestSchema.safeParse(request.body);
+    if (!input.success) throw new ApiError(400, 'BAD_REQUEST', '请检查模拟资料和行为内容');
+
+    return {
+      data: await versionService.simulate(
+        params.data.id,
+        params.data.versionId,
+        input.data.scenario,
+      ),
+    };
   });
 
   app.delete('/api/journeys/:id', async (request, reply) => {

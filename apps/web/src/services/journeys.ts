@@ -17,11 +17,13 @@ import {
   journeyVersionListResponseSchema,
   journeyVersionPublishSchema,
   journeyVersionStatsResponseSchema,
+  journeyVersionSimulationRequestSchema,
   type JourneyAiDraftRequestInput,
   type JourneyCreateInput,
   type JourneyDraftDefinition,
   type JourneyListQueryInput,
   type JourneySimulationInput,
+  type JourneySimulationScenario,
   type JourneyStatsListQueryInput,
   type JourneyUpdateInput,
   type JourneyVersionPublishInput,
@@ -230,6 +232,24 @@ export async function simulateJourney(journeyId: string, input: JourneySimulatio
   const body = await request(
     {
       url: `/journeys/${encodeURIComponent(journeyId)}/simulate`,
+      method: 'POST',
+      data: payload,
+    },
+    journeySimulationResponseSchema,
+  );
+  return body.data;
+}
+
+/** 指定发布版本只提交模拟资料，流程与入口人群由服务端按版本读取。 */
+export async function simulateJourneyVersion(
+  journeyId: string,
+  versionId: string,
+  scenario: JourneySimulationScenario,
+) {
+  const payload = journeyVersionSimulationRequestSchema.parse({ scenario });
+  const body = await request(
+    {
+      url: `/journeys/${encodeURIComponent(journeyId)}/versions/${encodeURIComponent(versionId)}/simulate`,
       method: 'POST',
       data: payload,
     },

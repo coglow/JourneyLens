@@ -16,10 +16,12 @@ import type {
 } from '@journeylens/shared';
 import { journeySimulationScenarioSchema } from '@journeylens/shared';
 import { getApiErrorMessage, isSessionExpired } from '@/services/api';
-import { simulateJourney } from '@/services/journeys';
+import { simulateJourney, simulateJourneyVersion } from '@/services/journeys';
 
 type Options = {
   journeyId: string;
+  /** 有版本时只提交模拟资料，由服务端读取该版本固定保存的内容。 */
+  versionId?: string;
   /** 离开模拟页时停止播放，并忽略仍在返回途中的结果。 */
   active: boolean;
   /** 当前画布用于清除不再对应的模拟结果；位置和布局变化不影响结果。 */
@@ -82,6 +84,7 @@ export type JourneySimulationController = ReturnType<typeof useJourneySimulation
 /** 临时资料留在本页状态；保存旅程草稿与模拟输入各自独立。 */
 export function useJourneySimulation({
   journeyId,
+  versionId,
   active,
   definition,
   normalizedDefinition,
@@ -103,7 +106,8 @@ export function useJourneySimulation({
     timer: ReturnType<typeof setTimeout>;
     resolve: () => void;
   } | null>(null);
-  const journeyIdRef = useRef(journeyId);
+  const sourceKey = `${journeyId}:${versionId ?? 'draft'}`;
+  const sourceKeyRef = useRef(sourceKey);
   const previousStartBehaviorRef = useRef(startBehavior);
   const scenarioTouchedRef = useRef(false);
   const {
@@ -113,23 +117,28 @@ export function useJourneySimulation({
   } = useMutation({
     mutationFn: ({
       journeyId: id,
+      versionId: targetVersionId,
       input,
     }: {
       journeyId: string;
+      versionId: string | undefined;
       input: Parameters<typeof simulateJourney>[1];
-    }) => simulateJourney(id, input),
+    }) =>
+      targetVersionId === undefined
+        ? simulateJourney(id, input)
+        : simulateJourneyVersion(id, targetVersionId, input.scenario),
   });
 
   const definitionKey = normalizedDefinition ?? definition;
-  const key = inputKey(definitionKey, scenario);
+  const key = `${sourceKey}:${inputKey(definitionKey, scenario)}`;
   const scenarioValidation = journeySimulationScenarioSchema.safeParse(scenario);
   const scenarioErrors = scenarioValidation.success
     ? []
     : scenarioValidation.error.issues.map((issue) => issue.message);
 
   useEffect(() => {
-    if (journeyIdRef.current !== journeyId) {
-      journeyIdRef.current = journeyId;
+    if (sourceKeyRef.current !== sourceKey) {
+      sourceKeyRef.current = sourceKey;
       scenarioTouchedRef.current = false;
       setScenario(createDefaultSimulationScenario(startBehavior));
       previousStartBehaviorRef.current = startBehavior;
@@ -140,12 +149,12 @@ export function useJourneySimulation({
       // 首次读取旅程时让默认进入行为跟随开始步骤；用户编辑过后保留其测试输入。
       if (!scenarioTouchedRef.current) setScenario(createDefaultSimulationScenario(startBehavior));
     }
-  }, [journeyId, startBehavior]);
+  }, [sourceKey, startBehavior]);
 
   useEffect(() => {
     setRun(null);
     setStale(false);
-  }, [journeyId]);
+  }, [sourceKey]);
 
   useEffect(() => {
     requestRef.current += 1;
@@ -208,6 +217,7 @@ export function useJourneySimulation({
     try {
       const result = await runSimulation({
         journeyId,
+        versionId,
         input: { draftDefinition: normalizedDefinition, scenario: scenarioValidation.data },
       });
       if (requestRef.current !== requestId) return;
@@ -237,6 +247,7 @@ export function useJourneySimulation({
   }, [
     active,
     journeyId,
+    versionId,
     key,
     normalizedDefinition,
     pending,

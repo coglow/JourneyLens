@@ -13,6 +13,7 @@ import {
   getJourneys,
   saveJourneyDraft,
   simulateJourney,
+  simulateJourneyVersion,
   updateJourney,
 } from './journeys';
 
@@ -219,6 +220,17 @@ describe('旅程模拟请求', () => {
       scenario,
     });
     expect(simulated).toEqual(result);
+  });
+
+  it('发布版本模拟提交到指定版本，只发送资料并解析同样的模拟结果', async () => {
+    const versionId = '00000000-0000-4000-8305-000000000001';
+    mock
+      .onPost(`/journeys/${journeyId}/versions/${versionId}/simulate`)
+      .reply(200, { data: result });
+
+    expect(await simulateJourneyVersion(journeyId, versionId, scenario)).toEqual(result);
+    expect(mock.history.post[0]?.url).toBe(`/journeys/${journeyId}/versions/${versionId}/simulate`);
+    expect(JSON.parse(String(mock.history.post[0]?.data))).toEqual({ scenario });
   });
 
   it('模拟响应不符合契约时返回统一失败提示', async () => {

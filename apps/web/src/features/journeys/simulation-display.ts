@@ -1,10 +1,21 @@
 import {
   JOURNEY_EVENT_TYPE_LABELS,
   journeyEventField,
+  type JourneySimulationResult,
   type JourneySimulationScenario,
   type SimulationField,
 } from '@journeylens/shared';
 import { formatElapsedDuration } from './journey-wait';
+
+export function getSimulationHighlights(
+  result: JourneySimulationResult | null,
+  visibleStepCount: number,
+) {
+  return {
+    nodeIds: new Set(result?.steps.slice(0, visibleStepCount).map((step) => step.nodeId)),
+    edgeIds: new Set(result?.traversedEdgeIds.slice(0, Math.max(0, visibleStepCount - 1))),
+  };
+}
 
 type Scalar = string | number | boolean;
 

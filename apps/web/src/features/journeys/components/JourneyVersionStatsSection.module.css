@@ -60,30 +60,12 @@
   display: flex;
   min-width: 0;
   min-height: 0;
-  height: 100%;
   flex-direction: column;
 }
 
 .emptyNote {
   flex: 0 0 auto;
   margin: 0 0 8px;
-}
-
-.tableViewport {
-  min-width: 0;
-  min-height: 0;
-  flex: 1;
-  overflow: hidden;
-}
-
-.table {
-  height: 100%;
-}
-
-.tableViewport :global(.ant-table-wrapper),
-.tableViewport :global(.ant-spin-nested-loading),
-.tableViewport :global(.ant-spin-container) {
-  height: 100%;
 }
 
 .stepLink {

@@ -27,6 +27,10 @@ export const appRoutes: RouteObject[] = [
       { path: 'journeys/:id/:view', element: <JourneyEditorPage /> },
       { path: 'journeys/:id/versions/:versionId', element: <JourneyVersionPage /> },
       {
+        path: 'journeys/:id/versions/:versionId/simulation',
+        element: <JourneyVersionPage simulationPage />,
+      },
+      {
         element: <WorkbenchPage />,
         children: [
           { path: 'overview', element: <OverviewPage /> },

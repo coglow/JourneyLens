@@ -64,6 +64,7 @@ import { JourneyEditorPalette } from '@/features/journeys/components/JourneyEdit
 import { JourneyFlowCheck } from '@/features/journeys/components/JourneyFlowCheck';
 import { JourneyPublishDialog } from '@/features/journeys/components/JourneyPublishDialog';
 import { JourneySimulationPanel } from '@/features/journeys/components/JourneySimulationPanel';
+import { getSimulationHighlights } from './simulation-display';
 import { journeyBranchFromHandle } from '@/features/journeys/journey-canvas';
 import { journeyNodeOptions } from '@/features/journeys/journey-node-options';
 import { fitViewOptions, useJourneyCanvas } from '@/features/journeys/hooks/useJourneyCanvas';
@@ -210,27 +211,24 @@ export function JourneyEditorPage() {
     return undefined;
   }
   const simulationResult = simulation.result;
+  const highlights = useMemo(
+    () => getSimulationHighlights(simulationResult, simulation.visibleStepCount),
+    [simulationResult, simulation.visibleStepCount],
+  );
   const displayNodes = useMemo(() => {
     if (simulationResult === null) return nodes;
-    const traversed = new Set(
-      simulationResult.steps.slice(0, simulation.visibleStepCount).map((step) => step.nodeId),
-    );
     return nodes.map((node) =>
-      traversed.has(node.id)
+      highlights.nodeIds.has(node.id)
         ? { ...node, data: { ...node.data, simulationState: 'traversed' as const } }
         : node,
     );
-  }, [nodes, simulationResult, simulation.visibleStepCount]);
+  }, [nodes, simulationResult, highlights]);
   const displayEdges = useMemo(() => {
     if (simulationResult === null) return edges;
-    // 每展示一个新步骤，才点亮到达该步骤的连线；第一步还没有经过连线。
-    const traversed = new Set(
-      simulationResult.traversedEdgeIds.slice(0, Math.max(0, simulation.visibleStepCount - 1)),
-    );
     return edges.map((edge) =>
-      traversed.has(edge.id) ? { ...edge, className: styles.simulationEdge ?? '' } : edge,
+      highlights.edgeIds.has(edge.id) ? { ...edge, className: styles.simulationEdge ?? '' } : edge,
     );
-  }, [edges, simulationResult, simulation.visibleStepCount]);
+  }, [edges, simulationResult, highlights]);
 
   const currentStatus = journey ? campaignStatusLabels[journey.campaign.status] : undefined;
   const hasSelection = selectedNodeIds.length > 0 || selectedEdgeIds.length > 0;

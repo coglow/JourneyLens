@@ -2,6 +2,7 @@ import { useColorMode } from '@/app/ThemeProvider';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   InfoCircleOutlined,
+  ExperimentOutlined,
   LockOutlined,
   ReloadOutlined,
   SearchOutlined,
@@ -13,6 +14,7 @@ import {
   Card,
   Collapse,
   Descriptions,
+  Drawer,
   Empty,
   Flex,
   Input,
@@ -40,6 +42,7 @@ import {
 } from '@/features/journeys/components/JourneyCanvasNode';
 import { EntrySegmentRulesDrawer } from '@/features/journeys/components/EntrySegmentRulesDrawer';
 import { JourneyEdge } from '@/features/journeys/components/JourneyEdge';
+import { JourneySimulationPanel } from '@/features/journeys/components/JourneySimulationPanel';
 import {
   branchText,
   JourneyVersionStatsSummary,
@@ -47,7 +50,9 @@ import {
 } from '@/features/journeys/components/JourneyVersionStatsSection';
 import { PageHeader } from '@/components/PageHeader';
 import { fitViewOptions } from '@/features/journeys/hooks/useJourneyCanvas';
-import { centerJourneyNode, toFlowEdge, toFlowNode } from './journey-canvas';
+import { useJourneySimulation } from '@/features/journeys/hooks/useJourneySimulation';
+import { centerJourneyNode, EMPTY_DEFINITION, toFlowEdge, toFlowNode } from './journey-canvas';
+import { getSimulationHighlights } from './simulation-display';
 import { journeyNodeDetails } from '@/features/journeys/journey-node-details';
 import { journeyVersionQueryKeys } from '@/features/journeys/journey-queries';
 import {
@@ -84,7 +89,7 @@ type VersionPageState = {
   fromJourneyStats?: { search: string };
 };
 
-export function JourneyVersionPage() {
+export function JourneyVersionPage({ simulationPage = false }: { simulationPage?: boolean }) {
   const { mode } = useColorMode();
   const { id = '', versionId = '' } = useParams();
   const location = useLocation();
@@ -92,11 +97,12 @@ export function JourneyVersionPage() {
   const pageState = (location.state ?? null) as VersionPageState | null;
   const fromJourneyStats = pageState?.fromJourneyStats;
   const [activeView, setActiveView] = useState<VersionView>(
-    fromJourneyStats === undefined ? 'flow' : 'stats',
+    simulationPage || fromJourneyStats === undefined ? 'flow' : 'stats',
   );
   const [selectedNodeId, setSelectedNodeId] = useState<string>();
   const [searchValue, setSearchValue] = useState('');
   const [rulesOpen, setRulesOpen] = useState(false);
+  const [configOpen, setConfigOpen] = useState(false);
   const flowInstance = useRef<ReactFlowInstance<JourneyCanvasFlowNode, Edge> | null>(null);
   const didFitFlow = useRef(false);
 
@@ -107,12 +113,25 @@ export function JourneyVersionPage() {
   const version = query.data;
   const snapshot = version?.snapshot;
   const definition = snapshot?.definition;
+  const simulation = useJourneySimulation({
+    journeyId: id,
+    versionId,
+    active: simulationPage,
+    definition: definition ?? EMPTY_DEFINITION,
+    normalizedDefinition: definition ?? null,
+    warnings: [],
+  });
+  const simulationResult = simulationPage ? simulation.result : null;
+  const highlights = useMemo(
+    () => getSimulationHighlights(simulationResult, simulation.visibleStepCount),
+    [simulationResult, simulation.visibleStepCount],
+  );
 
   // 独立读取运行统计：同一结果同时驱动画布角标、版本汇总、明细表和步骤统计。
   const statsQuery = useQuery({
     queryKey: journeyVersionQueryKeys.stats(id, versionId),
     queryFn: ({ signal }) => getJourneyVersionStats(id, versionId, signal),
-    enabled: version !== undefined,
+    enabled: version !== undefined && !simulationPage,
   });
   const enteredCounts = useMemo(
     () => new Map(statsQuery.data?.nodes.map((node) => [node.nodeId, node.entered]) ?? []),
@@ -125,7 +144,7 @@ export function JourneyVersionPage() {
         ? []
         : definition.nodes.map((node) => {
             const flowNode = toFlowNode(node, definition.layoutDirection);
-            const enteredCount = enteredCounts.get(node.id);
+            const enteredCount = simulationPage ? undefined : enteredCounts.get(node.id);
             return {
               ...flowNode,
               selected: node.id === selectedNodeId,
@@ -133,14 +152,21 @@ export function JourneyVersionPage() {
                 ...flowNode.data,
                 // 还没有读到统计时不显示角标，不把未读取的数据展示成 0。
                 ...(enteredCount === undefined ? {} : { enteredCount }),
+                ...(highlights.nodeIds.has(node.id)
+                  ? { simulationState: 'traversed' as const }
+                  : {}),
               },
             };
           }),
-    [definition, selectedNodeId, enteredCounts],
+    [definition, selectedNodeId, enteredCounts, simulationPage, highlights],
   );
   const edges = useMemo(
-    () => (definition === undefined ? [] : definition.edges.map(toFlowEdge)),
-    [definition],
+    () =>
+      definition?.edges.map((edge) => ({
+        ...toFlowEdge(edge),
+        ...(highlights.edgeIds.has(edge.id) ? { className: styles.simulationEdge ?? '' } : {}),
+      })) ?? [],
+    [definition, highlights],
   );
   const selectedNode = definition?.nodes.find((node) => node.id === selectedNodeId);
   const selectedNodeStats = statsQuery.data?.nodes.find((node) => node.nodeId === selectedNodeId);
@@ -184,12 +210,23 @@ export function JourneyVersionPage() {
 
   // 地址切到另一版本时重置本地视图状态；普通页签切换不会触发该重置。
   useEffect(() => {
-    setActiveView(fromJourneyStats === undefined ? 'flow' : 'stats');
+    const nextView = simulationPage || fromJourneyStats === undefined ? 'flow' : 'stats';
+    setActiveView(nextView);
     setSelectedNodeId(undefined);
     setSearchValue('');
-  }, [fromJourneyStats, location.key, versionId]);
+    setConfigOpen(false);
+    // 从统计页进入模拟时画布原本隐藏，需要在显示后重新适配当前空间。
+    didFitFlow.current = false;
+    if (nextView === 'flow' && flowInstance.current !== null) {
+      scheduleInitialFlowFit(flowInstance.current);
+    }
+  }, [fromJourneyStats, location.key, versionId, simulationPage]);
 
   function goBack(): void {
+    if (simulationPage) {
+      navigate(`/journeys/${id}/versions/${versionId}`, { state: location.state });
+      return;
+    }
     if (fromJourneyStats !== undefined) {
       navigate(`/journey-stats${fromJourneyStats.search}`);
       return;
@@ -238,13 +275,34 @@ export function JourneyVersionPage() {
     ['已停止', node.stopped],
   ];
 
+  const nodeConfiguration =
+    selectedNode === undefined ? null : (
+      <Descriptions layout="vertical" column={1} colon={false}>
+        {journeyNodeDetails(selectedNode).map((item) => (
+          <Descriptions.Item key={item.label} label={item.label}>
+            <div
+              className={
+                item.isMessageBody ? (styles.messageBody ?? '') : (styles.detailValue ?? '')
+              }
+            >
+              {item.value}
+            </div>
+          </Descriptions.Item>
+        ))}
+      </Descriptions>
+    );
+
   return (
-    <section className={styles.page} aria-label="已发布版本">
+    <section className={styles.page} aria-label={simulationPage ? '旅程模拟' : '已发布版本'}>
       <header className={styles.topbar}>
         <PageHeader
           back={
             <Button type="link" style={{ paddingInline: 0 }} onClick={goBack}>
-              {fromJourneyStats === undefined ? '返回版本列表' : '返回旅程统计'}
+              {simulationPage
+                ? '返回发布版本'
+                : fromJourneyStats === undefined
+                  ? '返回版本列表'
+                  : '返回旅程统计'}
             </Button>
           }
           title={
@@ -275,16 +333,29 @@ export function JourneyVersionPage() {
             </Flex>
           }
           actions={
-            <Flex gap={8} wrap>
-              <Button
-                icon={<ReloadOutlined aria-hidden />}
-                loading={statsQuery.isFetching}
-                onClick={() => void statsQuery.refetch()}
-              >
-                刷新统计
-              </Button>
-              <Button onClick={() => navigate(`/journeys/${id}/editor`)}>查看当前编排</Button>
-            </Flex>
+            !simulationPage && (
+              <Flex gap={8} wrap>
+                <Button
+                  icon={<ExperimentOutlined aria-hidden />}
+                  disabled={version === undefined}
+                  onClick={() =>
+                    navigate(`/journeys/${id}/versions/${versionId}/simulation`, {
+                      state: location.state,
+                    })
+                  }
+                >
+                  旅程模拟
+                </Button>
+                <Button
+                  icon={<ReloadOutlined aria-hidden />}
+                  loading={statsQuery.isFetching}
+                  onClick={() => void statsQuery.refetch()}
+                >
+                  刷新统计
+                </Button>
+                <Button onClick={() => navigate(`/journeys/${id}/editor`)}>查看当前编排</Button>
+              </Flex>
+            )
           }
         />
         {version !== undefined && snapshot !== undefined && (
@@ -338,14 +409,16 @@ export function JourneyVersionPage() {
 
       {version !== undefined && snapshot !== undefined && definition !== undefined && (
         <>
-          <JourneyVersionStatsSummary query={statsQuery} />
+          {!simulationPage && <JourneyVersionStatsSummary query={statsQuery} />}
           <section className={styles.viewCard} aria-label="版本统计与流程">
-            <Tabs
-              className={styles.tabs ?? ''}
-              activeKey={activeView}
-              items={versionTabs}
-              onChange={changeView}
-            />
+            {!simulationPage && (
+              <Tabs
+                className={styles.tabs ?? ''}
+                activeKey={activeView}
+                items={versionTabs}
+                onChange={changeView}
+              />
+            )}
             <div className={styles.searchBar}>
               <AutoComplete
                 value={searchValue}
@@ -370,7 +443,9 @@ export function JourneyVersionPage() {
               <Typography.Text type="secondary">
                 {activeView === 'stats'
                   ? '点击步骤名称，在流程中定位'
-                  : '选择匹配步骤，查看右侧运行统计'}
+                  : simulationPage
+                    ? '按当前发布版本模拟，点击步骤查看配置'
+                    : '选择匹配步骤，查看右侧运行统计'}
               </Typography.Text>
             </div>
             <div className={styles.viewArea}>
@@ -378,11 +453,13 @@ export function JourneyVersionPage() {
                 className={`${styles.viewPane ?? ''} ${activeView === 'stats' ? (styles.activeView ?? '') : ''}`}
                 aria-hidden={activeView !== 'stats'}
               >
-                <JourneyVersionStatsTable
-                  query={statsQuery}
-                  nodes={filteredStatsNodes}
-                  onLocate={locateNode}
-                />
+                {!simulationPage && (
+                  <JourneyVersionStatsTable
+                    query={statsQuery}
+                    nodes={filteredStatsNodes}
+                    onLocate={locateNode}
+                  />
+                )}
               </div>
               <div
                 className={`${styles.viewPane ?? ''} ${activeView === 'flow' ? (styles.activeView ?? '') : ''}`}
@@ -393,7 +470,9 @@ export function JourneyVersionPage() {
                     <section className={styles.canvasPanel} aria-label="版本画布">
                       <header className={styles.canvasHeader}>
                         <Typography.Text strong>旅程流程</Typography.Text>
-                        <Typography.Text type="secondary">点击步骤查看右侧统计</Typography.Text>
+                        <Typography.Text type="secondary">
+                          {simulationPage ? '点击步骤查看配置' : '点击步骤查看右侧统计'}
+                        </Typography.Text>
                       </header>
                       <div className={styles.canvas}>
                         <ReactFlow<JourneyCanvasFlowNode, Edge>
@@ -432,6 +511,19 @@ export function JourneyVersionPage() {
                               }
                             }
                           }}
+                          onNodeClick={() => {
+                            if (simulationPage) setConfigOpen(true);
+                          }}
+                          onKeyDown={(event) => {
+                            // 键盘再次选择同一步骤时也能重新打开配置，不依赖选中状态发生变化。
+                            if (
+                              simulationPage &&
+                              (event.key === 'Enter' || event.key === ' ') &&
+                              event.target instanceof Element &&
+                              event.target.closest('.react-flow__node')
+                            )
+                              setConfigOpen(true);
+                          }}
                           multiSelectionKeyCode={null}
                           onPaneClick={() => setSelectedNodeId(undefined)}
                           proOptions={{ hideAttribution: true }}
@@ -441,104 +533,112 @@ export function JourneyVersionPage() {
                         </ReactFlow>
                       </div>
                     </section>
-                    <Card
-                      title="步骤统计"
-                      className={styles.detailPanel ?? ''}
-                      styles={{ body: { flex: 1, minHeight: 0, overflow: 'auto' } }}
-                    >
-                      {selectedNode === undefined ? (
-                        <Empty
-                          image={Empty.PRESENTED_IMAGE_SIMPLE}
-                          description="选择画布中的步骤查看运行统计与配置"
+                    {simulationPage ? (
+                      <aside className={styles.simulationPanel} aria-label="模拟资料与结果">
+                        <JourneySimulationPanel
+                          key={versionId}
+                          journeyId={id}
+                          definition={definition}
+                          segmentRules={snapshot.entrySegment?.rules ?? null}
+                          simulation={simulation}
+                          onLocate={locateNode}
                         />
-                      ) : (
-                        <Flex vertical gap={12}>
-                          <Flex gap={10} align="center" wrap>
-                            <span className={styles.stepIcon ?? ''} aria-hidden>
-                              {
-                                journeyNodeOptions.find((item) => item.value === selectedNode.type)
-                                  ?.icon
-                              }
-                            </span>
-                            <Typography.Title
-                              level={4}
-                              style={{ margin: 0, overflowWrap: 'anywhere' }}
-                            >
-                              {selectedNode.name}
-                            </Typography.Title>
-                            <Tag>{selectedNodeTypeLabel}</Tag>
-                          </Flex>
-                          {statsQuery.data === undefined ? (
-                            <Flex justify="center" role="status" aria-label="正在读取步骤统计">
-                              {statsQuery.isPending ? (
-                                <Spin />
-                              ) : (
-                                <Typography.Text type="secondary">
-                                  统计暂时无法读取，请点击上方“刷新统计”按钮重试。
-                                </Typography.Text>
-                              )}
+                      </aside>
+                    ) : (
+                      <Card
+                        title="步骤统计"
+                        className={styles.detailPanel ?? ''}
+                        styles={{ body: { flex: 1, minHeight: 0, overflow: 'auto' } }}
+                      >
+                        {selectedNode === undefined ? (
+                          <Empty
+                            image={Empty.PRESENTED_IMAGE_SIMPLE}
+                            description="选择画布中的步骤查看运行统计与配置"
+                          />
+                        ) : (
+                          <Flex vertical gap={12}>
+                            <Flex gap={10} align="center" wrap>
+                              <span className={styles.stepIcon ?? ''} aria-hidden>
+                                {
+                                  journeyNodeOptions.find(
+                                    (item) => item.value === selectedNode.type,
+                                  )?.icon
+                                }
+                              </span>
+                              <Typography.Title
+                                level={4}
+                                style={{ margin: 0, overflowWrap: 'anywhere' }}
+                              >
+                                {selectedNode.name}
+                              </Typography.Title>
+                              <Tag>{selectedNodeTypeLabel}</Tag>
                             </Flex>
-                          ) : selectedNodeStats === undefined ? (
-                            <Typography.Text type="secondary">
-                              当前步骤暂无统计信息。
-                            </Typography.Text>
-                          ) : (
-                            <>
-                              <div className={styles.stepStatsGrid}>
-                                {displayedStats(selectedNodeStats).map(([label, value]) => (
-                                  <div key={label} className={styles.stepStat}>
-                                    <Typography.Text type="secondary">{label}</Typography.Text>
-                                    <Typography.Text strong className={styles.stepStatValue ?? ''}>
-                                      {value}
+                            {statsQuery.data === undefined ? (
+                              <Flex justify="center" role="status" aria-label="正在读取步骤统计">
+                                {statsQuery.isPending ? (
+                                  <Spin />
+                                ) : (
+                                  <Typography.Text type="secondary">
+                                    统计暂时无法读取，请点击上方“刷新统计”按钮重试。
+                                  </Typography.Text>
+                                )}
+                              </Flex>
+                            ) : selectedNodeStats === undefined ? (
+                              <Typography.Text type="secondary">
+                                当前步骤暂无统计信息。
+                              </Typography.Text>
+                            ) : (
+                              <>
+                                <div className={styles.stepStatsGrid}>
+                                  {displayedStats(selectedNodeStats).map(([label, value]) => (
+                                    <div key={label} className={styles.stepStat}>
+                                      <Typography.Text type="secondary">{label}</Typography.Text>
+                                      <Typography.Text
+                                        strong
+                                        className={styles.stepStatValue ?? ''}
+                                      >
+                                        {value}
+                                      </Typography.Text>
+                                    </div>
+                                  ))}
+                                </div>
+                                {(selectedNodeStats.conditionBranch !== null ||
+                                  selectedNodeStats.waitOutcome !== null) && (
+                                  <div className={styles.branchStats}>
+                                    <Typography.Text type="secondary">分支分布</Typography.Text>
+                                    <Typography.Text strong>
+                                      {branchText(selectedNodeStats)}
                                     </Typography.Text>
                                   </div>
-                                ))}
-                              </div>
-                              {(selectedNodeStats.conditionBranch !== null ||
-                                selectedNodeStats.waitOutcome !== null) && (
-                                <div className={styles.branchStats}>
-                                  <Typography.Text type="secondary">分支分布</Typography.Text>
-                                  <Typography.Text strong>
-                                    {branchText(selectedNodeStats)}
-                                  </Typography.Text>
-                                </div>
-                              )}
-                            </>
-                          )}
-                          <Collapse
-                            className={styles.configCollapse ?? ''}
-                            items={[
-                              {
-                                key: 'configuration',
-                                label: '步骤配置',
-                                children: (
-                                  <Descriptions layout="vertical" column={1} colon={false}>
-                                    {journeyNodeDetails(selectedNode).map((item) => (
-                                      <Descriptions.Item key={item.label} label={item.label}>
-                                        <div
-                                          className={
-                                            item.isMessageBody
-                                              ? (styles.messageBody ?? '')
-                                              : (styles.detailValue ?? '')
-                                          }
-                                        >
-                                          {item.value}
-                                        </div>
-                                      </Descriptions.Item>
-                                    ))}
-                                  </Descriptions>
-                                ),
-                              },
-                            ]}
-                          />
-                        </Flex>
-                      )}
-                    </Card>
+                                )}
+                              </>
+                            )}
+                            <Collapse
+                              className={styles.configCollapse ?? ''}
+                              items={[
+                                {
+                                  key: 'configuration',
+                                  label: '步骤配置',
+                                  children: nodeConfiguration,
+                                },
+                              ]}
+                            />
+                          </Flex>
+                        )}
+                      </Card>
+                    )}
                   </div>
                 </div>
               </div>
             </div>
           </section>
+          <Drawer
+            title={selectedNode?.name ?? '步骤配置'}
+            open={simulationPage && configOpen && selectedNode !== undefined}
+            onClose={() => setConfigOpen(false)}
+          >
+            {nodeConfiguration}
+          </Drawer>
           {snapshot.entrySegment !== null && (
             <EntrySegmentRulesDrawer
               open={rulesOpen}

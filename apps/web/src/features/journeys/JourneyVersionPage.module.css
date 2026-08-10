@@ -1,11 +1,9 @@
 .page {
-  position: fixed;
-  inset: 0;
+  position: relative;
   display: flex;
-  min-height: 0;
+  min-height: 100dvh;
   flex-direction: column;
   gap: 12px;
-  overflow: hidden;
   padding: 0 24px 16px;
   background: var(--ant-color-bg-layout, #f5f5f5);
 }
@@ -59,7 +57,7 @@
   display: flex;
   min-width: 0;
   min-height: 0;
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   flex-direction: column;
   overflow: hidden;
   border: 1px solid var(--ant-color-border-secondary, #f0f0f0);
@@ -104,8 +102,6 @@
 }
 
 .viewPane {
-  position: absolute;
-  inset: 12px 16px 16px;
   display: none;
 }
 
@@ -117,7 +113,8 @@
   display: flex;
   min-width: 0;
   min-height: 0;
-  height: 100%;
+  /* 详情与版本模拟都保留完整操作区，上方信息通过页面滚动让出空间。 */
+  height: max(640px, calc(100dvh - 160px));
   flex-direction: column;
 }
 
@@ -168,6 +165,22 @@
   min-height: 0;
   flex-direction: column;
   overflow: hidden;
+}
+
+.simulationPanel {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: auto;
+  padding: 16px;
+  border: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+  border-radius: 8px;
+}
+
+.simulationEdge :global(.react-flow__edge-path) {
+  stroke: var(--ant-color-warning, #faad14);
+  stroke-width: 2.25;
 }
 
 .detailPanel :global(.ant-card-head) {
@@ -288,10 +301,6 @@
 
   .viewArea {
     padding: 8px;
-  }
-
-  .viewPane {
-    inset: 8px;
   }
 
   .flowWorkspace {
