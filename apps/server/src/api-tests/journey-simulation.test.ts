@@ -394,7 +394,20 @@ describe('旅程模拟接口', () => {
 });
 
 describe('模拟消息变量', () => {
-  it('实际文案超长时返回具体失败原因，不返回部分轨迹', async () => {
+  it.each([
+    {
+      field: '正文',
+      body: `${'a'.repeat(1_992)}{{商品名称}}`,
+      subject: null,
+      reason: '「欢迎消息」的消息内容替换后超过 2000 字，请精简后重试',
+    },
+    {
+      field: '邮件主题',
+      body: '您好 {{用户昵称}}',
+      subject: `${'a'.repeat(192)}{{商品名称}}`,
+      reason: '「欢迎消息」的邮件主题替换后超过 200 字，请精简后重试',
+    },
+  ])('$field 替换后超长时返回具体失败原因，不返回部分轨迹', async ({ body, subject, reason }) => {
     await seedCampaign();
     await seedSegment();
     await seedJourney();
@@ -414,9 +427,9 @@ describe('模拟消息变量', () => {
           type: 'message',
           name: '欢迎消息',
           position: { x: 0, y: 100 },
-          channel: 'sms',
-          subject: null,
-          body: `${'a'.repeat(1_992)}{{商品名称}}`,
+          channel: subject === null ? 'sms' : 'email',
+          subject,
+          body,
         },
         { id: 'end', type: 'end', name: '结束', position: { x: 0, y: 200 }, note: null },
       ],
@@ -442,9 +455,8 @@ describe('模拟消息变量', () => {
       });
 
       expect(response.statusCode).toBe(400);
-      expect(response.json().error.message).toBe(
-        '「欢迎消息」的消息内容替换后超过 2000 字，请精简后重试',
-      );
+      expect(response.json().error.message).toBe(reason);
+      expect(response.json()).not.toHaveProperty('data');
     } finally {
       await app.close();
     }

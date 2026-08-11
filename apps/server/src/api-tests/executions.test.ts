@@ -1037,7 +1037,11 @@ describe('活动锁竞争顺序', () => {
 });
 
 describe('消息内容变量', () => {
-  function messageJourney(body: string, options: { waitSeconds?: number } = {}) {
+  function messageJourney(
+    body: string,
+    options: { waitSeconds?: number; subject?: string | null } = {},
+  ) {
+    const subject = options.subject ?? null;
     const nodes: unknown[] = [
       {
         id: 'start',
@@ -1068,8 +1072,8 @@ describe('消息内容变量', () => {
         type: 'message',
         name: '欢迎消息',
         position: { x: 0, y: 200 },
-        channel: 'sms',
-        subject: null,
+        channel: subject === null ? 'sms' : 'email',
+        subject,
         body,
       },
       { id: 'end', type: 'end', name: '结束', position: { x: 0, y: 300 }, note: null },
@@ -1079,11 +1083,18 @@ describe('消息内容变量', () => {
     return { layoutDirection: 'vertical', nodes, edges };
   }
 
-  it('消息步骤保存替换后的最终文案', async () => {
+  it.each([
+    { channel: 'sms', subject: null, expectedSubject: null },
+    {
+      channel: 'email',
+      subject: '{{用户昵称}}，看看 {{商品名称}}',
+      expectedSubject: '霖铃铃，看看 无线耳机',
+    },
+  ])('$channel 消息步骤保存替换后的最终正文和主题', async ({ subject, expectedSubject }) => {
     await setupUser();
     await publishTestJourney(db, {
       name: '消息变量旅程',
-      definition: messageJourney('您好 {{用户昵称}}，欢迎查看 {{商品名称}}'),
+      definition: messageJourney('您好 {{用户昵称}}，欢迎查看 {{商品名称}}', { subject }),
     });
 
     const started = await ingestEvent({ payload: { productId: 'p1', productName: '无线耳机' } });
@@ -1094,6 +1105,8 @@ describe('消息内容变量', () => {
     expect(execution.steps.find((step) => step.nodeType === 'message')?.output).toMatchObject({
       kind: 'message',
       body: '您好 霖铃铃，欢迎查看 无线耳机',
+      subject: expectedSubject,
+      demo: true,
     });
   });
 
@@ -1138,25 +1151,43 @@ describe('消息内容变量', () => {
     });
   });
 
-  it('替换后的正文超过上限时标记失败，不写成功消息也不继续推进', async () => {
-    await setupUser();
-    await publishTestJourney(db, {
-      name: '超长消息旅程',
-      definition: messageJourney(`${'a'.repeat(1_992)}{{商品名称}}`),
-    });
+  it.each([
+    {
+      field: '正文',
+      body: `${'a'.repeat(1_992)}{{商品名称}}`,
+      subject: null,
+      reason: '「欢迎消息」的消息内容替换后超过 2000 字，请精简后重试',
+    },
+    {
+      field: '邮件主题',
+      body: '您好 {{用户昵称}}',
+      subject: `${'a'.repeat(192)}{{商品名称}}`,
+      reason: '「欢迎消息」的邮件主题替换后超过 200 字，请精简后重试',
+    },
+  ])(
+    '$field 替换后超长时保存失败原因，不写成功消息也不继续推进',
+    async ({ body, subject, reason }) => {
+      await setupUser();
+      await publishTestJourney(db, {
+        name: '超长消息旅程',
+        definition: messageJourney(body, { subject }),
+      });
 
-    const started = await ingestEvent({
-      payload: { productId: 'p1', productName: 'x'.repeat(180) },
-    });
-    const executionId = started.executions[0]!.id;
-    expect(await advance(executionId, 0)).toBe('failed');
+      const started = await ingestEvent({
+        payload: { productId: 'p1', productName: 'x'.repeat(180) },
+      });
+      const executionId = started.executions[0]!.id;
+      expect(await advance(executionId, 0)).toBe('failed');
 
-    const execution = await executionWithSteps(executionId);
-    expect(execution.status).toBe('failed');
-    expect(execution.failureReason).toContain('替换后超过 2000 字');
-    expect(execution.steps.find((step) => step.nodeType === 'message')).toMatchObject({
-      status: 'failed',
-    });
-    expect(execution.steps.some((step) => step.nodeType === 'end')).toBe(false);
-  });
+      const execution = await executionWithSteps(executionId);
+      expect(execution.status).toBe('failed');
+      expect(execution.failureReason).toBe(reason);
+      expect(execution.steps.find((step) => step.nodeType === 'message')).toMatchObject({
+        status: 'failed',
+        failureReason: reason,
+        output: { kind: 'failed', reason },
+      });
+      expect(execution.steps.some((step) => step.nodeType === 'end')).toBe(false);
+    },
+  );
 });

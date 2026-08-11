@@ -1,5 +1,4 @@
 import type { Prisma, PrismaClient } from '@prisma/client';
-import { renderJourneyMessage } from '@journeylens/shared';
 import {
   compareSegmentValue,
   readSegmentRuleValue,
@@ -11,6 +10,7 @@ import {
   type EventCandidate,
 } from '../journeys/event-matching.js';
 import { lockCampaignForExecution } from '../campaigns/campaign-lock.js';
+import { renderJourneyMessageContent } from '../journeys/message-content.js';
 import { completeExecutionByGoal, findGoalEvent } from './goal.js';
 import type {
   EventSummary,
@@ -478,31 +478,15 @@ async function processNode(
     const next = nextNode(context.definition, node);
     const nickname = context.audience.displayName;
     const productName = readTriggerProductName(context.triggerEvent.payload);
-    const body = renderJourneyMessage({
-      template: node.body,
+    const message = renderJourneyMessageContent({
+      nodeName: node.name,
+      body: node.body,
+      subject: node.subject,
       nickname,
       productName,
-      field: 'body',
     });
-    if (!body.ok) {
-      throw new ExecutionBusinessError(
-        `「${node.name}」的消息内容替换后超过 ${body.maxLength} 字，请精简后重试`,
-      );
-    }
-    let subject: string | null = null;
-    if (node.subject !== null) {
-      const renderedSubject = renderJourneyMessage({
-        template: node.subject,
-        nickname,
-        productName,
-        field: 'subject',
-      });
-      if (!renderedSubject.ok) {
-        throw new ExecutionBusinessError(
-          `「${node.name}」的邮件主题替换后超过 ${renderedSubject.maxLength} 字，请精简后重试`,
-        );
-      }
-      subject = renderedSubject.text;
+    if (!message.ok) {
+      throw new ExecutionBusinessError(message.reason);
     }
 
     await createStep(
@@ -512,8 +496,8 @@ async function processNode(
       {
         kind: 'message',
         channel: node.channel,
-        subject,
-        body: body.text,
+        subject: message.subject,
+        body: message.body,
         audienceUserId: context.execution.audienceUserId,
         demo: true,
       },

@@ -330,7 +330,21 @@ describe('模拟消息变量', () => {
     const result = simulateJourney({ definition, scenario, segment: null });
     expect(result.steps.find((step) => step.nodeType === 'message')).toMatchObject({
       body: '顾客/该商品',
+      subject: null,
     });
+  });
+
+  it('替换后的主题超过上限时保留试算的业务错误类型与完整原因', () => {
+    const scenario = makeScenario();
+    scenario.entryEvent.payload.productName = 'x'.repeat(180);
+    const definition = messageDefinition('您好 {{用户昵称}}', `${'a'.repeat(192)}{{商品名称}}`);
+
+    expect(() => simulateJourney({ definition, scenario, segment: null })).toThrow(
+      JourneySimulationMessageError,
+    );
+    expect(() => simulateJourney({ definition, scenario, segment: null })).toThrow(
+      '「欢迎消息」的邮件主题替换后超过 200 字，请精简后重试',
+    );
   });
 
   it('替换后的正文超过上限时按请求失败处理', () => {
