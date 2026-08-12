@@ -4,7 +4,6 @@ import {
   COMPARISON_OPERATOR_LABELS,
   JOURNEY_ENTRY_BEHAVIOR_VALUES,
   JOURNEY_EVENT_TYPE_LABELS,
-  JOURNEY_WAIT_MAX_SECONDS,
   journeyEventFields,
   journeyEventField,
   journeyEventHasProductId,
@@ -15,11 +14,14 @@ import {
   type SegmentRuleCompare,
 } from '@journeylens/shared';
 import { RuleCompareFields } from '@/components/RuleCompareFields';
+import { JourneyDurationInput } from './JourneyDurationInput';
 
 type Props = {
   value: JourneyConditionRule;
   startBehavior: JourneyEventType | undefined;
   disabled?: boolean;
+  /** 共享草稿校验给出的统计时间窗口错误；没有错误时为 undefined。 */
+  windowSecondsError?: string | undefined;
   onChange: (value: JourneyConditionRule) => void;
 };
 
@@ -238,6 +240,7 @@ export function JourneyConditionFields({
   value,
   startBehavior,
   disabled = false,
+  windowSecondsError,
   onChange,
 }: Props) {
   if (value.kind === 'compare' && value.left.source === 'user') {
@@ -368,20 +371,22 @@ export function JourneyConditionFields({
         }
       />
       <Flex vertical gap={4}>
-        <Typography.Text type="secondary">统计时间窗口（秒）</Typography.Text>
-        <InputNumber
-          aria-label="统计时间窗口（秒）"
+        <Typography.Text type="secondary">统计时间窗口</Typography.Text>
+        <JourneyDurationInput
+          label="统计时间窗口"
+          seconds={value.windowSeconds}
           disabled={disabled}
           min={1}
-          max={JOURNEY_WAIT_MAX_SECONDS}
-          precision={0}
-          value={value.windowSeconds}
-          style={{ width: '100%' }}
+          hasError={windowSecondsError !== undefined}
           // 清空时保留上一次的有效数字，不把 0 写进规则。
           onChange={(windowSeconds) => {
             if (windowSeconds !== null) onChange({ ...value, windowSeconds });
           }}
         />
+        {/* 窗口不再截断输入，超限时就地说明原因，流程检查里保留同一条问题。 */}
+        {windowSecondsError !== undefined && (
+          <Typography.Text type="danger">{windowSecondsError}</Typography.Text>
+        )}
       </Flex>
       <JourneyEventFilterFields
         eventType={value.eventType}

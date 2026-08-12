@@ -253,6 +253,79 @@ afterEach(() => {
 });
 
 describe('执行轨迹详情', () => {
+  it('触发行为展示明确空值和零，继续省略未提供的属性', async () => {
+    mock.onGet(`/executions/${executionId}/trace`).reply(200, {
+      data: {
+        ...completedTrace,
+        triggerEvent: {
+          ...completedTrace.triggerEvent,
+          payload: { productId: 'product-1', productName: null, price: 0 },
+        },
+      },
+    });
+    renderApp();
+    fireEvent.click(await screen.findByRole('tab', { name: '触发行为' }));
+
+    expect(await screen.findByText('未填写')).toBeTruthy();
+    expect(screen.getByText('商品名称')).toBeTruthy();
+    expect(screen.getByText('0')).toBeTruthy();
+    expect(screen.queryByText('商品类目')).toBeNull();
+    expect(screen.queryByText('null')).toBeNull();
+  });
+
+  it('目标行为也展示明确空值并省略未提供的属性', async () => {
+    mock.onGet(`/executions/${executionId}/trace`).reply(200, {
+      data: {
+        ...goalTrace,
+        goal: {
+          ...goalTrace.goal,
+          event: { ...goalTrace.goal.event, payload: { productName: null, amount: 0 } },
+        },
+      },
+    });
+    renderApp();
+
+    expect(await screen.findByText('未填写')).toBeTruthy();
+    expect(screen.getByText('商品名称')).toBeTruthy();
+    expect(screen.getByText('0')).toBeTruthy();
+    expect(screen.queryByText('商品 ID')).toBeNull();
+    expect(screen.queryByText('null')).toBeNull();
+  });
+
+  it.each([
+    { actual: { exists: false }, expected: '未提供' },
+    { actual: { exists: true, value: null }, expected: '未填写' },
+    { actual: { exists: true, value: [] }, expected: '空列表' },
+  ])('条件证据保留不同的空值含义：$expected', async ({ actual, expected }) => {
+    mock.onGet(`/executions/${executionId}/trace`).reply(200, {
+      data: {
+        ...completedTrace,
+        steps: [
+          {
+            ...baseStep,
+            nodeId: 'condition',
+            nodeName: '兴趣判断',
+            nodeType: 'condition',
+            output: {
+              kind: 'condition',
+              rule: {
+                kind: 'compare',
+                left: { source: 'user', path: 'interests' },
+                operator: 'contains',
+                right: '咖啡',
+              },
+              matched: false,
+              branch: 'unmet',
+              evidence: { kind: 'value', evaluatedAt: baseStep.startedAt, actual },
+            },
+          },
+        ],
+      },
+    });
+    renderApp();
+    expect(await screen.findByText(`实际：${expected}，走“不满足”路径`)).toBeTruthy();
+  });
+
   it('展示固定版本、触发行为、当步证据、等待窗口和演示消息', async () => {
     mock.onGet(`/executions/${executionId}/trace`).reply(200, { data: completedTrace });
     const router = renderApp();
@@ -284,7 +357,7 @@ describe('执行轨迹详情', () => {
     expect(screen.getByText(/等到匹配行为/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /5\. 购买感谢消息/ }));
     expect(screen.getByText('感谢购买，我们会尽快为你安排发货。')).toBeTruthy();
-    expect(screen.getByText('短信 · 演示发送')).toBeTruthy();
+    expect(screen.getByText('短信')).toBeTruthy();
     expect(screen.getAllByText(/用户在等待窗口内完成了同商品购买/).length).toBeGreaterThan(0);
     expect(screen.queryByText('每 3 秒自动刷新')).toBeNull();
 

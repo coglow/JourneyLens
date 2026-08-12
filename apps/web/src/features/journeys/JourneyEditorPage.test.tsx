@@ -1134,6 +1134,84 @@ describe('旅程编排页面', () => {
     expect(screen.getByText('等待设置：1 天')).toBeTruthy();
   });
 
+  it('等待行为按单位编辑后仍按秒保存，超限时保留输入并阻止保存', async () => {
+    vi.mocked(getJourney).mockResolvedValue({
+      ...journey,
+      draftDefinition: {
+        ...aiCandidate,
+        nodes: [
+          aiCandidate.nodes[0]!,
+          {
+            id: 'wait-event',
+            type: 'wait_for_event',
+            name: '等购买',
+            position: { x: 0, y: 160 },
+            eventType: 'purchase_completed',
+            waitSeconds: 86_400,
+            sameProduct: true,
+          },
+          aiCandidate.nodes[1]!,
+        ],
+        edges: [
+          { id: 'start-wait', source: 'ai-start', target: 'wait-event' },
+          { id: 'matched', source: 'wait-event', target: 'ai-end', branch: 'matched' },
+          { id: 'timeout', source: 'wait-event', target: 'ai-end', branch: 'timeout' },
+        ],
+      },
+    });
+    renderEditor();
+    fireEvent.click(await screen.findByLabelText('等待行为：等购买'));
+
+    const durationInput = screen.getByLabelText('最长等待时间数值') as HTMLInputElement;
+    expect(durationInput.value).toBe('1');
+    expect(screen.getByText('天')).toBeTruthy();
+
+    fireEvent.change(durationInput, { target: { value: '2' } });
+    fireEvent.blur(durationInput);
+    fireEvent.mouseDown(screen.getByLabelText('最长等待时间单位'));
+    fireEvent.click(screen.getByText('小时'));
+    expect(durationInput.value).toBe('2');
+    expect(screen.getByText('等完成购买，最多2 小时')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '保存编排' }));
+
+    await waitFor(() => expect(saveJourneyDraft).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(saveJourneyDraft).mock.calls[0]?.[1].draftDefinition.nodes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'wait-event',
+          eventType: 'purchase_completed',
+          waitSeconds: 7_200,
+          sameProduct: true,
+        }),
+      ]),
+    );
+    await waitFor(() =>
+      expect((screen.getByRole('button', { name: '保存编排' }) as HTMLButtonElement).disabled).toBe(
+        true,
+      ),
+    );
+
+    fireEvent.mouseDown(screen.getByLabelText('最长等待时间单位'));
+    fireEvent.click(screen.getByText('天'));
+    fireEvent.change(durationInput, { target: { value: '31' } });
+    fireEvent.blur(durationInput);
+    expect(
+      await within(screen.getByRole('tabpanel', { name: '步骤设置' })).findByText(
+        '最长等待时间最多 30 天',
+      ),
+    ).toBeTruthy();
+    expect(durationInput.value).toBe('31');
+    expect(durationInput.closest('.ant-input-number')?.className).toContain(
+      'ant-input-number-status-error',
+    );
+    expect((screen.getByRole('button', { name: '保存编排' }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+    fireEvent.click(screen.getByRole('button', { name: '保存编排' }));
+    await new Promise((resolve) => setTimeout(resolve, 900));
+    expect(saveJourneyDraft).toHaveBeenCalledTimes(1);
+  });
+
   it('超限等待输入不截断，并阻止手动和自动保存', async () => {
     vi.mocked(getJourney).mockResolvedValue({
       ...journey,
@@ -1180,6 +1258,68 @@ describe('旅程编排页面', () => {
 
     await new Promise((resolve) => setTimeout(resolve, 900));
     expect(saveJourneyDraft).not.toHaveBeenCalled();
+  });
+
+  it('统计时间窗口超过 30 天时就地提示并阻止保存', async () => {
+    vi.mocked(getJourney).mockResolvedValue({
+      ...journey,
+      draftDefinition: {
+        layoutDirection: 'vertical',
+        nodes: [
+          {
+            id: 'start',
+            type: 'start',
+            name: '开始',
+            position: { x: 0, y: 0 },
+            entryBehavior: 'product_viewed',
+          },
+          {
+            id: 'condition',
+            type: 'condition',
+            name: '高价值用户',
+            position: { x: 0, y: 160 },
+            rules: {
+              kind: 'event_count',
+              eventType: 'purchase_completed',
+              windowSeconds: 604_800,
+              sameProduct: false,
+              operator: 'gte',
+              right: 1,
+            },
+          },
+          { id: 'end', type: 'end', name: '结束', position: { x: 0, y: 320 }, note: null },
+        ],
+        edges: [
+          { id: 'start-condition', source: 'start', target: 'condition' },
+          { id: 'condition-end', source: 'condition', target: 'end', branch: 'met' },
+        ],
+      },
+    });
+    renderEditor();
+    await screen.findByRole('heading', { name: '欢迎旅程' });
+    fireEvent.click(screen.getByLabelText('条件分支：高价值用户'));
+
+    const windowInput = (await screen.findByLabelText('统计时间窗口数值')) as HTMLInputElement;
+    expect(windowInput.value).toBe('7');
+    fireEvent.change(windowInput, { target: { value: '31' } });
+    fireEvent.blur(windowInput);
+
+    // 设置面板就地提示，流程检查保留同一条错误做全局兜底。
+    expect(
+      await within(screen.getByRole('tabpanel', { name: '步骤设置' })).findByText(
+        '统计时间窗口最多 30 天',
+      ),
+    ).toBeTruthy();
+    expect(windowInput.value).toBe('31');
+    expect(windowInput.closest('.ant-input-number')?.className).toContain(
+      'ant-input-number-status-error',
+    );
+    expect(
+      within(screen.getByRole('region', { name: '流程检查' })).getByText('统计时间窗口最多 30 天'),
+    ).toBeTruthy();
+    expect((screen.getByRole('button', { name: '保存编排' }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
   });
 
   it('条件节点只配置一条比较判断并保存为单个比较规则', async () => {

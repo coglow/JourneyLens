@@ -7,7 +7,7 @@ import {
   type JourneyEventType,
   type JourneyDraftNode,
 } from '@journeylens/shared';
-import { Checkbox, Divider, Flex, Input, InputNumber, Select, Typography } from 'antd';
+import { Checkbox, Divider, Flex, Input, Select, Typography } from 'antd';
 import { JourneyConditionFields, JourneyEventFilterFields } from './JourneyConditionFields';
 import { JourneyDurationInput } from './JourneyDurationInput';
 import { JourneyMessageFields } from './JourneyMessageFields';
@@ -22,6 +22,8 @@ type Props = {
   hasUniqueStart: boolean;
   /** 共享草稿校验给出的等待时长错误；没有错误时为 undefined，调用方总是显式传入。 */
   waitSecondsError: string | undefined;
+  /** 共享草稿校验给出的条件统计时间窗口错误，规则同上。 */
+  windowSecondsError: string | undefined;
   messageSubjectError: string | undefined;
   messageBodyError: string | undefined;
 };
@@ -31,6 +33,7 @@ function NodeFields({
   disabled,
   onChange,
   waitSecondsError,
+  windowSecondsError,
   startBehavior,
   hasUniqueStart,
   messageSubjectError,
@@ -59,6 +62,7 @@ function NodeFields({
           value={node.rules}
           disabled={disabled}
           startBehavior={startBehavior}
+          windowSecondsError={windowSecondsError}
           onChange={(rules) => onChange({ ...node, rules })}
         />
       </>
@@ -113,17 +117,14 @@ function NodeFields({
             })
           }
         />
-        <Typography.Text type="secondary">最长等待时间（秒）</Typography.Text>
-        <InputNumber
-          aria-label="最长等待时间（秒）"
+        <Typography.Text type="secondary">最长等待时间</Typography.Text>
+        <JourneyDurationInput
+          label="最长等待时间"
+          seconds={node.waitSeconds}
           min={1}
-          max={JOURNEY_WAIT_MAX_SECONDS}
-          precision={0}
-          value={node.waitSeconds}
-          status={waitSecondsError === undefined ? '' : 'error'}
           disabled={disabled}
-          style={{ width: '100%' }}
-          onChange={(value) => onChange({ ...node, waitSeconds: value ?? 0 })}
+          hasError={waitSecondsError !== undefined}
+          onChange={(seconds) => onChange({ ...node, waitSeconds: seconds ?? 0 })}
         />
         <JourneyEventFilterFields
           eventType={node.eventType}
@@ -183,6 +184,7 @@ export function JourneyNodeSettings({
   disabled,
   onChange,
   waitSecondsError,
+  windowSecondsError,
   startBehavior,
   hasUniqueStart,
   messageSubjectError,
@@ -206,6 +208,7 @@ export function JourneyNodeSettings({
         disabled={disabled}
         onChange={onChange}
         waitSecondsError={waitSecondsError}
+        windowSecondsError={windowSecondsError}
         startBehavior={startBehavior}
         hasUniqueStart={hasUniqueStart}
         messageSubjectError={messageSubjectError}

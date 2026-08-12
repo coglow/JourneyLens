@@ -32,12 +32,12 @@ import { journeyNodeOptions } from '@/features/journeys/journey-node-options';
 import {
   formatSimulationEvent,
   formatSimulationTimePoint,
-  formatSimulationValue,
 } from '@/features/journeys/simulation-display';
+import { formatFieldValue } from '@/utils/format-field-value';
 import styles from './JourneySimulationPanel.module.css';
 
 function actualValue(actual: SimulationEvidenceValue, field: SimulationField | undefined): string {
-  return actual.exists ? formatSimulationValue(actual.value, field) : '没有这项信息';
+  return formatFieldValue(actual.exists ? actual.value : undefined, field);
 }
 
 /** 比较条件的左值字段：用户资料查受众目录，进入行为属性查行为目录。 */
@@ -54,11 +54,7 @@ function ruleText(rule: SegmentRule): string {
   if (rule.kind === 'not') return `不满足：${ruleText(rule.child)}`;
   const labels = getSegmentComparisonLabels(rule);
   const field = audienceField(rule.left.path);
-  const value = Array.isArray(rule.right)
-    ? rule.right.map((item) => formatSimulationValue(item, field)).join('、')
-    : rule.right === undefined
-      ? ''
-      : formatSimulationValue(rule.right, field);
+  const value = rule.right === undefined ? '' : formatFieldValue(rule.right, field);
   return rule.operator === 'exists'
     ? `${labels.fieldLabel} ${labels.operatorLabel}`
     : `${labels.fieldLabel} ${labels.operatorLabel} ${value}`;
@@ -67,7 +63,7 @@ function ruleText(rule: SegmentRule): string {
 function filterText(eventType: JourneyEventType, filter: JourneyEventFilter): string {
   const field = journeyEventField(eventType, filter.path);
   if (filter.operator === 'exists') return `${field?.label ?? filter.path}已填写`;
-  return `${field?.label ?? filter.path} ${COMPARISON_OPERATOR_LABELS[filter.operator]} ${formatSimulationValue(filter.right, field)}`;
+  return `${field?.label ?? filter.path} ${COMPARISON_OPERATOR_LABELS[filter.operator]} ${formatFieldValue(filter.right, field)}`;
 }
 
 function conditionDescription(rule: JourneyConditionRule): string {
@@ -82,7 +78,7 @@ function conditionDescription(rule: JourneyConditionRule): string {
     return ruleText(rule as Extract<SegmentRule, { kind: 'compare' }>);
 
   const field = journeyEventField(rule.left.eventType, rule.left.path);
-  const right = rule.right === undefined ? '' : formatSimulationValue(rule.right, field);
+  const right = rule.right === undefined ? '' : formatFieldValue(rule.right, field);
   return rule.operator === 'exists'
     ? `进入行为的${field?.label ?? '属性'}已填写`
     : `进入行为的${field?.label ?? '属性'} ${COMPARISON_OPERATOR_LABELS[rule.operator]} ${right}`;
@@ -160,11 +156,7 @@ function stepSummary(step: JourneySimulationStep): string {
         return `实际 ${step.evidence.count} 次 → ${branch}`;
       }
       const field = ruleField(step.rule);
-      const actual = step.evidence.actual;
-      const value =
-        !actual.exists || actual.value === null
-          ? `${field?.label ?? '判断所需信息'}未填写`
-          : `${field?.label ?? '实际值'}：${actualValue(actual, field)}`;
+      const value = `${field?.label ?? '实际值'}：${actualValue(step.evidence.actual, field)}`;
       return `${value} → ${branch}`;
     }
     case 'wait':

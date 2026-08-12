@@ -242,6 +242,13 @@ export function JourneyEditorPage() {
           (issue) => issue.nodeId === selectedNode.id && issue.path.at(-1) === 'waitSeconds',
         )?.message
       : undefined;
+  // 条件统计时间窗口的错误同理由共享草稿校验产生，就地提示与等待时长保持一致。
+  const windowSecondsError =
+    selectedNode?.data.draftNode.type === 'condition'
+      ? canvas.issues.find(
+          (issue) => issue.nodeId === selectedNode.id && issue.path.at(-1) === 'windowSeconds',
+        )?.message
+      : undefined;
   const startNodes = canvas.currentDefinition.nodes.filter((node) => node.type === 'start');
   const startBehavior = startNodes[0]?.entryBehavior;
   const hasUniqueStart = startNodes.length === 1;
@@ -536,6 +543,7 @@ export function JourneyEditorPage() {
                       node={selectedNode.data.draftNode}
                       disabled={!canEdit || showSimulationPage}
                       waitSecondsError={waitSecondsError}
+                      windowSecondsError={windowSecondsError}
                       startBehavior={startBehavior}
                       hasUniqueStart={hasUniqueStart}
                       messageSubjectError={messageSubjectError}

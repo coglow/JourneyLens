@@ -12,6 +12,7 @@ import { PageHeader } from '@/components/PageHeader';
 import { ApiError, getApiErrorMessage, isSessionExpired } from '@/services/api';
 import { getEvent } from '@/services/events';
 import { formatDateTime } from '@/utils/format-date-time';
+import { formatFieldValue } from '@/utils/format-field-value';
 import { EventExecutionsSection } from './components/EventExecutionsSection';
 import { eventQueryKeys } from './event-queries';
 
@@ -23,14 +24,6 @@ function readReturnTo(state: unknown): string {
     : '';
 }
 
-function formatEventValue(
-  field: { values?: readonly { value: string; label: string }[] },
-  value: unknown,
-): string {
-  if (Array.isArray(value)) return value.join('、');
-  return field.values?.find((item) => item.value === value)?.label ?? String(value);
-}
-
 function eventDescriptions(event: EventDetail) {
   const fields = journeyEventFields(event.type);
   const content = fields.flatMap((field) =>
@@ -39,7 +32,7 @@ function eventDescriptions(event: EventDetail) {
           {
             key: field.key,
             label: field.label,
-            children: formatEventValue(field, event.payload[field.key]),
+            children: formatFieldValue(event.payload[field.key], field),
           },
         ]
       : [],

@@ -20,6 +20,7 @@ import {
   type ExecutionTrace,
 } from '@journeylens/shared';
 import { formatDateTime } from '@/utils/format-date-time';
+import { formatFieldValue } from '@/utils/format-field-value';
 import { formatWaitDuration } from '@/features/journeys/journey-wait';
 import { SegmentRuleView } from '@/features/segments/components/SegmentRuleView';
 import {
@@ -39,20 +40,6 @@ const NODE_TYPE_LABELS: Record<JourneyNodeType, string> = {
 
 type FieldDefinition = Pick<JourneyEventField, 'label' | 'values'>;
 
-function optionLabel(
-  field: FieldDefinition | undefined,
-  value: unknown,
-  fallback = '未填写',
-): string {
-  if (value === undefined || value === null) return fallback;
-  if (typeof value === 'boolean') return value ? '是' : '否';
-  if (Array.isArray(value)) {
-    return value.map((item) => optionLabel(field, item)).join('、');
-  }
-  const option = field?.values?.find((item) => item.value === value);
-  return option?.label ?? String(value);
-}
-
 function eventField(eventType: keyof typeof JOURNEY_EVENT_TYPE_LABELS, path: string) {
   return journeyEventField(eventType, path);
 }
@@ -63,7 +50,8 @@ function compareText(
   field: FieldDefinition | undefined,
 ): string {
   if (operator === 'exists') return '已填写';
-  return `${COMPARISON_OPERATOR_LABELS[operator]} ${optionLabel(field, right, '')}`.trim();
+  const value = right === undefined ? '' : formatFieldValue(right, field);
+  return `${COMPARISON_OPERATOR_LABELS[operator]} ${value}`.trim();
 }
 
 function conditionDescription(rule: JourneyConditionRule): string {
@@ -98,12 +86,13 @@ function conditionActual(output: ConditionOutput): string {
   }
 
   const rule = output.rule;
-  if (rule.kind !== 'compare' || !output.evidence.actual.exists) return '实际：未填写';
+  if (rule.kind !== 'compare' || !output.evidence.actual.exists)
+    return `实际：${formatFieldValue(undefined)}`;
   const field =
     rule.left.source === 'user'
       ? audienceField(rule.left.path)
       : eventField(rule.left.eventType, rule.left.path);
-  return `实际：${optionLabel(field, output.evidence.actual.value)}`;
+  return `实际：${formatFieldValue(output.evidence.actual.value, field)}`;
 }
 
 function stepSummary(step: ExecutionTraceStep, goalReached: boolean): string {
@@ -133,7 +122,7 @@ function stepSummary(step: ExecutionTraceStep, goalReached: boolean): string {
         ? `已匹配${output.sameProduct ? '同商品' : ''}行为，走“等到行为”路径`
         : '等待到期，走“超时”路径';
     case 'message':
-      return `${JOURNEY_MESSAGE_CHANNELS.find((item) => item.value === output.channel)?.label} · 演示发送`;
+      return `${JOURNEY_MESSAGE_CHANNELS.find((item) => item.value === output.channel)?.label}`;
     case 'end':
       return output.note ?? '流程结束';
     case 'failed':
@@ -330,9 +319,10 @@ export function ExecutionStepTrail({
                             key={field}
                             label={audienceField(field)?.label ?? field}
                           >
-                            {actual.exists
-                              ? optionLabel(audienceField(field), actual.value)
-                              : '未填写'}
+                            {formatFieldValue(
+                              actual.exists ? actual.value : undefined,
+                              audienceField(field),
+                            )}
                           </Descriptions.Item>
                         ))}
                       </Descriptions>

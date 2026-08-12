@@ -24,20 +24,13 @@ import { PageHeader } from '@/components/PageHeader';
 import { ApiError, getApiErrorMessage, isSessionExpired } from '@/services/api';
 import { getExecutionTrace } from '@/services/executions';
 import { formatDateTime } from '@/utils/format-date-time';
+import { formatFieldValue } from '@/utils/format-field-value';
 import { campaignGoalText } from '@/features/campaigns/campaign-goal';
 import { formatWaitDuration } from '@/features/journeys/journey-wait';
 import { executionQueryKeys } from './execution-queries';
 import { executionStatusBadges, executionStatusLabels } from './execution-status';
 import { ExecutionStepTrail } from './components/ExecutionStepTrail';
 import styles from './ExecutionDetailPage.module.css';
-
-function eventValueText(
-  field: { values?: readonly { value: string; label: string }[] },
-  value: unknown,
-) {
-  if (Array.isArray(value)) return value.join('、');
-  return field.values?.find((item) => item.value === value)?.label ?? String(value);
-}
 
 function readReturnTo(state: unknown): string {
   if (typeof state !== 'object' || state === null || !('returnTo' in state)) return '';
@@ -62,7 +55,7 @@ function outcomeText(trace: ExecutionTrace): string {
   if (message?.output.kind !== 'message') return result;
   const channelValue = message.output.channel;
   const channel = JOURNEY_MESSAGE_CHANNELS.find((item) => item.value === channelValue)?.label;
-  return `${result} · 已执行${channel}消息（演示发送）`;
+  return `${result} · 已执行${channel}消息`;
 }
 
 export function ExecutionDetailPage() {
@@ -144,13 +137,13 @@ export function ExecutionDetailPage() {
                 },
                 ...journeyEventFields(goalEvent.type).flatMap((field) => {
                   const value = goalEvent.payload[field.key];
-                  return value == null
+                  return value === undefined
                     ? []
                     : [
                         {
                           key: field.key,
                           label: field.label,
-                          children: eventValueText(field, value),
+                          children: formatFieldValue(value, field),
                         },
                       ];
                 }),
@@ -357,9 +350,9 @@ export function ExecutionDetailPage() {
                           </Descriptions.Item>
                           {journeyEventFields(trace.triggerEvent.type).map((field) => {
                             const value = trace.triggerEvent.payload[field.key];
-                            return value == null ? null : (
+                            return value === undefined ? null : (
                               <Descriptions.Item key={field.key} label={field.label}>
-                                {eventValueText(field, value)}
+                                {formatFieldValue(value, field)}
                               </Descriptions.Item>
                             );
                           })}

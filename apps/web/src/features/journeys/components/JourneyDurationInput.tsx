@@ -20,8 +20,10 @@ export function JourneyDurationInput({
   hasError = false,
   onChange,
 }: Props) {
-  const [unit, setUnit] = useState<WaitUnit>(() => waitUnitFor(seconds).value);
-  const currentUnit = WAIT_UNITS.find((item) => item.value === unit)!;
+  const [preferredUnit, setPreferredUnit] = useState<WaitUnit>(() => waitUnitFor(seconds).value);
+  const currentUnit =
+    WAIT_UNITS.find((item) => item.value === preferredUnit && seconds % item.seconds === 0) ??
+    waitUnitFor(seconds);
 
   return (
     <Flex gap={8}>
@@ -38,7 +40,7 @@ export function JourneyDurationInput({
       <Select
         aria-label={`${label}单位`}
         style={{ width: 80 }}
-        value={unit}
+        value={currentUnit.value}
         disabled={disabled}
         options={WAIT_UNITS.map(({ label: unitLabel, value }) => ({
           label: unitLabel,
@@ -46,7 +48,7 @@ export function JourneyDurationInput({
         }))}
         onChange={(nextUnit: WaitUnit) => {
           const next = WAIT_UNITS.find((item) => item.value === nextUnit)!;
-          setUnit(nextUnit);
+          setPreferredUnit(nextUnit);
           // 单位切换保留当前数值，再换算成秒交给调用方。
           onChange((seconds / currentUnit.seconds) * next.seconds);
         }}

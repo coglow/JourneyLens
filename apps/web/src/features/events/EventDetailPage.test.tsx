@@ -92,6 +92,28 @@ afterEach(() => {
 });
 
 describe('行为记录详情', () => {
+  it('行为属性统一展示枚举中文、明确空值和零', async () => {
+    mock.onGet(`/events/${eventId}`).reply(200, {
+      data: {
+        ...event,
+        type: 'product_viewed',
+        payload: { productId: 'product-1', productName: null, category: 'electronics', price: 0 },
+      },
+    });
+    mock.onGet(`/events/${eventId}/executions`).reply(200, {
+      data: [],
+      page: { page: 1, pageSize: 10, total: 0 },
+    });
+    renderApp(`/events/${eventId}`);
+
+    expect(await screen.findByText('数码电子')).toBeTruthy();
+    expect(screen.getByText('商品名称')).toBeTruthy();
+    expect(screen.getByText('未填写')).toBeTruthy();
+    expect(screen.getByText('0')).toBeTruthy();
+    expect(screen.queryByText('null')).toBeNull();
+    expect(screen.queryByText('electronics')).toBeNull();
+  });
+
   it('显示行为内容，并恢复统一分页网址和原列表地址', async () => {
     mock.onGet(`/events/${eventId}`).reply(200, { data: event });
     mock.onGet(`/events/${eventId}/executions`).reply(200, {
@@ -165,7 +187,9 @@ describe('行为记录详情', () => {
     mock.onGet(`/events/${eventId}/executions`).reply(401, {});
     const router = renderApp(`/events/${eventId}`);
 
-    expect(await screen.findByRole('heading', { name: '登录 JourneyLens' })).toBeTruthy();
+    expect(
+      await screen.findByRole('heading', { name: '登录工作台' }, { timeout: 5_000 }),
+    ).toBeTruthy();
     expect(router.state.location.pathname).toBe('/login');
   });
 });

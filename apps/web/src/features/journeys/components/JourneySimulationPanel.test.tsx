@@ -120,7 +120,7 @@ describe('旅程模拟面板', () => {
       user: {
         ...simulation.scenario.user,
         email: 'zhang@example.com',
-        attributes: { age: 25, optInSms: false },
+        attributes: { age: 25, optInSms: false, vipLevel: null, interests: [] },
       },
     };
     renderPanel(simulation);
@@ -135,6 +135,8 @@ describe('旅程模拟面板', () => {
     expect(within(summary).getByText('zhang@example.com')).toBeTruthy();
     expect(within(summary).getByText('25')).toBeTruthy();
     expect(within(summary).getByText('否')).toBeTruthy();
+    expect(within(summary).getByText('未填写')).toBeTruthy();
+    expect(within(summary).getByText('空列表')).toBeTruthy();
     expect(within(summary).getByText(/浏览商品 · 进入时 商品 ID：P-100/)).toBeTruthy();
     expect(within(summary).getByText(/完成购买 · 进入前 2 天 商品 ID：P-200/)).toBeTruthy();
     expect(within(summary).getByText(/完成购买 · 进入后 2 小时 商品 ID：P-100/)).toBeTruthy();
@@ -225,44 +227,75 @@ describe('旅程模拟面板', () => {
   });
 
   it.each<{
-    path: 'vipLevel' | 'age' | 'optInSms';
+    path: 'vipLevel' | 'age' | 'optInSms' | 'interests';
+    operator: 'exists' | 'contains' | 'gte' | 'eq';
+    right?: string | number | boolean;
     actual: SimulationEvidenceValue;
     summary: string;
   }>([
-    { path: 'vipLevel', actual: { exists: false }, summary: '会员等级未填写 → 走「不满足」路径' },
-    { path: 'age', actual: { exists: true, value: 0 }, summary: '年龄：0 → 走「不满足」路径' },
+    {
+      path: 'vipLevel',
+      operator: 'exists',
+      actual: { exists: false },
+      summary: '会员等级：未提供 → 走「不满足」路径',
+    },
+    {
+      path: 'vipLevel',
+      operator: 'exists',
+      actual: { exists: true, value: null },
+      summary: '会员等级：未填写 → 走「不满足」路径',
+    },
+    {
+      path: 'interests',
+      operator: 'contains',
+      right: '咖啡',
+      actual: { exists: true, value: [] },
+      summary: '兴趣标签：空列表 → 走「不满足」路径',
+    },
+    {
+      path: 'age',
+      operator: 'gte',
+      right: 18,
+      actual: { exists: true, value: 0 },
+      summary: '年龄：0 → 走「不满足」路径',
+    },
     {
       path: 'optInSms',
+      operator: 'eq',
+      right: true,
       actual: { exists: true, value: false },
       summary: '短信订阅：否 → 走「不满足」路径',
     },
-  ])('直接显示判断证据，保留缺失、零和否的区别：$path', ({ path, actual, summary }) => {
-    const simulation = makeController();
-    const result = makeResult(simulation.scenario);
-    result.steps.splice(1, 0, {
-      order: 2,
-      nodeId: 'condition',
-      nodeName: '条件判断',
-      nodeType: 'condition',
-      elapsedSeconds: 0,
-      rule: {
-        kind: 'compare',
-        left: { source: 'user', path },
-        operator: path === 'age' ? 'gte' : path === 'optInSms' ? 'eq' : 'exists',
-        ...(path === 'age' ? { right: 18 } : path === 'optInSms' ? { right: true } : {}),
-      },
-      matched: false,
-      branch: 'unmet',
-      evidence: { kind: 'value', actual },
-    });
-    renderPanel({ ...simulation, result, visibleStepCount: result.steps.length });
-    expect(screen.getByText(summary)).toBeTruthy();
-    const disclosure = screen.getByRole('button', { name: /查看判断详情/ });
-    expect(disclosure.getAttribute('aria-expanded')).toBe('false');
-    fireEvent.click(disclosure);
-    expect(screen.getByText('判断来源')).toBeTruthy();
-    expect(screen.getByText('实际值')).toBeTruthy();
-  });
+  ])(
+    '直接显示判断证据，保留缺失、零和否的区别：$path',
+    ({ path, operator, right, actual, summary }) => {
+      const simulation = makeController();
+      const result = makeResult(simulation.scenario);
+      result.steps.splice(1, 0, {
+        order: 2,
+        nodeId: 'condition',
+        nodeName: '条件判断',
+        nodeType: 'condition',
+        elapsedSeconds: 0,
+        rule: {
+          kind: 'compare',
+          left: { source: 'user', path },
+          operator,
+          ...(right === undefined ? {} : { right }),
+        },
+        matched: false,
+        branch: 'unmet',
+        evidence: { kind: 'value', actual },
+      });
+      renderPanel({ ...simulation, result, visibleStepCount: result.steps.length });
+      expect(screen.getByText(summary)).toBeTruthy();
+      const disclosure = screen.getByRole('button', { name: /查看判断详情/ });
+      expect(disclosure.getAttribute('aria-expanded')).toBe('false');
+      fireEvent.click(disclosure);
+      expect(screen.getByText('判断来源')).toBeTruthy();
+      expect(screen.getByText('实际值')).toBeTruthy();
+    },
+  );
 
   it('未进入旅程时显示实际原因，准入依据仍可展开，不展示执行时间线', () => {
     const simulation = makeController();

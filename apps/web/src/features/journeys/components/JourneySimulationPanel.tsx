@@ -21,10 +21,8 @@ import {
   type SegmentRule,
 } from '@journeylens/shared';
 import type { JourneySimulationController } from '@/features/journeys/hooks/useJourneySimulation';
-import {
-  formatSimulationEvent,
-  formatSimulationValue,
-} from '@/features/journeys/simulation-display';
+import { formatSimulationEvent } from '@/features/journeys/simulation-display';
+import { formatFieldValue } from '@/utils/format-field-value';
 import { SimulationResultView } from './SimulationResultView';
 import { SimulationScenarioEditor } from './SimulationScenarioEditor';
 import styles from './JourneySimulationPanel.module.css';
@@ -45,7 +43,7 @@ function ScenarioSummary({
   onEdit: () => void;
 }) {
   const userRows = [
-    { label: '邮箱', value: formatSimulationValue(scenario.user.email, audienceField('email')) },
+    { label: '邮箱', value: formatFieldValue(scenario.user.email, audienceField('email')) },
     ...AUDIENCE_FIELDS.filter(
       (field) =>
         field.key !== 'displayName' &&
@@ -53,7 +51,7 @@ function ScenarioSummary({
         field.key in scenario.user.attributes,
     ).map((field) => ({
       label: field.label,
-      value: formatSimulationValue(scenario.user.attributes[field.key], field),
+      value: formatFieldValue(scenario.user.attributes[field.key], field),
     })),
   ];
 

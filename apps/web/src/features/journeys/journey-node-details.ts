@@ -10,6 +10,7 @@ import {
   type JourneyEventField,
 } from '@journeylens/shared';
 import { formatWaitDuration } from './journey-wait';
+import { formatFieldValue } from '@/utils/format-field-value';
 
 export type JourneyNodeDetailItem = {
   label: string;
@@ -23,8 +24,7 @@ function comparisonText(
   field?: JourneyEventField,
 ): string {
   if (operator === 'exists') return COMPARISON_OPERATOR_LABELS.exists;
-  const valueText =
-    field?.values?.find((item) => item.value === value)?.label ?? String(value ?? '');
+  const valueText = value === undefined ? '' : formatFieldValue(value, field);
   return `${COMPARISON_OPERATOR_LABELS[operator]} ${valueText}`;
 }
 

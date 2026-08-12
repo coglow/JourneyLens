@@ -348,7 +348,7 @@ export class SegmentService {
       throw new ApiError(
         422,
         'AUDIENCE_TOO_LARGE',
-        `当前演示受众超过 ${SEGMENT_PREVIEW_LIMIT} 人，暂不支持计算`,
+        `当前受众超过 ${SEGMENT_PREVIEW_LIMIT} 人，暂不支持计算`,
       );
     }
 
