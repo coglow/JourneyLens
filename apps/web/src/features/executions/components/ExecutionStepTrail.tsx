@@ -22,7 +22,10 @@ import {
 import { formatDateTime } from '@/utils/format-date-time';
 import { formatWaitDuration } from '@/features/journeys/journey-wait';
 import { SegmentRuleView } from '@/features/segments/components/SegmentRuleView';
-import { executionStepStatusLabels } from '../execution-status';
+import {
+  executionStatusBadges,
+  executionStepStatusLabels,
+} from '@/features/executions/execution-status';
 import styles from '../ExecutionDetailPage.module.css';
 
 const NODE_TYPE_LABELS: Record<JourneyNodeType, string> = {
@@ -292,9 +295,13 @@ export function ExecutionStepTrail({
             <div className={styles.stepEvidence}>
               <div className={styles.stepMeta}>
                 <Tag>{NODE_TYPE_LABELS[step.nodeType]}</Tag>
-                <Typography.Text type="secondary">
+                <Tag
+                  color={
+                    executionStatusBadges[step.status === 'succeeded' ? 'completed' : step.status]
+                  }
+                >
                   {executionStepStatusLabels[step.status]}
-                </Typography.Text>
+                </Tag>
                 <Typography.Text type="secondary">
                   开始 {formatDateTime(step.startedAt)}
                 </Typography.Text>

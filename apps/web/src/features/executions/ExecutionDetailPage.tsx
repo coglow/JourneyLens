@@ -10,7 +10,6 @@ import {
   Spin,
   Tabs,
   Tag,
-  Tooltip,
   Typography,
 } from 'antd';
 import { InfoCircleOutlined } from '@ant-design/icons';
@@ -185,19 +184,14 @@ export function ExecutionDetailPage() {
           }
           actions={
             trace === undefined ? undefined : (
-              <Flex align="center" gap={12}>
-                <Tooltip title="行为由上游工具注入，消息为演示发送；执行记录由系统运行产生。">
-                  <Tag tabIndex={0}>演示环境</Tag>
-                </Tooltip>
-                <Button
-                  aria-label="查看该发布版本"
-                  onClick={() =>
-                    navigate(`/journeys/${trace.journey.id}/versions/${trace.version.id}`)
-                  }
-                >
-                  查看流程 v{trace.version.versionNumber}
-                </Button>
-              </Flex>
+              <Button
+                aria-label="查看该发布版本"
+                onClick={() =>
+                  navigate(`/journeys/${trace.journey.id}/versions/${trace.version.id}`)
+                }
+              >
+                查看流程 v{trace.version.versionNumber}
+              </Button>
             )
           }
         />
@@ -231,72 +225,91 @@ export function ExecutionDetailPage() {
         {trace !== undefined && (
           <>
             <Card>
-              <div className={styles.summary}>
-                <div className={styles.summaryMain}>
-                  <Typography.Title level={4} className={styles.summaryTitle ?? ''}>
-                    {trace.journey.name}
-                  </Typography.Title>
-                  <Typography.Paragraph className={styles.outcome ?? ''}>
+              <Flex
+                justify="space-between"
+                align="flex-start"
+                gap={16}
+                wrap
+                className={styles.summaryHeader}
+              >
+                <Typography.Title level={4} className={styles.summaryTitle ?? ''}>
+                  旅程名称：{trace.journey.name}
+                </Typography.Title>
+                <Popover
+                  trigger={['hover', 'focus']}
+                  title="执行信息"
+                  content={
+                    <Descriptions column={1} size="small">
+                      <Descriptions.Item label="用户 ID">
+                        {trace.audience.externalId}
+                      </Descriptions.Item>
+                      <Descriptions.Item label="创建时间">
+                        {formatDateTime(trace.createdAt)}
+                      </Descriptions.Item>
+                      <Descriptions.Item label="版本发布时间">
+                        {formatDateTime(trace.version.publishedAt)}
+                      </Descriptions.Item>
+                      <Descriptions.Item label={active ? '当前步骤' : '结束于'}>
+                        {/* 目标退出保留原指针；指针为空时说明没有记录位置，不断言从未执行。 */}
+                        {trace.currentNode?.name ?? (goalReached ? '未记录位置' : '尚未开始')}
+                      </Descriptions.Item>
+                    </Descriptions>
+                  }
+                >
+                  <Button type="text" size="small" icon={<InfoCircleOutlined aria-hidden />}>
+                    执行信息
+                  </Button>
+                </Popover>
+              </Flex>
+              {/* 时间与数量分别标注；执行结束后才计算总历时，保留原有统计口径。 */}
+              <Descriptions column={{ xs: 1, sm: 2 }} size="small">
+                <Descriptions.Item label="所属活动">
+                  <Button
+                    type="link"
+                    className={styles.inlineLink ?? ''}
+                    onClick={() => navigate(`/campaigns/${trace.campaign.id}`)}
+                  >
+                    {trace.campaign.name}
+                  </Button>
+                </Descriptions.Item>
+                <Descriptions.Item label="旅程版本">
+                  第 {trace.version.versionNumber} 版
+                </Descriptions.Item>
+                <Descriptions.Item label="开始时间">
+                  {formatDateTime(trace.startedAt)}
+                </Descriptions.Item>
+                <Descriptions.Item label="结束时间">
+                  {trace.endedAt === null ? '尚未结束' : formatDateTime(trace.endedAt)}
+                </Descriptions.Item>
+                <Descriptions.Item label="步骤数量">{trace.steps.length} 个</Descriptions.Item>
+                <Descriptions.Item label="总历时">
+                  {trace.endedAt === null
+                    ? '—'
+                    : formatWaitDuration(
+                        Math.max(
+                          0,
+                          Math.round(
+                            (Date.parse(trace.endedAt) - Date.parse(trace.startedAt)) / 1000,
+                          ),
+                        ),
+                      )}
+                </Descriptions.Item>
+                {deadline != null && (
+                  <Descriptions.Item label="等待截止" span="filled">
+                    {formatDateTime(deadline)}
+                  </Descriptions.Item>
+                )}
+                <Descriptions.Item
+                  label={trace.status === 'failed' ? '失败原因' : active ? '当前进展' : '结束结果'}
+                  span="filled"
+                  className={styles.breakable ?? ''}
+                >
+                  <span className={trace.status === 'failed' ? styles.failed : undefined}>
                     {outcomeText(trace)}
-                  </Typography.Paragraph>
-                  <Flex align="center" gap={8} wrap>
-                    <Button
-                      type="link"
-                      className={styles.inlineLink ?? ''}
-                      onClick={() => navigate(`/campaigns/${trace.campaign.id}`)}
-                    >
-                      {trace.campaign.name}
-                    </Button>
-                    <Typography.Text type="secondary">
-                      · 第 {trace.version.versionNumber} 版 · {formatDateTime(trace.startedAt)}
-                    </Typography.Text>
-                    {trace.endedAt !== null && (
-                      <Typography.Text type="secondary">
-                        至 {formatDateTime(trace.endedAt)}
-                      </Typography.Text>
-                    )}
-                    <Popover
-                      trigger="click"
-                      title="执行信息"
-                      content={
-                        <Descriptions column={1} size="small">
-                          <Descriptions.Item label="用户 ID">
-                            {trace.audience.externalId}
-                          </Descriptions.Item>
-                          <Descriptions.Item label="创建时间">
-                            {formatDateTime(trace.createdAt)}
-                          </Descriptions.Item>
-                          <Descriptions.Item label="版本发布时间">
-                            {formatDateTime(trace.version.publishedAt)}
-                          </Descriptions.Item>
-                          <Descriptions.Item label={active ? '当前步骤' : '结束于'}>
-                            {/* 目标退出保留原指针；指针为空时说明没有记录位置，不断言从未执行。 */}
-                            {trace.currentNode?.name ?? (goalReached ? '未记录位置' : '尚未开始')}
-                          </Descriptions.Item>
-                        </Descriptions>
-                      }
-                    >
-                      <Button type="text" size="small" icon={<InfoCircleOutlined aria-hidden />}>
-                        执行信息
-                      </Button>
-                    </Popover>
-                  </Flex>
-                </div>
-                <div className={styles.summaryStats}>
-                  <Typography.Text>
-                    {trace.steps.length} 个步骤
-                    {trace.endedAt !== null
-                      ? ` · 历时 ${formatWaitDuration(Math.max(0, Math.round((Date.parse(trace.endedAt) - Date.parse(trace.startedAt)) / 1000)))}`
-                      : ''}
-                  </Typography.Text>
-                  {active && <Typography.Text type="secondary">每 3 秒自动刷新</Typography.Text>}
-                  {deadline != null && (
-                    <Typography.Text type="secondary">
-                      等待截止 {formatDateTime(deadline)}
-                    </Typography.Text>
-                  )}
-                </div>
-              </div>
+                  </span>
+                </Descriptions.Item>
+              </Descriptions>
+              {active && <Typography.Text type="secondary">每 3 秒自动刷新</Typography.Text>}
               {goalItems.length > 0 && (
                 <Descriptions
                   className={styles.goal ?? ''}

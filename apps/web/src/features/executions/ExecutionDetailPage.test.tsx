@@ -258,13 +258,20 @@ describe('执行轨迹详情', () => {
     const router = renderApp();
 
     expect(await screen.findByRole('heading', { name: /霖铃铃的执行轨迹/ })).toBeTruthy();
-    expect(screen.getByText('演示环境')).toBeTruthy();
     expect((await screen.findAllByText('已完成')).length).toBeGreaterThan(0);
     expect(screen.queryByRole('tab', { name: '进入时用户资料' })).toBeNull();
     expect(screen.queryByText('lin@example.com')).toBeNull();
     expect(screen.getAllByRole('tab')).toHaveLength(2);
     expect(screen.getByText('演示活动')).toBeTruthy();
-    expect(screen.getByText('浏览后购买挽回')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '旅程名称：浏览后购买挽回' })).toBeTruthy();
+    expect(screen.getByText('所属活动')).toBeTruthy();
+    expect(screen.getByText('旅程版本')).toBeTruthy();
+    expect(screen.getByText('开始时间')).toBeTruthy();
+    expect(screen.getByText('结束时间')).toBeTruthy();
+    expect(screen.getByText('步骤数量')).toBeTruthy();
+    expect(screen.getByText('总历时')).toBeTruthy();
+    expect(screen.getByText('12 秒')).toBeTruthy();
+    expect(screen.getByText('结束结果')).toBeTruthy();
     expect(screen.queryByText('感谢购买，我们会尽快为你安排发货。')).toBeNull();
     expect(screen.getByText(/商品价格判断/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /1\. 用户浏览商品/ }));
@@ -281,7 +288,7 @@ describe('执行轨迹详情', () => {
     expect(screen.getAllByText(/用户在等待窗口内完成了同商品购买/).length).toBeGreaterThan(0);
     expect(screen.queryByText('每 3 秒自动刷新')).toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: '执行信息' }));
+    fireEvent.mouseEnter(screen.getByRole('button', { name: '执行信息' }));
     expect(await screen.findByText('upstream:demo:eligible')).toBeTruthy();
     fireEvent.click(screen.getByRole('tab', { name: '触发行为' }));
     expect(await screen.findByText('演示无线耳机')).toBeTruthy();
@@ -298,6 +305,9 @@ describe('执行轨迹详情', () => {
     });
 
     expect(await screen.findByText('每 3 秒自动刷新')).toBeTruthy();
+    expect(screen.getByText('当前进展')).toBeTruthy();
+    expect(screen.getByText('尚未结束')).toBeTruthy();
+    expect(screen.queryByText('12 秒')).toBeNull();
     expect(screen.getAllByText('等待中').length).toBeGreaterThan(0);
     expect(screen.getByText(/等待截止/)).toBeTruthy();
     expect(screen.getByText(/正在等待匹配行为或到期/)).toBeTruthy();
@@ -326,6 +336,58 @@ describe('执行轨迹详情', () => {
     expect(screen.getByRole('tab', { name: '触发行为' }).getAttribute('aria-selected')).toBe(
       'true',
     );
+  });
+
+  it('执行失败时展示失败原因字段，保留零秒历时', async () => {
+    const reason = '「欢迎消息」的消息内容替换后超过 2000 字，请精简后重试';
+    mock.onGet(`/executions/${executionId}/trace`).reply(200, {
+      data: {
+        ...completedTrace,
+        status: 'failed',
+        failureReason: reason,
+        currentNode: { nodeId: 'message', name: '欢迎消息', nodeType: 'message' },
+        endedAt: completedTrace.startedAt,
+        steps: [
+          completedTrace.steps[0],
+          {
+            ...baseStep,
+            order: 2,
+            nodeId: 'message',
+            nodeName: '欢迎消息',
+            nodeType: 'message',
+            status: 'failed',
+            failureReason: reason,
+            output: { kind: 'failed', reason },
+          },
+        ],
+      },
+    });
+    renderApp();
+
+    expect(await screen.findByText('失败原因')).toBeTruthy();
+    expect(screen.getAllByText(reason).length).toBeGreaterThan(0);
+    expect(screen.getByText('0 秒')).toBeTruthy();
+    expect(screen.queryByText('结束结果')).toBeNull();
+    expect(screen.queryByText('每 3 秒自动刷新')).toBeNull();
+  });
+
+  it('运行中展示当前进展，不将未结束的执行显示为零秒', async () => {
+    mock.onGet(`/executions/${executionId}/trace`).reply(200, {
+      data: {
+        ...completedTrace,
+        status: 'running',
+        currentNode: { nodeId: 'start', name: '用户浏览商品', nodeType: 'start' },
+        endedAt: null,
+        steps: [],
+      },
+    });
+    renderApp();
+
+    expect(await screen.findByText('当前进展')).toBeTruthy();
+    expect(screen.getByText('正在运行「用户浏览商品」。')).toBeTruthy();
+    expect(screen.getByText('尚未结束')).toBeTruthy();
+    expect(screen.queryByText('0 秒')).toBeNull();
+    expect(screen.getByText('每 3 秒自动刷新')).toBeTruthy();
   });
 
   it('已停止的等待不再显示正在等待', async () => {
@@ -400,7 +462,7 @@ describe('执行轨迹详情', () => {
     expect(screen.getByText('本次尚未执行任何步骤，目标达成后已退出旅程。')).toBeTruthy();
     expect(screen.queryByText('后台尚未开始处理这次执行，页面会自动刷新。')).toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: '执行信息' }));
+    fireEvent.focus(screen.getByRole('button', { name: '执行信息' }));
     expect(await screen.findByText('未记录位置')).toBeTruthy();
   });
 

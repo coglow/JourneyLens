@@ -13,27 +13,13 @@
   height: auto;
   padding: 0;
 }
-.summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 24px;
+.summaryHeader {
+  margin-bottom: 16px;
 }
-.summaryMain {
+.summaryTitle {
   min-width: 0;
-}
-.summaryTitle,
-.outcome {
-  margin-bottom: 10px;
-}
-.summaryStats {
-  display: flex;
-  flex-shrink: 0;
-  flex-direction: column;
-  gap: 8px;
-  max-width: 280px;
-  padding-left: 28px;
-  border-left: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+  margin: 0;
+  overflow-wrap: anywhere;
 }
 .stepItem {
   border-bottom: 1px solid var(--ant-color-border-secondary, #f0f0f0);
@@ -116,6 +102,7 @@
   border-top: 1px solid var(--ant-color-border-secondary, #f0f0f0);
 }
 .eventId {
+  margin-top: 16px;
   padding-top: 16px;
   border-top: 1px solid var(--ant-color-border-secondary, #f0f0f0);
 }
@@ -131,16 +118,6 @@
   padding: 48px;
 }
 @media (max-width: 900px) {
-  .summary {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 12px;
-  }
-  .summaryStats {
-    max-width: none;
-    padding: 0;
-    border: 0;
-  }
   .stepLine {
     grid-template-columns: 24px minmax(0, 1fr);
     gap: 8px 12px;

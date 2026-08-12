@@ -38,6 +38,7 @@ import { getCampaign, getCampaigns } from '@/services/campaigns';
 import { getExecutions } from '@/services/executions';
 import { getJourney, getJourneys } from '@/services/journeys';
 import { formatDateTime } from '@/utils/format-date-time';
+import { tableScrollX } from '@/utils/table-scroll';
 import { executionQueryKeys } from './execution-queries';
 import { executionStatusBadges, executionStatusLabels } from './execution-status';
 
@@ -141,6 +142,14 @@ function getExecutionColumns(
       key: 'createdAt',
       width: 190,
       render: formatDateTime,
+    },
+    {
+      title: '结束时间',
+      dataIndex: 'endedAt',
+      key: 'endedAt',
+      width: 190,
+      render: (value: ExecutionListItem['endedAt']) =>
+        value === null ? '—' : formatDateTime(value),
     },
     {
       title: '操作',
@@ -425,7 +434,7 @@ export function ExecutionsPage() {
               columns={columns}
               dataSource={list.data}
               pagination={false}
-              scroll={{ x: 1250 }}
+              scroll={{ x: tableScrollX(columns) }}
               tableLayout="fixed"
               size="middle"
               loading={listQuery.isFetching}
