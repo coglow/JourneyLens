@@ -366,7 +366,11 @@ export function SimulationScenarioEditor({
                     <Dropdown
                       trigger={['click']}
                       autoFocus
+                      destroyOnHidden
+                      transitionName=""
                       menu={{
+                        // 长菜单在内部滚动，避免向上展开时超出窗口。
+                        style: { maxHeight: 'min(320px, 50vh)', overflowY: 'auto' },
                         items: AUDIENCE_FIELD_GROUPS.map((group) => ({
                           type: 'group' as const,
                           key: group,

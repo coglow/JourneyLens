@@ -6,10 +6,11 @@ import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { JourneyVersionSummary } from '@journeylens/shared';
 import { JourneyVersionsSection } from './JourneyVersionsSection';
-import { getJourneyVersions } from '@/services/journeys';
+import { getJourneyVersion, getJourneyVersions } from '@/services/journeys';
 import { ApiError } from '@/services/api';
 
 vi.mock('@/services/journeys', () => ({
+  getJourneyVersion: vi.fn(),
   getJourneyVersions: vi.fn(),
 }));
 
@@ -46,6 +47,8 @@ beforeEach(() => {
     data: [makeVersion(2), makeVersion(1)],
     page: { page: 2, pageSize: 10, total: 12 },
   });
+  // 对比抽屉打开后才会读取版本详情；列表测试只需保证它不会打到真实请求。
+  vi.mocked(getJourneyVersion).mockRejectedValue(new ApiError(404, 'NOT_FOUND', '版本不存在'));
 });
 
 afterEach(() => {
@@ -97,5 +100,33 @@ describe('已发布版本列表', () => {
     // antd 会在两个汉字的按钮文案之间插入空格，按文本内容匹配更稳妥。
     fireEvent.click(screen.getByRole('button', { name: /重\s*试/ }));
     await waitFor(() => expect(screen.getByText('第 1 版')).toBeTruthy());
+  });
+
+  it('两个及以上版本时提供对比入口，点击后打开对比抽屉', async () => {
+    renderSection();
+
+    const button = await screen.findByRole('button', { name: '版本对比' });
+    // 列表第一次返回前按钮保持禁用，等总数到位后再确认可用。
+    await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
+
+    fireEvent.click(button);
+    // 按钮与抽屉标题同名，按对话框角色判断抽屉是否打开。
+    expect(await screen.findByRole('dialog')).toBeTruthy();
+  });
+
+  it('只有一个版本时对比入口不可用', async () => {
+    vi.mocked(getJourneyVersions).mockResolvedValue({
+      data: [makeVersion(1)],
+      page: { page: 1, pageSize: 10, total: 1 },
+    });
+    renderSection();
+
+    expect(await screen.findByText('第 1 版')).toBeTruthy();
+    const button = screen.getByRole('button', { name: '版本对比' });
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+
+    // 禁用按钮本身不接收鼠标事件，提示挂在外层元素上。
+    fireEvent.mouseEnter(button.parentElement!);
+    expect(await screen.findByText('至少发布两个版本后才能对比')).toBeTruthy();
   });
 });

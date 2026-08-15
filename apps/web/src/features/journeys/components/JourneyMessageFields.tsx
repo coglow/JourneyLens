@@ -188,25 +188,28 @@ export function JourneyMessageFields({
       )}
 
       <Typography.Text strong>消息内容</Typography.Text>
-      <Input.TextArea
-        ref={bodyRef}
-        aria-label="消息内容"
-        rows={5}
-        maxLength={JOURNEY_MESSAGE_BODY_MAX_LENGTH}
-        showCount
-        value={node.body}
-        status={bodyError === undefined ? '' : 'error'}
-        disabled={disabled}
-        onSelect={(event) => setBodySelection(readSelection(event.currentTarget))}
-        onClick={(event) => setBodySelection(readSelection(event.currentTarget))}
-        onKeyUp={(event) => setBodySelection(readSelection(event.currentTarget))}
-        onChange={(event) => {
-          setInsertError(undefined);
-          setBodySelection(readSelection(event.currentTarget));
-          onChange({ ...node, body: event.target.value });
-        }}
-      />
-      <Flex justify="flex-end">{variableMenu('body')}</Flex>
+      {/* 字数统计显示在输入框下方，为按钮行留出空间，避免两者重叠。 */}
+      <Flex vertical gap={24}>
+        <Input.TextArea
+          ref={bodyRef}
+          aria-label="消息内容"
+          rows={5}
+          maxLength={JOURNEY_MESSAGE_BODY_MAX_LENGTH}
+          showCount
+          value={node.body}
+          status={bodyError === undefined ? '' : 'error'}
+          disabled={disabled}
+          onSelect={(event) => setBodySelection(readSelection(event.currentTarget))}
+          onClick={(event) => setBodySelection(readSelection(event.currentTarget))}
+          onKeyUp={(event) => setBodySelection(readSelection(event.currentTarget))}
+          onChange={(event) => {
+            setInsertError(undefined);
+            setBodySelection(readSelection(event.currentTarget));
+            onChange({ ...node, body: event.target.value });
+          }}
+        />
+        <Flex justify="flex-end">{variableMenu('body')}</Flex>
+      </Flex>
       {insertError?.field === 'body' && (
         <Typography.Text type="danger">{insertError.message}</Typography.Text>
       )}

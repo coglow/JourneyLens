@@ -1,0 +1,12 @@
+.picker {
+  width: 200px;
+}
+
+.compareWord {
+  padding-bottom: 8px;
+}
+
+.prewrap {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
