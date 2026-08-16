@@ -1,5 +1,5 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { Overview } from '@journeylens/shared';
 import MockAdapter from 'axios-mock-adapter';
@@ -116,7 +116,7 @@ describe('首页运营概览', () => {
     const updatedTime = screen.getByText(/^更新于 /);
     expect(updatedTime.getAttribute('datetime')).toBe(data.windowEndedAt);
     expect(updatedTime.getAttribute('title')).toBe(formatDateTime(data.windowEndedAt));
-    expect(updatedTime.textContent).not.toMatch(/\d{1,2}:\d{2}:\d{2}/);
+    expect(updatedTime.textContent).toMatch(/\d{1,2}:\d{2}:\d{2}/);
     const dateRange = screen.getByText(/^近 7 天 ·/);
     expect(dateRange.textContent).not.toContain(':');
     expect(dateRange.getAttribute('title')).toBe(
@@ -241,6 +241,38 @@ describe('首页运营概览', () => {
     expect(screen.getAllByText('数据已刷新')).toHaveLength(1);
     expect(await screen.findByText('121')).toBeTruthy();
     expect(mock.history.get).toHaveLength(2);
+  });
+
+  it('停留在页面时每 30 秒静默更新数字与更新时间', async () => {
+    const updated = {
+      ...data,
+      entryCount: 121,
+      windowStartedAt: '2026-07-30T06:32:15.678Z',
+      windowEndedAt: '2026-08-06T06:32:15.678Z',
+    };
+    mock.onGet('/overview').replyOnce(200, { data });
+    mock.onGet('/overview').reply(200, { data: updated });
+
+    vi.useFakeTimers();
+    try {
+      renderPage();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(screen.getByText('120')).toBeTruthy();
+
+      await act(async () => {
+        // 推进 30 秒触发轮询；多 1 毫秒让响应后的更新时间在假时钟下送达页面。
+        await vi.advanceTimersByTimeAsync(30_001);
+      });
+
+      expect(mock.history.get).toHaveLength(2);
+      expect(screen.getByText('121')).toBeTruthy();
+      expect(screen.getByText(/^更新于 /).getAttribute('datetime')).toBe(updated.windowEndedAt);
+      expect(screen.queryByText('数据已刷新')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('刷新中保留数字，失败保留旧范围和链接，重试成功后整份数据一起更新', async () => {

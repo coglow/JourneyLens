@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { CAMPAIGN_STATUSES, type CampaignStatus, type Overview } from '@journeylens/shared';
 import {
@@ -36,10 +37,14 @@ const updatedAtFormatter = new Intl.DateTimeFormat('zh-CN', {
   day: '2-digit',
   hour: '2-digit',
   minute: '2-digit',
+  second: '2-digit',
   hourCycle: 'h23',
 });
 
 const shortDateFormatter = new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: '2-digit' });
+
+// 页面在前台时每 30 秒静默更新一次；窗口失焦由 TanStack 默认暂停轮询。
+const REFRESH_INTERVAL_MS = 30_000;
 
 type Metric = {
   label: string;
@@ -121,16 +126,20 @@ function CampaignStatusRing({
 export function OverviewPage() {
   const { token } = theme.useToken();
   const [messageApi, messageContextHolder] = message.useMessage();
+  const [manualRefreshing, setManualRefreshing] = useState(false);
   const query = useQuery({
     queryKey: ['overview'],
     queryFn: ({ signal }) => getOverview(signal),
+    refetchInterval: (current) => (current.state.data === undefined ? false : REFRESH_INTERVAL_MS),
   });
   const data = query.data;
   const retry = <Button onClick={() => void query.refetch()}>重试</Button>;
   const sessionExpired = query.error !== null && isSessionExpired(query.error);
 
   async function refreshOverview(): Promise<void> {
+    setManualRefreshing(true);
     const result = await query.refetch();
+    setManualRefreshing(false);
     if (result.isSuccess) void messageApi.success('数据已刷新');
   }
 
@@ -250,7 +259,7 @@ export function OverviewPage() {
             )}
             <Button
               icon={<ReloadOutlined aria-hidden />}
-              loading={query.isFetching}
+              loading={manualRefreshing}
               onClick={() => void refreshOverview()}
             >
               刷新数据
