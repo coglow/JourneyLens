@@ -125,12 +125,12 @@ function typeDescription(value: string): void {
 describe('AI 起草页面', () => {
   it('画布与清单切换不重新生成，点击节点可在侧栏查看正文', async () => {
     generate.mockResolvedValueOnce({ status: 'ready', draftDefinition: candidate });
+    document.documentElement.dataset.colorMode = 'dark';
     renderPage();
     typeDescription('浏览后提醒');
     fireEvent.click(screen.getByRole('button', { name: '生成方案' }));
     await screen.findByText(/流程检查通过/);
     expect(screen.queryByRole('alert')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: '切换为深色模式' }));
     expect(document.querySelector('.react-flow')?.classList.contains('dark')).toBe(true);
     expect((screen.getByLabelText('旅程描述') as HTMLTextAreaElement).value).toBe('浏览后提醒');
     fireEvent.click(screen.getByLabelText('消息：短信提醒'));

@@ -255,7 +255,7 @@ describe('旅程编排页面', () => {
     expect(simulateJourney).not.toHaveBeenCalled();
   });
 
-  it('编排隐藏主题切换入口，进入和返回 AI 起草沿用当前主题且不保存草稿', async () => {
+  it('编排和 AI 起草都不显示主题切换入口，切换视图沿用当前主题且不保存草稿', async () => {
     document.documentElement.dataset.colorMode = 'dark';
     const { router } = renderEditor();
     await screen.findByRole('heading', { name: '欢迎旅程' });
@@ -265,7 +265,7 @@ describe('旅程编排页面', () => {
     fireEvent.click(screen.getByRole('button', { name: /AI 生成旅程/ }));
     await screen.findByRole('heading', { name: 'AI 起草' });
     expect(router.state.location.pathname).toBe(`/journeys/${journeyId}/ai-draft`);
-    expect(screen.getByRole('button', { name: '切换为浅色模式' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /切换为.*模式/ })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: /^返回编排$/ }));
     expect(router.state.location.pathname).toBe(`/journeys/${journeyId}/editor`);
     expect(document.documentElement.dataset.colorMode).toBe('dark');
