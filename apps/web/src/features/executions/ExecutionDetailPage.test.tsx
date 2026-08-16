@@ -1,5 +1,5 @@
 import { ThemeProvider } from '@/app/ThemeProvider';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import MockAdapter from 'axios-mock-adapter';
@@ -253,6 +253,29 @@ afterEach(() => {
 });
 
 describe('执行轨迹详情', () => {
+  it.each([
+    { name: '同一秒完成', endedAt: '2026-07-30T08:00:00.800Z', showRange: false },
+    { name: '尚未结束', endedAt: null, showRange: false },
+    { name: '同一天的不同时刻', endedAt: '2026-07-30T08:00:05.000Z', showRange: true },
+    { name: '跨天的相同时刻', endedAt: '2026-07-31T08:00:00.000Z', showRange: true },
+  ])('步骤标题显示完整日期时间：$name', async ({ endedAt, showRange }) => {
+    mock.onGet(`/executions/${executionId}/trace`).reply(200, {
+      data: {
+        ...completedTrace,
+        status: endedAt === null ? 'running' : 'completed',
+        endedAt,
+        steps: [{ ...completedTrace.steps[0], endedAt }],
+      },
+    });
+    renderApp();
+
+    const stepHeader = await screen.findByRole('button', { name: /1\. 用户浏览商品/ });
+    const start = new Date(baseStep.startedAt).toLocaleString('zh-CN');
+    const end = endedAt === null ? null : new Date(endedAt).toLocaleString('zh-CN');
+    const time = within(stepHeader).getByText(start).parentElement;
+    expect(time?.textContent).toBe(showRange ? `${start} — ${end}` : start);
+  });
+
   it('触发行为展示明确空值和零，继续省略未提供的属性', async () => {
     mock.onGet(`/executions/${executionId}/trace`).reply(200, {
       data: {

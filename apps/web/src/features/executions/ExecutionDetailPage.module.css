@@ -46,6 +46,10 @@
   color: var(--ant-color-text-secondary, #666);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
+}
+/* 日期与时刻保持完整，只在起止时间之间换行。 */
+.stepTimestamp {
+  display: inline-block;
   white-space: nowrap;
 }
 .stepIcon {

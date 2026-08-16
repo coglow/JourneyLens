@@ -130,11 +130,16 @@ function stepSummary(step: ExecutionTraceStep, goalReached: boolean): string {
   }
 }
 
-function stepTime(step: ExecutionTraceStep): string {
-  const time = (value: string) => new Date(value).toLocaleTimeString('zh-CN', { hour12: false });
-  const start = time(step.startedAt);
-  const end = step.endedAt === null ? null : time(step.endedAt);
-  return end === null || end === start ? start : `${start} — ${end}`;
+function stepTime(step: ExecutionTraceStep) {
+  // 日期参与展示和合并判断，避免跨天的相同时刻被当成同一时间。
+  const start = formatDateTime(step.startedAt);
+  const end = step.endedAt === null ? null : formatDateTime(step.endedAt);
+  return (
+    <>
+      <span className={styles.stepTimestamp}>{start}</span>
+      {end !== null && end !== start && <span className={styles.stepTimestamp}>{` — ${end}`}</span>}
+    </>
+  );
 }
 
 function stepDetails(
