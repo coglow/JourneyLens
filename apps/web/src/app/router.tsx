@@ -13,6 +13,7 @@ import { JourneyVersionPage } from '@/features/journeys/JourneyVersionPage';
 import { SegmentDetailPage } from '@/features/segments/SegmentDetailPage';
 import { SegmentsPage } from '@/features/segments/SegmentsPage';
 import { OverviewPage } from '@/features/overview/OverviewPage';
+import { NotFoundPage } from './NotFoundPage';
 import { WorkbenchPage } from './WorkbenchPage';
 
 export const appRoutes: RouteObject[] = [
@@ -46,6 +47,8 @@ export const appRoutes: RouteObject[] = [
           { path: 'segments/:id', element: <SegmentDetailPage /> },
         ],
       },
+      // 未登录时先由守卫跳转登录页，登录后未知地址显示 404 页。
+      { path: '*', element: <NotFoundPage /> },
     ],
   },
 ];

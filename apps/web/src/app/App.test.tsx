@@ -369,6 +369,30 @@ describe('登录与会话路由', () => {
   });
 });
 
+describe('未知地址', () => {
+  it('登录后访问不存在的地址显示 404 页，可返回概览', async () => {
+    mock.onGet('/userinfo').replyOnce(200, { data: account });
+    mock.onGet('/overview').replyOnce(200, overviewBody());
+    const router = renderApp('/no-such-page');
+
+    expect(await screen.findByText('找不到这个页面')).toBeTruthy();
+    expect(screen.getByRole('main', { name: '找不到页面' })).toBeTruthy();
+    expect(router.state.location.pathname).toBe('/no-such-page');
+
+    fireEvent.click(screen.getByRole('button', { name: '返回首页' }));
+    expect(await screen.findByText('近 7 天还没有进入旅程的记录')).toBeTruthy();
+    expect(router.state.location.pathname).toBe('/overview');
+  });
+
+  it('未登录访问不存在的地址先去登录页', async () => {
+    mock.onGet('/userinfo').replyOnce(401, unauthorizedBody());
+    const router = renderApp('/no-such-page');
+
+    expect(await screen.findByRole('heading', { name: '登录工作台' })).toBeTruthy();
+    expect(router.state.location.pathname).toBe('/login');
+  });
+});
+
 describe('窗口宽度门槛', () => {
   const NOTICE = '为了您更好的操作体验，请使用电脑浏览器打开本页面';
 
