@@ -84,6 +84,10 @@ export function buildApp(options: BuildAppOptions = {}) {
       requestIdLogLabel: 'requestId',
     }),
     genReqId: (request) => resolveRequestId(request.headers['x-request-id']),
+    // 由同机 Nginx 终止 TLS 后转发到此端口（只监听 127.0.0.1，见 main.ts），这里采信它写入的
+    // X-Forwarded-Proto。缺这行时 request.protocol 恒为 http：写接口的同源校验会把正常请求
+    // 判成跨站而全部 403（plugins/security.ts），登录 Cookie 也不再带 Secure（modules/auth/routes.ts）。
+    trustProxy: true,
   });
 
   app.addHook('onRequest', async (request, reply) => {

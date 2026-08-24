@@ -37,7 +37,8 @@ async function start(): Promise<void> {
   process.once('SIGINT', () => void shutdown('SIGINT'));
   process.once('SIGTERM', () => void shutdown('SIGTERM'));
 
-  const address = await app.listen({ port, host: '0.0.0.0' });
+  // 只绑定本机回环地址，对外由同机 Nginx 反向代理。
+  const address = await app.listen({ port, host: '127.0.0.1' });
   // 启动后从数据库继续处理仍运行或等待中的执行，不依赖内存任务。
   scheduler.start();
   app.log.info({ address }, 'JourneyLens API 已启动');
