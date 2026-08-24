@@ -1,5 +1,7 @@
+import { Suspense } from 'react';
 import { Outlet } from 'react-router';
 import { useAuth } from '@/features/auth/auth-provider';
+import { RouteLoading } from './RouteLoading';
 import { WorkbenchLayout } from './WorkbenchLayout';
 
 export function WorkbenchPage() {
@@ -13,7 +15,10 @@ export function WorkbenchPage() {
       logoutError={logoutError}
       onLogout={() => void signOut()}
     >
-      <Outlet />
+      {/* 页面代码按需加载时只替换内容区，侧栏和头部保持可用。 */}
+      <Suspense fallback={<RouteLoading />}>
+        <Outlet />
+      </Suspense>
     </WorkbenchLayout>
   );
 }

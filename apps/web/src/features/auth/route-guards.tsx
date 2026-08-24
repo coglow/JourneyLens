@@ -1,6 +1,7 @@
-import type { ReactNode } from 'react';
+import { Suspense, type ReactNode } from 'react';
 import { Alert, Button, Card, Layout, Typography } from 'antd';
 import { Navigate, Outlet } from 'react-router';
+import { RouteLoading } from '@/app/RouteLoading';
 import { useAuth, type AuthContextValue } from './auth-provider';
 import { LoginPage } from './LoginPage';
 
@@ -47,7 +48,11 @@ export function RequireAuth() {
   const fallback = sessionFallbackNode(auth);
   if (fallback !== null) return fallback;
   if (auth.status === 'unauthenticated') return <Navigate to="/login" replace />;
-  return <Outlet />;
+  return (
+    <Suspense fallback={<RouteLoading />}>
+      <Outlet />
+    </Suspense>
+  );
 }
 
 /** 登录页路由：已登录时回到工作台。 */
