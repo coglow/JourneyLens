@@ -129,6 +129,10 @@
   padding: 64px 12px;
 }
 
+.tableSkeleton {
+  padding-top: 16px;
+}
+
 .statusChart {
   display: flex;
   align-items: center;

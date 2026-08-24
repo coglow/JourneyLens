@@ -204,7 +204,10 @@ describe('首页运营概览', () => {
       },
     });
     renderPage();
-    expect(screen.getByLabelText('正在读取概览')).toBeTruthy();
+    // 首次读取用骨架占位，数据到达后才渲染真实卡片。
+    expect(
+      screen.getByRole('status', { name: '正在读取概览' }).querySelector('.ant-skeleton'),
+    ).toBeTruthy();
     expect(screen.queryByText('0')).toBeNull();
     expect(screen.queryByRole('link', { name: /活动总数/ })).toBeNull();
     await waitFor(() => expect(finish).toBeTypeOf('function'));

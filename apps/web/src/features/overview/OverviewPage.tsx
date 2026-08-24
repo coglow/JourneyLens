@@ -14,7 +14,7 @@ import {
   Card,
   Empty,
   Flex,
-  Spin,
+  Skeleton,
   Statistic,
   Table,
   Tooltip,
@@ -133,6 +133,8 @@ export function OverviewPage() {
     refetchInterval: (current) => (current.state.data === undefined ? false : REFRESH_INTERVAL_MS),
   });
   const data = query.data;
+  // 首次读取期间用骨架占住卡片位置，数据到达后布局不跳动；读取失败时骨架让位给错误提示。
+  const pending = data === undefined && query.isPending;
   const retry = <Button onClick={() => void query.refetch()}>重试</Button>;
   const sessionExpired = query.error !== null && isSessionExpired(query.error);
 
@@ -288,6 +290,19 @@ export function OverviewPage() {
         />
       )}
 
+      {pending && (
+        <Card styles={{ body: { padding: 0 } }} classNames={{ body: styles.metrics ?? '' }}>
+          {Array.from({ length: 4 }, (_, index) => (
+            <div key={index} className={styles.metric}>
+              <Skeleton.Input active size="small" style={{ width: 112 }} />
+              <div className={styles.metricValue}>
+                <Skeleton.Input active size="large" style={{ width: 88 }} />
+              </div>
+            </div>
+          ))}
+        </Card>
+      )}
+
       {data !== undefined && (
         <Card styles={{ body: { padding: 0 } }} classNames={{ body: styles.metrics ?? '' }}>
           {metrics.map((metric) => {
@@ -365,13 +380,15 @@ export function OverviewPage() {
           }
         >
           {data === undefined ? (
-            <Flex className={styles.loading} justify="center" role="status">
-              {query.isPending ? (
-                <Spin aria-label="正在读取概览" />
-              ) : (
+            pending ? (
+              <div className={styles.tableSkeleton} role="status" aria-label="正在读取概览">
+                <Skeleton active title={false} paragraph={{ rows: 5 }} />
+              </div>
+            ) : (
+              <Flex className={styles.loading} justify="center">
                 <Typography.Text type="secondary">近期活动暂时无法读取</Typography.Text>
-              )}
-            </Flex>
+              </Flex>
+            )
           ) : (
             <Table
               rowKey="id"
@@ -384,6 +401,21 @@ export function OverviewPage() {
           )}
         </Card>
         <div className={styles.sideColumn}>
+          {pending && (
+            <Card
+              title="活动概况"
+              styles={{ header: { fontSize: 18, minHeight: 48 }, body: { padding: '16px 24px' } }}
+            >
+              <div className={styles.statusChart}>
+                <div className={styles.ringWrap}>
+                  <Skeleton.Avatar active shape="circle" size={148} />
+                </div>
+                <div className={styles.statusLegend}>
+                  <Skeleton active title={false} paragraph={{ rows: 4 }} />
+                </div>
+              </div>
+            </Card>
+          )}
           {data !== undefined && (
             <Card
               title="活动概况"
@@ -427,6 +459,15 @@ export function OverviewPage() {
                   ))}
                 </div>
               </div>
+            </Card>
+          )}
+          {pending && (
+            <Card
+              title="近期旅程"
+              styles={{ header: { fontSize: 18, minHeight: 48 }, body: { padding: '16px 24px' } }}
+              extra={<Typography.Text type="secondary">最新发布</Typography.Text>}
+            >
+              <Skeleton active title={false} paragraph={{ rows: 3 }} />
             </Card>
           )}
           {data !== undefined && (
